@@ -5,6 +5,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const DOCS_BUCKET = "shipment-documents";
+
+/** Extrai o path do storage de uma URL pública/assinada antiga ou de um path cru. */
+function extractDocPath(fileUrlOrPath: string | null | undefined): string {
+  if (!fileUrlOrPath) return "";
+  const value = String(fileUrlOrPath);
+  for (const marker of [
+    `/object/public/${DOCS_BUCKET}/`,
+    `/object/sign/${DOCS_BUCKET}/`,
+    `/${DOCS_BUCKET}/`,
+  ]) {
+    const i = value.indexOf(marker);
+    if (i !== -1) return decodeURIComponent(value.slice(i + marker.length).split("?")[0]);
+  }
+  return value;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -116,25 +133,36 @@ Deno.serve(async (req) => {
     }
 
     if (action === "documents") {
+      let docs: any[] = [];
       if (shipment_ids && shipment_ids.length > 0) {
         const { data } = await adminClient
           .from("documents")
           .select("id, name, file_url, shipment_id, quote_id")
           .in("shipment_id", shipment_ids)
           .eq("visible_tracking", true);
-        return jsonResponse({ documents: data || [] });
-      }
-
-      if (quote_ids && quote_ids.length > 0) {
+        docs = data || [];
+      } else if (quote_ids && quote_ids.length > 0) {
         const { data } = await adminClient
           .from("documents")
           .select("id, name, file_url, shipment_id, quote_id")
           .in("quote_id", quote_ids)
           .eq("visible_tracking", true);
-        return jsonResponse({ documents: data || [] });
+        docs = data || [];
       }
 
-      return jsonResponse({ documents: [] });
+      // Gera URLs assinadas (bucket privado). Cliente já validado por CNPJ+PIN.
+      const signed = await Promise.all(
+        docs.map(async (d) => {
+          const path = extractDocPath(d.file_url);
+          if (!path) return d;
+          const { data: s } = await adminClient.storage
+            .from("shipment-documents")
+            .createSignedUrl(path, 60 * 60);
+          return { ...d, file_url: s?.signedUrl || d.file_url };
+        }),
+      );
+
+      return jsonResponse({ documents: signed });
     }
 
     return jsonResponse({ error: "Invalid action" }, 400);

@@ -85,10 +85,9 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
         const path = `${quote.company_id}/${quote.id}/${Date.now()}_${filename}`;
         const up = await supabase.storage.from('shipment-documents').upload(path, blob, { contentType: 'application/pdf' });
         if (!up.error) {
-          const { data: { publicUrl } } = supabase.storage.from('shipment-documents').getPublicUrl(path);
           await supabase.from('documents').insert({
             quote_id: quote.id, shipment_id: quote.shipment_id || null,
-            company_id: quote.company_id, name: filename, file_url: publicUrl,
+            company_id: quote.company_id, name: filename, file_url: path,
             file_size: blob.size, document_type: 'other' as any,
           } as any);
         }

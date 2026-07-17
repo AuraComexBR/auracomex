@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { openSignedDoc } from '@/lib/storage';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -325,8 +326,7 @@ function CreateDnDialog({
         const path = `debit-notes/${quoteId}/${Date.now()}_${file.name}`;
         const { error: upErr } = await supabase.storage.from('shipment-documents').upload(path, file);
         if (upErr) throw upErr;
-        const { data: pub } = supabase.storage.from('shipment-documents').getPublicUrl(path);
-        file_url = pub.publicUrl;
+        file_url = path;
       }
       const { data, error } = await supabase
         .from('debit_notes' as any)
@@ -624,9 +624,13 @@ function DnDetailDialog({
         </div>
 
         {dn.file_url && (
-          <a href={dn.file_url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
+          <button
+            type="button"
+            onClick={() => openSignedDoc(dn.file_url).catch((e) => toast.error(e.message))}
+            className="text-xs text-primary underline text-left"
+          >
             Abrir arquivo original
-          </a>
+          </button>
         )}
 
         <div className="border rounded-md overflow-hidden">

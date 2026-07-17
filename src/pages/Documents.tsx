@@ -1,10 +1,12 @@
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/integrations/supabase/client';
+import { openSignedDoc } from '@/lib/storage';
 import { useQuery } from '@tanstack/react-query';
 import { Search, FileText, Download, Eye, Radio } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import { useState } from 'react';
 
 export default function Documents() {
@@ -61,11 +63,13 @@ export default function Documents() {
                   )}
                   {doc.file_url && (
                     <>
-                      <Button variant="ghost" size="icon" asChild title="Visualizar">
-                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer"><Eye className="w-4 h-4" /></a>
+                      <Button variant="ghost" size="icon" title="Visualizar"
+                        onClick={() => openSignedDoc(doc.file_url).catch((e) => toast.error(e.message))}>
+                        <Eye className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" asChild title="Baixar">
-                        <a href={doc.file_url} download target="_blank" rel="noopener noreferrer"><Download className="w-4 h-4" /></a>
+                      <Button variant="ghost" size="icon" title="Baixar"
+                        onClick={() => openSignedDoc(doc.file_url, true).catch((e) => toast.error(e.message))}>
+                        <Download className="w-4 h-4" />
                       </Button>
                     </>
                   )}

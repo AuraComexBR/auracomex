@@ -131,15 +131,12 @@ export function QuotePdfPreviewDialog({ quoteId, open, onClose }: Props) {
             .from('shipment-documents')
             .upload(storagePath, pdfBlob, { contentType: 'application/pdf' });
           if (uploadError) return;
-          const { data: { publicUrl } } = supabase.storage
-            .from('shipment-documents')
-            .getPublicUrl(storagePath);
           await supabase.from('documents').insert({
             quote_id: quoteId,
             shipment_id: data.quote.shipment_id || null,
             company_id: data.quote.company_id,
             name: filename,
-            file_url: publicUrl,
+            file_url: storagePath,
             file_size: pdfBlob.size,
             document_type: 'other' as any,
           } as any);

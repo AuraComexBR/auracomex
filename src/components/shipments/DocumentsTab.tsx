@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { openSignedDoc } from '@/lib/storage';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Upload, FileText, Download, Eye, Trash2, Radio } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,16 +61,12 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
         continue;
       }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('shipment-documents')
-        .getPublicUrl(path);
-
       await supabase.from('documents').insert({
         shipment_id: isQuoteMode ? null : shipmentId,
         quote_id: isQuoteMode ? shipmentId : null,
         company_id: companyId,
         name: file.name,
-        file_url: publicUrl,
+        file_url: path,
         file_size: file.size,
         uploaded_by: profile?.user_id,
         document_type: 'other' as any,
@@ -89,11 +86,10 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
         .from('shipment-documents')
         .upload(path, file);
       if (uploadError) { toast.error(uploadError.message); continue; }
-      const { data: { publicUrl } } = supabase.storage.from('shipment-documents').getPublicUrl(path);
       await supabase.from('documents').insert({
         shipment_id: isQuoteMode ? null : shipmentId, quote_id: isQuoteMode ? shipmentId : null,
         company_id: companyId, name: file.name,
-        file_url: publicUrl, file_size: file.size, uploaded_by: profile?.user_id, document_type: 'other' as any,
+        file_url: path, file_size: file.size, uploaded_by: profile?.user_id, document_type: 'other' as any,
       } as any);
     }
     refetch();
@@ -147,15 +143,13 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
                 <div className="flex items-center gap-1">
                   {doc.file_url && (
                     <>
-                      <Button variant="ghost" size="icon" asChild title="Visualizar">
-                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
-                          <Eye className="w-4 h-4" />
-                        </a>
+                      <Button variant="ghost" size="icon" title="Visualizar"
+                        onClick={() => openSignedDoc(doc.file_url).catch((e) => toast.error(e.message))}>
+                        <Eye className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" asChild title="Baixar">
-                        <a href={doc.file_url} download target="_blank" rel="noopener noreferrer">
-                          <Download className="w-4 h-4" />
-                        </a>
+                      <Button variant="ghost" size="icon" title="Baixar"
+                        onClick={() => openSignedDoc(doc.file_url, true).catch((e) => toast.error(e.message))}>
+                        <Download className="w-4 h-4" />
                       </Button>
                     </>
                   )}

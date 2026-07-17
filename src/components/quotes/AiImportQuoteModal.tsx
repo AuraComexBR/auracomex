@@ -245,14 +245,13 @@ export function AiImportQuoteModal({ open, onClose, onCreated }: Props) {
             .from('shipment-documents')
             .upload(path, f.file, { contentType: f.file.type, upsert: false });
           if (upErr) { console.error(upErr); continue; }
-          const { data: pub } = supabase.storage.from('shipment-documents').getPublicUrl(path);
           await (supabase.from('documents') as any).insert({
             company_id: profile.company_id,
             quote_id: quote.id,
             uploaded_by: profile.user_id,
             name: f.file.name,
             document_type: 'invoice',
-            file_url: pub.publicUrl,
+            file_url: path,
             file_size: f.file.size,
             visible_tracking: false,
           });
