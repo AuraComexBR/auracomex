@@ -1,0 +1,1 @@
+ALTER TABLE public.companies ADD COLUMN access_expires_at timestamptz DEFAULT (now() + interval '30 days');

@@ -1,0 +1,1 @@
+ALTER TABLE public.quote_items ADD COLUMN container_number text;

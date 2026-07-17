@@ -1,0 +1,2 @@
+ALTER TABLE public.clients ADD COLUMN partner_category TEXT;
+COMMENT ON COLUMN public.clients.partner_category IS 'Specific category for suppliers/partners (e.g., Transportadora, Seguradora, Co-loader, Armador)';

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_payable_debit_note_id_unique ON public.accounts_payable(debit_note_id) WHERE debit_note_id IS NOT NULL;

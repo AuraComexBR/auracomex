@@ -1,0 +1,1 @@
+UPDATE public.shipments SET status = 'booked' WHERE status = 'quoted';

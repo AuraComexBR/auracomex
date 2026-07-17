@@ -1,0 +1,1 @@
+ALTER TABLE public.charge_catalog ADD COLUMN legs text[] NOT NULL DEFAULT ARRAY['freight']::text[];

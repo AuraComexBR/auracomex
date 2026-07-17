@@ -1,0 +1,1 @@
+ALTER TABLE public.quotes ADD COLUMN direction text DEFAULT 'IMP';

@@ -1,0 +1,1 @@
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS quick_notes text DEFAULT '';

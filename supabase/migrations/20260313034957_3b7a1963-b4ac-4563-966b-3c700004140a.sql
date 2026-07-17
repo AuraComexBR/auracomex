@@ -1,0 +1,1 @@
+ALTER TABLE public.quote_charges ADD COLUMN partner_id uuid REFERENCES public.clients(id) ON DELETE SET NULL;

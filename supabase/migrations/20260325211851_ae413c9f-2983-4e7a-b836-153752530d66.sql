@@ -1,0 +1,1 @@
+ALTER TABLE public.shipments ADD COLUMN IF NOT EXISTS last_accessed_at timestamptz DEFAULT NULL;

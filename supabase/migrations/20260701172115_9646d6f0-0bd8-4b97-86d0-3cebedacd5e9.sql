@@ -1,0 +1,1 @@
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS payment_terms text; ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS proposal_notes text;

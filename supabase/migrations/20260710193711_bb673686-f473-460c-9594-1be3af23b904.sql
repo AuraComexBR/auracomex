@@ -1,0 +1,8 @@
+
+ALTER TABLE public.cost_estimates
+  ADD COLUMN IF NOT EXISTS taxa_siscomex_brl NUMERIC NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS afrmm_brl NUMERIC NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS afrmm_auto BOOLEAN NOT NULL DEFAULT true;
+
+ALTER TABLE public.cost_estimate_items
+  ADD COLUMN IF NOT EXISTS cofins_adicional BOOLEAN NOT NULL DEFAULT false;

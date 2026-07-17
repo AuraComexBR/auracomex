@@ -1,0 +1,1 @@
+ALTER TABLE public.quotes ADD COLUMN transshipment text DEFAULT NULL;

@@ -1,0 +1,2 @@
+ALTER TABLE public.cost_estimate_expenses ADD COLUMN IF NOT EXISTS source_charge_id uuid NULL;
+CREATE INDEX IF NOT EXISTS idx_cost_estimate_expenses_source_charge ON public.cost_estimate_expenses(estimate_id, source_charge_id);

@@ -1,0 +1,135 @@
+import { describe, it, expect } from 'vitest';
+import { calcEstimativa, EstimateInput } from '@/lib/costEstimate';
+
+const baseInput = (overrides: Partial<EstimateInput> = {}): EstimateInput => ({
+  acrescimos_usd: 0,
+  deducoes_usd: 0,
+  frete_intl_usd: 0,
+  seguro_intl_usd: 0,
+  usd_brl: 5,
+  rateio_metodo: 'valor',
+  items: [],
+  expenses: [],
+  ...overrides,
+});
+
+describe('calcEstimativa', () => {
+  it('FOB marítimo, um item, ICMS 18%', () => {
+    // VMCV 1000 USD, frete 100, seguro 10
+    // VMLE = 1000, VMLD = 1110
+    // II 14% × 1110 = 155.40
+    // IPI 5% × (1110+155.40) = 63.27
+    // PIS 2.1% × 1110 = 23.31
+    // COFINS 9.65% × 1110 = 107.115
+    // Base ICMS = 1110+155.40+63.27+23.31+107.115+0 (sem aduaneiras) = 1459.095
+    // ICMS = 1459.095/(1-0.18)*0.18 = 320.361...
+    const out = calcEstimativa(baseInput({
+      frete_intl_usd: 100, seguro_intl_usd: 10,
+      items: [{
+        nome: 'X', peso: 100, quantidade: 1, vmcv_unit_usd: 1000,
+        aliq_ii: 14, aliq_ipi: 5, aliq_pis: 2.1, aliq_cofins: 9.65, aliq_icms: 18,
+        destinacao: 'consumo_final',
+      }],
+    }));
+    expect(out.vmld_usd).toBeCloseTo(1110, 2);
+    expect(out.ii_usd).toBeCloseTo(155.40, 2);
+    expect(out.ipi_usd).toBeCloseTo(63.27, 2);
+    expect(out.pis_usd).toBeCloseTo(23.31, 2);
+    expect(out.cofins_usd).toBeCloseTo(107.12, 1);
+    expect(out.icms_usd).toBeCloseTo(320.29, 1);
+  });
+
+  it('Revenda: IPI fora da base do ICMS reduz o imposto', () => {
+    const cf = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 10, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18, destinacao: 'consumo_final' }],
+    }));
+    const rev = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 10, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18, destinacao: 'revenda_industrializacao' }],
+    }));
+    expect(rev.icms_usd).toBeLessThan(cf.icms_usd);
+  });
+
+  it('Taxa Siscomex e AFRMM entram na base de ICMS e no total', () => {
+    const semExtras = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
+    }));
+    const comExtras = calcEstimativa(baseInput({
+      taxa_siscomex_brl: 250, // 50 USD
+      afrmm_brl: 500,          // 100 USD
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
+    }));
+    expect(comExtras.icms_usd).toBeGreaterThan(semExtras.icms_usd);
+    expect(comExtras.despesas_nac_brl).toBe(750);
+    expect(comExtras.despesas_aduaneiras_brl).toBe(750);
+  });
+
+  it('COFINS +1% adiciona 1 ponto percentual', () => {
+    const semAdicional = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 9.65, aliq_icms: 0 }],
+    }));
+    const comAdicional = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 9.65, aliq_icms: 0, cofins_adicional: true }],
+    }));
+    expect(comAdicional.cofins_usd - semAdicional.cofins_usd).toBeCloseTo(10, 2); // 1% de 1000
+  });
+
+  it('Rateio por peso divide corretamente frete entre itens', () => {
+    const out = calcEstimativa(baseInput({
+      frete_intl_usd: 300,
+      rateio_metodo: 'peso',
+      items: [
+        { nome: 'A', peso: 100, quantidade: 1, vmcv_unit_usd: 500, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 0 },
+        { nome: 'B', peso: 200, quantidade: 1, vmcv_unit_usd: 500, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 0 },
+      ],
+    }));
+    expect(out.itemBreakdowns[0].frete_usd).toBeCloseTo(100, 2);
+    expect(out.itemBreakdowns[1].frete_usd).toBeCloseTo(200, 2);
+  });
+
+  it('Fallback igualitário quando denominador é zero', () => {
+    const out = calcEstimativa(baseInput({
+      frete_intl_usd: 100,
+      rateio_metodo: 'valor',
+      items: [
+        { nome: 'A', peso: 10, quantidade: 1, vmcv_unit_usd: 0, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 0 },
+        { nome: 'B', peso: 10, quantidade: 1, vmcv_unit_usd: 0, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 0 },
+      ],
+    }));
+    expect(out.rateio_igualitario_fallback).toBe(true);
+    expect(out.itemBreakdowns[0].frete_usd).toBeCloseTo(50, 2);
+    expect(out.itemBreakdowns[1].frete_usd).toBeCloseTo(50, 2);
+  });
+
+  it('Classificação automática: ARMAZENAGEM ZONA PRIMÁRIA entra na base do ICMS', () => {
+    const semAdu = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
+    }));
+    const comAdu = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
+      expenses: [{ descricao: 'ARMAZENAGEM ZONA PRIMÁRIA', valor_brl: 500, aduaneira: false, category: 'destination' }],
+    }));
+    expect(comAdu.icms_usd).toBeGreaterThan(semAdu.icms_usd);
+    expect(comAdu.despesas_aduaneiras_brl).toBe(500);
+  });
+
+  it('Classificação automática: ARMAZENAGEM ZONA SECUNDÁRIA e FRETE RODOVIÁRIO ficam FORA da base', () => {
+    const out = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
+      expenses: [
+        { descricao: 'ARMAZENAGEM ZONA SECUNDÁRIA', valor_brl: 500, aduaneira: false, category: 'destination' },
+        { descricao: 'FRETE RODOVIÁRIO NVT X IÇARA', valor_brl: 300, aduaneira: false, category: 'destination' },
+      ],
+    }));
+    expect(out.despesas_aduaneiras_brl).toBe(0);
+    // continuam no total de despesas nacionais, apenas não entram na base do ICMS
+    expect(out.despesas_nac_brl).toBe(800);
+  });
+
+  it('Flag manual aduaneira=true prevalece mesmo sem palavra-chave', () => {
+    const out = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
+      expenses: [{ descricao: 'TAXA CUSTOMIZADA', valor_brl: 200, aduaneira: true, category: 'destination' }],
+    }));
+    expect(out.despesas_aduaneiras_brl).toBe(200);
+  });
+});

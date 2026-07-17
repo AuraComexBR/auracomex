@@ -1,0 +1,149 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 11% 95%;
+    --foreground: 240 13% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 13% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 13% 12%;
+
+    --primary: 213 100% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 11% 92%;
+    --secondary-foreground: 240 13% 12%;
+
+    --muted: 240 11% 92%;
+    --muted-foreground: 240 5% 58%;
+
+    --accent: 160 73% 46%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 11% 88%;
+    --input: 240 11% 88%;
+    --ring: 213 100% 50%;
+
+    --radius: 0.75rem;
+
+    /* Status colors */
+    --status-transit: 213 100% 50%;
+    --status-attention: 38 92% 50%;
+    --status-urgent: 350 89% 60%;
+    --status-new: 263 70% 50%;
+    --status-completed: 160 73% 46%;
+    --status-draft: 240 5% 58%;
+
+    /* Glass effect */
+    --glass-bg: 0 0% 100% / 0.7;
+    --glass-border: 0 0% 100% / 0.2;
+
+    --sidebar-background: 240 13% 9%;
+    --sidebar-foreground: 240 11% 89%;
+    --sidebar-primary: 213 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 13% 14%;
+    --sidebar-accent-foreground: 240 11% 89%;
+    --sidebar-border: 240 13% 16%;
+    --sidebar-ring: 213 100% 50%;
+  }
+
+  .dark {
+    --background: 240 17% 5%;
+    --foreground: 240 11% 89%;
+
+    --card: 240 13% 9%;
+    --card-foreground: 240 11% 89%;
+
+    --popover: 240 13% 9%;
+    --popover-foreground: 240 11% 89%;
+
+    --primary: 213 100% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 13% 14%;
+    --secondary-foreground: 240 11% 89%;
+
+    --muted: 240 13% 14%;
+    --muted-foreground: 240 5% 58%;
+
+    --accent: 160 73% 46%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 240 11% 89%;
+
+    --border: 240 13% 16%;
+    --input: 240 13% 16%;
+    --ring: 213 100% 50%;
+
+    --glass-bg: 240 13% 9% / 0.6;
+    --glass-border: 0 0% 100% / 0.08;
+
+    --sidebar-background: 240 17% 4%;
+    --sidebar-foreground: 240 11% 75%;
+    --sidebar-primary: 213 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 13% 9%;
+    --sidebar-accent-foreground: 240 11% 89%;
+    --sidebar-border: 240 13% 12%;
+    --sidebar-ring: 213 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-card/70 backdrop-blur-xl border border-border/50 shadow-lg;
+  }
+  .glass-dark {
+    @apply bg-card/40 backdrop-blur-xl border border-white/5 shadow-2xl;
+  }
+  .status-transit {
+    color: hsl(var(--status-transit));
+    background-color: hsl(var(--status-transit) / 0.1);
+    border-color: hsl(var(--status-transit) / 0.3);
+  }
+  .status-attention {
+    color: hsl(var(--status-attention));
+    background-color: hsl(var(--status-attention) / 0.1);
+    border-color: hsl(var(--status-attention) / 0.3);
+  }
+  .status-urgent {
+    color: hsl(var(--status-urgent));
+    background-color: hsl(var(--status-urgent) / 0.1);
+    border-color: hsl(var(--status-urgent) / 0.3);
+  }
+  .status-new {
+    color: hsl(var(--status-new));
+    background-color: hsl(var(--status-new) / 0.1);
+    border-color: hsl(var(--status-new) / 0.3);
+  }
+  .status-completed {
+    color: hsl(var(--status-completed));
+    background-color: hsl(var(--status-completed) / 0.1);
+    border-color: hsl(var(--status-completed) / 0.3);
+  }
+  .neon-glow-cyan {
+    box-shadow: 0 0 20px hsl(var(--status-transit) / 0.3);
+  }
+}
