@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Client not found" }, 404);
       }
 
-      const expectedPin = (client.tax_id || "").replace(/\D/g, "").substring(0, 4);
+      const expectedPin = (client.tax_id || "").replace(/\D/g, "").slice(-4);
       if (pin !== expectedPin) {
         return jsonResponse({ error: "Invalid PIN" }, 401);
       }
