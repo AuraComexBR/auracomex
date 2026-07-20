@@ -135,12 +135,35 @@ Deno.serve(async (req) => {
     if (action === "documents") {
       let docs: any[] = [];
       if (shipment_ids && shipment_ids.length > 0) {
+        // Também inclui documentos da cotação que originou cada embarque
+        // (docs anexados na fase de cotação ficam com quote_id e shipment_id nulo).
+        const { data: linkedQuotes } = await adminClient
+          .from("quotes")
+          .select("id, shipment_id")
+          .in("shipment_id", shipment_ids);
+
+        const quoteToShipment = new Map<string, string>();
+        for (const q of linkedQuotes || []) {
+          if (q.id && q.shipment_id) quoteToShipment.set(q.id, q.shipment_id);
+        }
+        const linkedQuoteIds = [...quoteToShipment.keys()];
+
+        const orParts = [`shipment_id.in.(${shipment_ids.join(",")})`];
+        if (linkedQuoteIds.length > 0) {
+          orParts.push(`quote_id.in.(${linkedQuoteIds.join(",")})`);
+        }
+
         const { data } = await adminClient
           .from("documents")
           .select("id, name, file_url, shipment_id, quote_id")
-          .in("shipment_id", shipment_ids)
+          .or(orParts.join(","))
           .eq("visible_tracking", true);
-        docs = data || [];
+
+        // Normaliza: doc de cotação recebe o shipment_id do embarque (pro front agrupar)
+        docs = (data || []).map((d: any) => ({
+          ...d,
+          shipment_id: d.shipment_id || (d.quote_id ? quoteToShipment.get(d.quote_id) : null),
+        }));
       } else if (quote_ids && quote_ids.length > 0) {
         const { data } = await adminClient
           .from("documents")

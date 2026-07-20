@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { groupByCurrency, formatCurrencyMap } from '@/lib/utils';
@@ -1761,15 +1760,17 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                             .slice(0, 8);
                           const exactMatch = catalog.some((c: any) => c.name.toLowerCase() === chargeDescSearch.toLowerCase());
                            if (!(filtered.length > 0 || (chargeDescSearch.length >= 2 && !exactMatch))) return null;
-                           const rect = chargeDescInputRef.current?.getBoundingClientRect();
-                           if (!rect) return null;
-                           return createPortal(
+                           // Renderizado como filho direto do wrapper relativo (não em portal para o body),
+                           // pois o DismissableLayer do Radix Dialog fecha/perde o clique em elementos
+                           // portalizados fora da árvore do DialogContent, impedindo a seleção do item.
+                           return (
                              <div
                                style={{
-                                 position: 'fixed',
-                                 top: rect.bottom + 4,
-                                 left: rect.left,
-                                 width: rect.width,
+                                 position: 'absolute',
+                                 top: '100%',
+                                 left: 0,
+                                 right: 0,
+                                 marginTop: 4,
                                  zIndex: 9999,
                                }}
                                className="bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto"
@@ -1820,8 +1821,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                                   {t('quotes.add_to_catalog')}: "{chargeDescSearch.trim()}"
                                 </button>
                               )}
-                             </div>,
-                             document.body
+                             </div>
                            );
                         })()}
                       </div>

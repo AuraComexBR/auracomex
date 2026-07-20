@@ -67,7 +67,9 @@ export default function Registrations() {
 
   function getClientTrackingLink(taxId: string | null) {
     if (!taxId) return '';
-    return `${window.location.origin}/tracking/${taxId}`;
+    // Domínio público oficial (evita gerar link com .vercel.app ao copiar de ambientes diferentes)
+    const base = import.meta.env.VITE_PUBLIC_APP_URL || 'https://auracomex.app';
+    return `${base}/tracking/${taxId}`;
   }
 
   function copyTrackingLink(taxId: string | null) {
