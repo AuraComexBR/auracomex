@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, Pencil, Loader2 } from 'lucide-react';
+import { Search, Pencil, Loader2, LogIn, KeyRound, Trash2, ChevronDown, ChevronUp, Users, Mail, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { CompanyUsersPanel } from './CompanyUsersPanel';
 
 const PLAN_LABEL: Record<string, string> = {
   starter: 'Básico',
@@ -29,7 +30,49 @@ function fmtBRL(cents: number): string {
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-export function CompanyPlansTable() {
+// Prioriza a contagem real de assentos comprada no Stripe (seats_active, vinda do webhook)
+// sobre o limite manual de cortesia (seats_limit). Se nenhum dos dois estiver definido
+// (ex: empresa ainda em trial, sem checkout feito), não mostra limite nenhum.
+function planSeats(sub: any): number | null {
+  if (!sub) return null;
+  if (sub.seats_active != null) return sub.seats_active;
+  if (sub.seats_limit != null) return sub.seats_limit;
+  return null;
+}
+
+// Padrão de embarques/mês por plano (usado quando não há override manual em shipments_limit).
+const PLAN_SHIPMENTS_DEFAULT: Record<string, number | null> = {
+  starter: 30,
+  professional: 100,
+  business: null, // sem limite
+};
+
+// Prioriza um override manual de cortesia (shipments_limit) sobre o padrão do plano.
+// Sem assinatura registrada, não mostra limite nenhum.
+function planShipmentsLimit(sub: any): number | null {
+  if (!sub) return null;
+  if (sub.shipments_limit != null) return sub.shipments_limit;
+  return PLAN_SHIPMENTS_DEFAULT[sub.plan] ?? null;
+}
+
+function formatCnpj(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  return digits
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
+}
+
+interface CompanyPlansTableProps {
+  resettingPassword: string | null;
+  onAccess: (companyId: string, companyName: string) => void;
+  onEdit: (company: any) => void;
+  onDelete: (companyId: string, companyName: string) => void;
+  onResetPassword: (companyId: string, adminEmail: string) => void;
+}
+
+export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelete, onResetPassword }: CompanyPlansTableProps) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState<string>('all');
@@ -37,14 +80,16 @@ export function CompanyPlansTable() {
   const [editTarget, setEditTarget] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({ plan: 'starter', status: 'trial', seatsLimit: '', shipmentsLimit: '' });
   const [saving, setSaving] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ['superadmin-company-plans'],
     queryFn: async () => {
-      const [companiesRes, subsRes, profilesRes, shipmentsRes] = await Promise.all([
-        supabase.from('companies').select('id, name'),
+      const [companiesRes, subsRes, profilesRes, rolesRes, shipmentsRes] = await Promise.all([
+        supabase.from('companies').select('id, name, cnpj, email').order('created_at', { ascending: false }),
         supabase.from('company_subscriptions' as any).select('*'),
-        supabase.from('profiles').select('company_id'),
+        supabase.from('profiles').select('company_id, email, user_id'),
+        supabase.from('user_roles').select('user_id, role'),
         (() => {
           const monthStart = new Date();
           monthStart.setDate(1);
@@ -57,8 +102,18 @@ export function CompanyPlansTable() {
       const subsByCompany: Record<string, any> = {};
       (subsRes.data || []).forEach((s: any) => { subsByCompany[s.company_id] = s; });
 
+      const roleMap: Record<string, string> = {};
+      (rolesRes.data || []).forEach((r: any) => { roleMap[r.user_id] = r.role; });
+
       const userCount: Record<string, number> = {};
-      (profilesRes.data || []).forEach((p: any) => { userCount[p.company_id] = (userCount[p.company_id] || 0) + 1; });
+      const adminMap: Record<string, string> = {};
+      (profilesRes.data || []).forEach((p: any) => {
+        if (roleMap[p.user_id] === 'superadmin') return;
+        userCount[p.company_id] = (userCount[p.company_id] || 0) + 1;
+        if (roleMap[p.user_id] === 'admin' && !adminMap[p.company_id]) {
+          adminMap[p.company_id] = p.email;
+        }
+      });
 
       const shipmentCount: Record<string, number> = {};
       (shipmentsRes.data || []).forEach((s: any) => { shipmentCount[s.company_id] = (shipmentCount[s.company_id] || 0) + 1; });
@@ -66,6 +121,9 @@ export function CompanyPlansTable() {
       return (companiesRes.data || []).map((c: any) => ({
         id: c.id,
         name: c.name,
+        cnpj: c.cnpj,
+        email: c.email,
+        adminEmail: adminMap[c.id] || null,
         sub: subsByCompany[c.id] || null,
         users: userCount[c.id] || 0,
         shipmentsThisMonth: shipmentCount[c.id] || 0,
@@ -122,7 +180,7 @@ export function CompanyPlansTable() {
   return (
     <Card className="glass">
       <CardHeader>
-        <CardTitle>Planos & Assinaturas</CardTitle>
+        <CardTitle>Empresas & Planos</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-2">
@@ -150,17 +208,17 @@ export function CompanyPlansTable() {
           </Select>
         </div>
 
-        <div className="max-h-[480px] overflow-auto">
+        <div className="max-h-[600px] overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Empresa</TableHead>
                 <TableHead>Plano</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Usuários</TableHead>
+                <TableHead className="whitespace-nowrap">Usuários</TableHead>
                 <TableHead>Embarques/mês</TableHead>
                 <TableHead>MRR</TableHead>
-                <TableHead className="w-12"></TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -170,30 +228,77 @@ export function CompanyPlansTable() {
               {!isLoading && filtered.map((row) => {
                 const sub = row.sub;
                 const statusMeta = sub ? STATUS_LABEL[sub.status] : null;
+                const isExpanded = expandedId === row.id;
                 return (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell>{sub ? (PLAN_LABEL[sub.plan] || sub.plan) : '—'}</TableCell>
-                    <TableCell>
-                      {statusMeta ? (
-                        <Badge variant="outline" className={statusMeta.cls}>{statusMeta.label}</Badge>
-                      ) : '—'}
-                    </TableCell>
-                    <TableCell>
-                      {row.users}{sub?.seats_limit != null ? ` / ${sub.seats_limit}` : ''}
-                    </TableCell>
-                    <TableCell>
-                      {row.shipmentsThisMonth}{sub?.shipments_limit != null ? ` / ${sub.shipments_limit}` : ' / ∞'}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {sub?.mrr_cents ? fmtBRL(sub.mrr_cents) : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <Fragment key={row.id}>
+                    <TableRow>
+                      <TableCell className="font-medium">
+                        <div>{row.name}</div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground font-normal">
+                          {row.cnpj && <span className="font-mono">{formatCnpj(row.cnpj)}</span>}
+                          {row.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{row.email}</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell>{sub ? (PLAN_LABEL[sub.plan] || sub.plan) : '—'}</TableCell>
+                      <TableCell>
+                        {statusMeta ? (
+                          <Badge variant="outline" className={statusMeta.cls}>{statusMeta.label}</Badge>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <button
+                          className="inline-flex items-center gap-1 text-sm hover:underline whitespace-nowrap"
+                          onClick={() => setExpandedId(isExpanded ? null : row.id)}
+                        >
+                          <Users className="w-3.5 h-3.5 shrink-0" />
+                          <span>{row.users}{planSeats(sub) != null ? ` / ${planSeats(sub)}` : ' / ∞'}</span>
+                          {isExpanded ? <ChevronUp className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        {row.shipmentsThisMonth}{planShipmentsLimit(sub) != null ? ` / ${planShipmentsLimit(sub)}` : ' / ∞'}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {sub?.mrr_cents ? fmtBRL(sub.mrr_cents) : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(row)} title="Editar plano">
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => onEdit(row)} title="Editar dados da empresa">
+                            <Building2 className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => onAccess(row.id, row.name)} title="Acessar sistema da empresa">
+                            <LogIn className="w-4 h-4" />
+                          </Button>
+                          {row.adminEmail && (
+                            <Button
+                              variant="ghost" size="icon"
+                              onClick={() => onResetPassword(row.id, row.adminEmail)}
+                              disabled={resettingPassword === row.id}
+                              title={`Enviar recuperação para ${row.adminEmail}`}
+                            >
+                              {resettingPassword === row.id
+                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : <KeyRound className="w-4 h-4" />}
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" onClick={() => onDelete(row.id, row.name)} className="text-destructive hover:text-destructive" title="Excluir empresa">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && (
+                      <TableRow key={`${row.id}-expanded`}>
+                        <TableCell colSpan={7} className="bg-secondary/20 border-t-0">
+                          <p className="text-sm font-medium mb-3">Usuários e Cargos</p>
+                          <CompanyUsersPanel companyId={row.id} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
                 );
               })}
               {!isLoading && filtered.length === 0 && (
@@ -232,29 +337,19 @@ export function CompanyPlansTable() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Limite de usuários</Label>
-                <Input
-                  value={editForm.seatsLimit}
-                  onChange={(e) => setEditForm({ ...editForm, seatsLimit: e.target.value.replace(/\D/g, '') })}
-                  placeholder="Ilimitado"
-                  inputMode="numeric"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Limite de embarques/mês</Label>
-                <Input
-                  value={editForm.shipmentsLimit}
-                  onChange={(e) => setEditForm({ ...editForm, shipmentsLimit: e.target.value.replace(/\D/g, '') })}
-                  placeholder="Ilimitado"
-                  inputMode="numeric"
-                />
-              </div>
-            </div>
+            {editTarget && (
+              <p className="text-xs text-muted-foreground">
+                Assentos: {editTarget.sub?.seats_active != null
+                  ? `${editTarget.sub.seats_active} comprados no Stripe (automático)`
+                  : editTarget.sub?.seats_limit != null
+                    ? `${editTarget.sub.seats_limit} — cortesia manual, sem assinatura Stripe ainda`
+                    : 'sem limite (empresa em trial, sem checkout)'}
+                . O número de usuários é controlado pela compra no Stripe, não precisa preencher aqui.
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
-              Deixe os campos de limite vazios pra "ilimitado". Isso é uma cortesia manual — não altera nada no Stripe;
-              se a empresa tiver assinatura ativa lá, o próximo evento de webhook pode sobrescrever esses valores.
+              Embarques/mês: segue automaticamente o padrão do plano selecionado acima (Básico: 30, Professional: 100,
+              Business: ilimitado). Não precisa preencher nada aqui.
             </p>
           </div>
           <DialogFooter>

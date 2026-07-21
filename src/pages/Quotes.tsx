@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCompanyAccess } from '@/hooks/useCompanyAccess';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSalespersonClients } from '@/hooks/useSalespersonClients';
@@ -99,7 +98,6 @@ export default function Quotes() {
   const queryClient = useQueryClient();
   const { usdBrl, eurBrl } = useExchangeRate();
   const { isSalesperson, clientIds } = useSalespersonClients();
-  const { isExpired } = useCompanyAccess();
   const { profile } = useAuth();
   const aiImportGate = useAddonGate('ai_import');
   const [search, setSearch] = useState('');
@@ -242,14 +240,13 @@ export default function Quotes() {
                 }
                 setAiImportOpen(true);
               }}
-              disabled={isExpired}
               title={aiImportGate.lockedTitle}
               className={!aiImportGate.hasAccess ? 'opacity-60' : ''}
             >
               <Sparkles className="w-4 h-4 mr-2" />Importar com IA
             </Button>
           )}
-          <Button onClick={() => setCreateOpen(true)} disabled={isExpired}><Plus className="w-4 h-4 mr-2" />{t('quotes.new')}</Button>
+          <Button onClick={() => setCreateOpen(true)}><Plus className="w-4 h-4 mr-2" />{t('quotes.new')}</Button>
         </div>
       </div>
 

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCompanyAccess } from '@/hooks/useCompanyAccess';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Loader2, Pencil, Copy, Trash2 } from 'lucide-react';
@@ -41,7 +40,6 @@ export default function Registrations() {
   const { t } = useLanguage();
   const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const { isExpired } = useCompanyAccess();
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<string>('client');
   const [showAdd, setShowAdd] = useState(false);
@@ -371,7 +369,7 @@ export default function Registrations() {
     <div className="space-y-6 animate-slide-in">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{t('registrations.title')}</h1>
-        <Button onClick={() => { resetForm(); setEditingId(null); setShowAdd(true); }} disabled={isExpired}>
+        <Button onClick={() => { resetForm(); setEditingId(null); setShowAdd(true); }}>
           <Plus className="w-4 h-4 mr-2" />
           {t('registrations.new')}
         </Button>
@@ -474,7 +472,7 @@ export default function Registrations() {
                         <TableCell>{c.commission_rate != null ? `${c.commission_rate}%` : '-'}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => openEdit(c)} title="Editar" disabled={isExpired}>
+                            <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => openEdit(c)} title="Editar">
                               <Pencil className="h-4 w-4" />
                               Editar
                             </Button>
@@ -484,7 +482,6 @@ export default function Registrations() {
                               className="h-8 gap-1.5 text-destructive hover:text-destructive"
                               onClick={() => setDeleteId(c.id)}
                               title="Excluir"
-                              disabled={isExpired}
                             >
                               <Trash2 className="h-4 w-4" />
                               Excluir

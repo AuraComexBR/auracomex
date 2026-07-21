@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCompanyAccess } from '@/hooks/useCompanyAccess';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSalespersonClients } from '@/hooks/useSalespersonClients';
@@ -30,7 +29,6 @@ export default function Shipments() {
   const { t } = useLanguage();
   const { profile } = useAuth();
   const { isSalesperson, clientIds } = useSalespersonClients();
-  const { isExpired } = useCompanyAccess();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [duplicateShipment, setDuplicateShipment] = useState<any | null>(null);

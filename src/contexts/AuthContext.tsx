@@ -12,7 +12,6 @@ interface Profile {
   language: string;
   department: string | null;
   must_change_password: boolean;
-  companyExpiresAt: string | null;
   estimateEnabled: boolean;
 }
 
@@ -96,20 +95,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const roleData = roleResult.data;
     setRole(roleData?.role || null);
 
-    // Fetch company expiration only if profile exists
-    let companyExpiresAt: string | null = null;
+    // Fetch estimate-feature flag only if profile exists
     let estimateEnabled = false;
     if (data) {
       const { data: companyData } = await supabase
         .from('companies')
-        .select('access_expires_at, estimate_enabled')
+        .select('estimate_enabled')
         .eq('id', (data as any).company_id)
         .single();
-      companyExpiresAt = (companyData as any)?.access_expires_at || null;
       estimateEnabled = !!(companyData as any)?.estimate_enabled;
     }
 
-    setProfile(data ? { ...(data as any), companyExpiresAt, estimateEnabled } as Profile : null);
+    setProfile(data ? { ...(data as any), estimateEnabled } as Profile : null);
 
     // Store the original company_id for superadmin
     if (roleData?.role === 'superadmin' && data) {

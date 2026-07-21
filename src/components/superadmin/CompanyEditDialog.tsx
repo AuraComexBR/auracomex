@@ -20,7 +20,7 @@ function formatCnpj(value: string) {
 }
 
 interface EditForm {
-  id: string; name: string; cnpj: string; email: string; phone: string; address: string; accessExpiresAt: string; isForeign: boolean; estimateEnabled: boolean;
+  id: string; name: string; cnpj: string; email: string; phone: string; address: string; isForeign: boolean; estimateEnabled: boolean;
 }
 
 interface Props {
@@ -68,7 +68,6 @@ export function CompanyEditDialog({ open, onOpenChange, editForm, setEditForm, o
         email: editForm.email.trim() || null,
         phone: editForm.phone.trim() || null,
         address: editForm.address.trim() || null,
-        access_expires_at: editForm.accessExpiresAt || null,
         is_foreign: editForm.isForeign,
         estimate_enabled: editForm.estimateEnabled,
       } as any).eq('id', editForm.id);
@@ -117,11 +116,6 @@ export function CompanyEditDialog({ open, onOpenChange, editForm, setEditForm, o
           <div className="space-y-2">
             <Label>Endereço</Label>
             <Input value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>Validade do Acesso</Label>
-            <Input type="date" value={editForm.accessExpiresAt ? editForm.accessExpiresAt.slice(0, 10) : ''} onChange={(e) => setEditForm({ ...editForm, accessExpiresAt: e.target.value ? new Date(e.target.value).toISOString() : '' })} />
-            <p className="text-xs text-muted-foreground">Data até quando a empresa terá acesso ao sistema.</p>
           </div>
           <div className="flex items-center justify-between rounded-md border border-border/60 bg-secondary/30 px-3 py-2">
             <div>

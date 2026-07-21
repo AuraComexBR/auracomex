@@ -5,17 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Plus, Eye, EyeOff, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
-
-const PERIOD_OPTIONS = [
-  { value: '30', label: '30 dias' },
-  { value: '90', label: '90 dias' },
-  { value: '180', label: '180 dias' },
-  { value: '365', label: '1 ano' },
-];
 
 function cleanCnpj(value: string) { return value.replace(/\D/g, ''); }
 
@@ -32,12 +24,12 @@ interface CompanyForm {
   companyName: string; companyCnpj: string; companyEmail: string;
   companyPhone: string; companyAddress: string;
   adminName: string; adminEmail: string; adminPassword: string;
-  accessPeriod: string; isForeign: boolean;
+  isForeign: boolean;
 }
 
 const emptyForm: CompanyForm = {
   companyName: '', companyCnpj: '', companyEmail: '', companyPhone: '', companyAddress: '',
-  adminName: '', adminEmail: '', adminPassword: '', accessPeriod: '30', isForeign: false,
+  adminName: '', adminEmail: '', adminPassword: '', isForeign: false,
 };
 
 function isFormDirty(form: CompanyForm): boolean {
@@ -105,16 +97,12 @@ export function CompanyCreateDialog({ open, onOpenChange, onSuccess }: Props) {
     }
     setCreating(true);
     try {
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + parseInt(form.accessPeriod));
-
       const { data: company, error: companyError } = await supabase.from('companies').insert({
         name: form.companyName.trim(),
         cnpj: form.isForeign ? null : (cleanCnpj(form.companyCnpj) || null),
         email: form.companyEmail.trim() || null,
         phone: form.companyPhone.trim() || null,
         address: form.companyAddress.trim() || null,
-        access_expires_at: expiresAt.toISOString(),
         is_foreign: form.isForeign,
       } as any).select().single();
       if (companyError) throw companyError;
@@ -206,21 +194,10 @@ export function CompanyCreateDialog({ open, onOpenChange, onSuccess }: Props) {
                 <p className="text-xs text-muted-foreground">O usuário precisará alterar a senha no primeiro login.</p>
               </div>
             </div>
-            <div className="space-y-3 border-t pt-4">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Período de Acesso</h3>
-              <div className="space-y-2">
-                <Label>Validade do Acesso *</Label>
-                <Select value={form.accessPeriod} onValueChange={(v) => setForm({ ...form, accessPeriod: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PERIOD_OPTIONS.map(o => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">A empresa terá acesso ao sistema por este período a partir de hoje.</p>
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              A empresa começa automaticamente no plano Básico, em trial de 14 dias. Ajuste o plano depois na aba
+              Empresas se precisar.
+            </p>
             <Button type="submit" className="w-full" disabled={creating}>
               {creating ? 'Criando...' : 'Criar Empresa + Admin'}
             </Button>
