@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Plus, Users, Mail, Eye, EyeOff, Pencil, Trash2, Loader2, Search, KeyRound, LogIn, LogOut } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Building2, Plus, Users, Mail, Eye, EyeOff, Pencil, Trash2, Loader2, Search, KeyRound, LogIn, LogOut, LayoutDashboard, CreditCard, LifeBuoy, Megaphone, Palette } from 'lucide-react';
 import { PlatformLogo } from '@/components/shared/PlatformLogo';
 import { toast } from 'sonner';
 
@@ -37,6 +38,9 @@ function formatCnpj(value: string) {
     .replace(/(\d{4})(\d)/, '$1-$2');
 }
 
+const ADMIN_TABS = ['visao-geral', 'empresas', 'planos', 'suporte', 'releases', 'marca'] as const;
+type AdminTab = typeof ADMIN_TABS[number];
+
 export default function SuperAdmin() {
   const { signOut, switchCompany } = useAuth();
   const navigate = useNavigate();
@@ -48,6 +52,16 @@ export default function SuperAdmin() {
   const [resettingPassword, setResettingPassword] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ id: '', name: '', cnpj: '', email: '', phone: '', address: '', accessExpiresAt: '', isForeign: false, estimateEnabled: false });
   const [renewTarget, setRenewTarget] = useState<{ id: string; name: string } | null>(null);
+
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+    const hash = window.location.hash.replace('#', '');
+    return (ADMIN_TABS as readonly string[]).includes(hash) ? (hash as AdminTab) : 'visao-geral';
+  });
+
+  function handleTabChange(value: string) {
+    setActiveTab(value as AdminTab);
+    window.history.replaceState(null, '', `#${value}`);
+  }
 
   const { data: companies = [], isLoading } = useQuery({
     queryKey: ['superadmin-companies'],
@@ -160,56 +174,84 @@ export default function SuperAdmin() {
 
       {/* Content */}
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight mb-3">Visão Geral</h2>
-          <PlatformMetrics />
-        </div>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <TabsList className="flex h-auto justify-start gap-1 p-1 w-full overflow-x-auto overflow-y-hidden flex-nowrap">
+            <TabsTrigger value="visao-geral" className="gap-1.5"><LayoutDashboard className="w-4 h-4" />Visão Geral</TabsTrigger>
+            <TabsTrigger value="empresas" className="gap-1.5"><Building2 className="w-4 h-4" />Empresas</TabsTrigger>
+            <TabsTrigger value="planos" className="gap-1.5"><CreditCard className="w-4 h-4" />Planos</TabsTrigger>
+            <TabsTrigger value="suporte" className="gap-1.5"><LifeBuoy className="w-4 h-4" />Suporte</TabsTrigger>
+            <TabsTrigger value="releases" className="gap-1.5"><Megaphone className="w-4 h-4" />Releases</TabsTrigger>
+            <TabsTrigger value="marca" className="gap-1.5"><Palette className="w-4 h-4" />Marca</TabsTrigger>
+          </TabsList>
 
-        <CompanyPlansTable />
+          {/* Visão Geral */}
+          <TabsContent value="visao-geral" className="space-y-4 mt-4">
+            <PlatformMetrics />
+          </TabsContent>
 
-        <PlatformLogoUpload />
-        <ReleasesPanel />
-        <SupportTicketsPanel />
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Empresas</h2>
-            <p className="text-muted-foreground text-sm">
-              {companies.length} empresa{companies.length !== 1 ? 's' : ''} cadastrada{companies.length !== 1 ? 's' : ''}
-            </p>
-          </div>
+          {/* Empresas */}
+          <TabsContent value="empresas" className="space-y-6 mt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">Empresas</h2>
+                <p className="text-muted-foreground text-sm">
+                  {companies.length} empresa{companies.length !== 1 ? 's' : ''} cadastrada{companies.length !== 1 ? 's' : ''}
+                </p>
+              </div>
 
-          <CompanyCreateDialog
-            open={createOpen}
-            onOpenChange={setCreateOpen}
-            onSuccess={() => queryClient.invalidateQueries({ queryKey: ['superadmin-companies'] })}
-          />
-        </div>
-
-        {/* Companies list */}
-        <div className="grid gap-4">
-          {isLoading && <p className="text-muted-foreground text-sm">Carregando...</p>}
-          {companies.map((company) => (
-            <CompanyCard
-              key={company.id}
-              company={company}
-              resettingPassword={resettingPassword}
-              onAccess={() => handleAccessCompany(company.id, company.name)}
-              onEdit={() => openEdit(company)}
-              onDelete={() => setDeleteTarget({ id: company.id, name: company.name })}
-              onResetPassword={() => company.adminEmail && handleResetPassword(company.id, company.adminEmail)}
-              onRenew={() => setRenewTarget({ id: company.id, name: company.name })}
-            />
-          ))}
-          {!isLoading && companies.length === 0 && (
-            <div className="text-center py-16">
-              <Building2 className="w-12 h-12 mx-auto text-muted-foreground/40 mb-4" />
-              <p className="text-muted-foreground">Nenhuma empresa cadastrada.</p>
-              <Button className="mt-4" onClick={() => setCreateOpen(true)}>
-                <Plus className="w-4 h-4 mr-2" />Cadastrar Primeira Empresa
-              </Button>
+              <CompanyCreateDialog
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['superadmin-companies'] })}
+              />
             </div>
-          )}
-        </div>
+
+            <div className="grid gap-4">
+              {isLoading && <p className="text-muted-foreground text-sm">Carregando...</p>}
+              {companies.map((company) => (
+                <CompanyCard
+                  key={company.id}
+                  company={company}
+                  resettingPassword={resettingPassword}
+                  onAccess={() => handleAccessCompany(company.id, company.name)}
+                  onEdit={() => openEdit(company)}
+                  onDelete={() => setDeleteTarget({ id: company.id, name: company.name })}
+                  onResetPassword={() => company.adminEmail && handleResetPassword(company.id, company.adminEmail)}
+                  onRenew={() => setRenewTarget({ id: company.id, name: company.name })}
+                />
+              ))}
+              {!isLoading && companies.length === 0 && (
+                <div className="text-center py-16">
+                  <Building2 className="w-12 h-12 mx-auto text-muted-foreground/40 mb-4" />
+                  <p className="text-muted-foreground">Nenhuma empresa cadastrada.</p>
+                  <Button className="mt-4" onClick={() => setCreateOpen(true)}>
+                    <Plus className="w-4 h-4 mr-2" />Cadastrar Primeira Empresa
+                  </Button>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Planos */}
+          <TabsContent value="planos" className="space-y-6 mt-4">
+            <CompanyPlansTable />
+          </TabsContent>
+
+          {/* Suporte */}
+          <TabsContent value="suporte" className="space-y-6 mt-4">
+            <SupportTicketsPanel />
+          </TabsContent>
+
+          {/* Releases */}
+          <TabsContent value="releases" className="space-y-6 mt-4">
+            <ReleasesPanel />
+          </TabsContent>
+
+          {/* Marca */}
+          <TabsContent value="marca" className="space-y-6 mt-4">
+            <PlatformLogoUpload />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Edit Dialog */}
