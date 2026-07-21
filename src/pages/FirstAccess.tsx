@@ -95,6 +95,7 @@ export default function FirstAccess() {
                 <Label>{t('auth.new_password') || 'Nova Senha'}</Label>
                 <Input
                   type="password"
+                  autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
@@ -106,6 +107,7 @@ export default function FirstAccess() {
                 <Label>{t('auth.confirm_password') || 'Confirmar Senha'}</Label>
                 <Input
                   type="password"
+                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required

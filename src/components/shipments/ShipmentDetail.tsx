@@ -246,7 +246,12 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
         </TabsContent>
 
         <TabsContent value="logistics">
-          <LogisticsTab shipment={shipment} onUpdate={() => queryClient.invalidateQueries({ queryKey: ['shipment', id] })} />
+          <LogisticsTab shipment={shipment} onUpdate={() => {
+            queryClient.invalidateQueries({ queryKey: ['shipment', id] });
+            // Também invalida a lista de embarques, pra "Última Atividade" refletir
+            // a mudança na hora, mesmo sem passar pelo botão "Voltar".
+            queryClient.invalidateQueries({ queryKey: ['shipments'] });
+          }} />
         </TabsContent>
         <TabsContent value="financial">
           <FinancialTab

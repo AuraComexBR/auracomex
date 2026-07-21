@@ -16,7 +16,7 @@ import { PortSelect } from '@/components/shared/PortSelect';
 import { CountrySelect } from '@/components/shared/CountrySelect';
 import { MapPin, Ship, Plane, Truck, ArrowRight, Save, CalendarIcon, Settings, Plus, Trash2, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -296,6 +296,12 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         notify_id: form.notify_id || null,
         courier_provider: form.courier_provider || null,
         courier_tracking_number: form.courier_tracking_number || null,
+        // Setado explicitamente em vez de depender só do trigger do banco,
+        // pra "Última Atividade" na lista de Embarques sempre refletir a mudança.
+        updated_at: new Date().toISOString(),
+        // Toda alteração no processo empurra o Next Update pro dia seguinte,
+        // como lembrete automático de acompanhamento.
+        next_update: addDays(new Date(), 1).toISOString(),
       };
 
       const auditLogs: { field_name: string; old_value: string | null; new_value: string | null }[] = [];
@@ -432,7 +438,11 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
               const oldStatus = form.status;
               updateField('status', v);
               try {
-                const { error } = await (supabase.from('shipments') as any).update({ status: v }).eq('id', shipment.id);
+                const { error } = await (supabase.from('shipments') as any).update({
+                  status: v,
+                  updated_at: new Date().toISOString(),
+                  next_update: addDays(new Date(), 1).toISOString(),
+                }).eq('id', shipment.id);
                 if (error) throw error;
                 if (profile) {
                   await (supabase.from('shipment_audit_log') as any).insert({

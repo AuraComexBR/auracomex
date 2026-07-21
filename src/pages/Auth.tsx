@@ -50,6 +50,7 @@ function ForgotPasswordLink() {
       <p className="text-sm text-muted-foreground">{t('auth.forgot_password')}</p>
       <Input
         type="email"
+        autoComplete="username"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
@@ -108,6 +109,7 @@ export default function Auth() {
                 <Label>{t('auth.email')}</Label>
                 <Input
                   type="email"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -118,6 +120,7 @@ export default function Auth() {
                 <Label>{t('auth.password')}</Label>
                 <Input
                   type="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required

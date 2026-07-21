@@ -74,6 +74,7 @@ export default function ResetPassword() {
                   <Label>{t('auth.new_password')}</Label>
                   <Input
                     type="password"
+                    autoComplete="new-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -85,6 +86,7 @@ export default function ResetPassword() {
                   <Label>{t('auth.confirm_password')}</Label>
                   <Input
                     type="password"
+                    autoComplete="new-password"
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
                     required

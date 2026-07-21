@@ -117,6 +117,7 @@ export default function Signup() {
                 <Label>Email corporativo *</Label>
                 <Input
                   type="email"
+                  autoComplete="email"
                   value={adminEmail}
                   onChange={(e) => setAdminEmail(e.target.value)}
                   required
@@ -127,6 +128,7 @@ export default function Signup() {
                 <Label>Senha *</Label>
                 <Input
                   type="password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required

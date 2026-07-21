@@ -12,6 +12,10 @@ import { Label } from '@/components/ui/label';
 import { Search, Pencil, Loader2, LogIn, KeyRound, Trash2, ChevronDown, ChevronUp, Users, Mail, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { CompanyUsersPanel } from './CompanyUsersPanel';
+import { Switch } from '@/components/ui/switch';
+import { ADDON_META, type AddonKey } from '@/hooks/useSubscription';
+
+const ADDON_KEYS = Object.keys(ADDON_META) as AddonKey[];
 
 const PLAN_LABEL: Record<string, string> = {
   starter: 'Básico',
@@ -79,13 +83,14 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [editTarget, setEditTarget] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({ plan: 'starter', status: 'trial', seatsLimit: '', shipmentsLimit: '' });
+  const [editAddons, setEditAddons] = useState<Record<AddonKey, boolean>>({} as Record<AddonKey, boolean>);
   const [saving, setSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ['superadmin-company-plans'],
     queryFn: async () => {
-      const [companiesRes, subsRes, profilesRes, rolesRes, shipmentsRes] = await Promise.all([
+      const [companiesRes, subsRes, profilesRes, rolesRes, shipmentsRes, addonsRes] = await Promise.all([
         supabase.from('companies').select('id, name, cnpj, email').order('created_at', { ascending: false }),
         supabase.from('company_subscriptions' as any).select('*'),
         supabase.from('profiles').select('company_id, email, user_id'),
@@ -96,11 +101,19 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
           monthStart.setHours(0, 0, 0, 0);
           return supabase.from('shipments').select('company_id, created_at').gte('created_at', monthStart.toISOString());
         })(),
+        supabase.from('company_addons' as any).select('company_id, addon_key, active'),
       ]);
       if (companiesRes.error) throw companiesRes.error;
 
       const subsByCompany: Record<string, any> = {};
       (subsRes.data || []).forEach((s: any) => { subsByCompany[s.company_id] = s; });
+
+      const addonsByCompany: Record<string, Set<AddonKey>> = {};
+      (addonsRes.data || []).forEach((a: any) => {
+        if (!a.active) return;
+        if (!addonsByCompany[a.company_id]) addonsByCompany[a.company_id] = new Set();
+        addonsByCompany[a.company_id].add(a.addon_key);
+      });
 
       const roleMap: Record<string, string> = {};
       (rolesRes.data || []).forEach((r: any) => { roleMap[r.user_id] = r.role; });
@@ -127,6 +140,7 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
         sub: subsByCompany[c.id] || null,
         users: userCount[c.id] || 0,
         shipmentsThisMonth: shipmentCount[c.id] || 0,
+        addons: addonsByCompany[c.id] || new Set<AddonKey>(),
       }));
     },
   });
@@ -148,6 +162,9 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
       seatsLimit: row.sub?.seats_limit != null ? String(row.sub.seats_limit) : '',
       shipmentsLimit: row.sub?.shipments_limit != null ? String(row.sub.shipments_limit) : '',
     });
+    const addonState = {} as Record<AddonKey, boolean>;
+    ADDON_KEYS.forEach((k) => { addonState[k] = row.addons?.has(k) || false; });
+    setEditAddons(addonState);
   }
 
   async function handleSaveEdit() {
@@ -166,6 +183,17 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
         .from('company_subscriptions' as any)
         .upsert(payload as any, { onConflict: 'company_id' });
       if (error) throw error;
+
+      const addonPayload = ADDON_KEYS.map((k) => ({
+        company_id: editTarget.id,
+        addon_key: k,
+        active: !!editAddons[k],
+      }));
+      const { error: addonError } = await supabase
+        .from('company_addons' as any)
+        .upsert(addonPayload as any, { onConflict: 'company_id,addon_key' });
+      if (addonError) throw addonError;
+
       toast.success('Plano atualizado');
       queryClient.invalidateQueries({ queryKey: ['superadmin-company-plans'] });
       queryClient.invalidateQueries({ queryKey: ['platform-metrics'] });
@@ -351,6 +379,29 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
               Embarques/mês: segue automaticamente o padrão do plano selecionado acima (Básico: 30, Professional: 100,
               Business: ilimitado). Não precisa preencher nada aqui.
             </p>
+
+            <div className="space-y-2 border-t pt-3">
+              <Label>Add-ons</Label>
+              <p className="text-xs text-muted-foreground -mt-1">
+                Libere recursos extras pra essa empresa, independente do plano. Empresas no plano Business já têm
+                os comerciais inclusos automaticamente (exceto Multi-empresa, que é sempre por concessão explícita).
+              </p>
+              <div className="space-y-2.5 pt-1">
+                {ADDON_KEYS.map((key) => (
+                  <div key={key} className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">{ADDON_META[key].label}</p>
+                      <p className="text-xs text-muted-foreground">{ADDON_META[key].description}</p>
+                    </div>
+                    <Switch
+                      checked={!!editAddons[key]}
+                      onCheckedChange={(checked) => setEditAddons((prev) => ({ ...prev, [key]: checked }))}
+                      className="shrink-0 mt-0.5"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTarget(null)}>Cancelar</Button>

@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,11 +56,13 @@ const CLIENT_SEARCH_MIN_CHARS = 2;
 function ClientAutocomplete({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const { t } = useLanguage();
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ id: string; name: string }[]>([]);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
+  const [creating, setCreating] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
@@ -121,8 +123,39 @@ function ClientAutocomplete({ value, onChange }: { value: string; onChange: (id:
     setOpen(false);
   }
 
+  async function handleCreateClient() {
+    const name = query.trim();
+    if (!profile || !name || creating) return;
+    setCreating(true);
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .insert({ company_id: profile.company_id, name, type: 'client' } as any)
+        .select('id, name')
+        .single();
+      if (error) throw error;
+      handleSelect(data as any);
+      toast.success(`Cliente "${name}" cadastrado`);
+      queryClient.invalidateQueries({ queryKey: ['clients-select'] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!open || results.length === 0) return;
+    if (!open) return;
+    if (results.length === 0) {
+      if (e.key === 'Enter' && showNoResults) {
+        e.preventDefault();
+        handleCreateClient();
+      } else if (e.key === 'Escape') {
+        setOpen(false);
+      }
+      return;
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlighted((h) => (h + 1) % results.length);
@@ -155,8 +188,19 @@ function ClientAutocomplete({ value, onChange }: { value: string; onChange: (id:
         <p className="text-xs text-muted-foreground mt-1">Digite pelo menos {CLIENT_SEARCH_MIN_CHARS} letras para buscar.</p>
       )}
       {showNoResults && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg px-3 py-2 text-sm text-muted-foreground">
-          Nenhum cliente encontrado com esse nome.
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg overflow-hidden">
+          <p className="px-3 py-2 text-sm text-muted-foreground border-b">
+            Nenhum cliente encontrado com esse nome.
+          </p>
+          <button
+            type="button"
+            disabled={creating}
+            onMouseDown={(e) => { e.preventDefault(); handleCreateClient(); }}
+            className="w-full flex items-center gap-1.5 px-3 py-2 text-left text-sm text-primary font-medium hover:bg-accent disabled:opacity-60"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            {creating ? 'Cadastrando...' : `Cadastrar "${query.trim()}" como novo cliente`}
+          </button>
         </div>
       )}
       {open && results.length > 0 && (

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,11 +12,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Checkbox } from '@/components/ui/checkbox';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { ShipmentDetail } from '@/components/shipments/ShipmentDetail';
 import { Badge } from '@/components/ui/badge';
-import { format, isToday } from 'date-fns';
+import { format, isToday, addDays } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -31,6 +32,9 @@ export default function Shipments() {
   const { isSalesperson, clientIds } = useSalespersonClients();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [modeFilter, setModeFilter] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // Fetch custom status options for label mapping
   const { data: statusOptions = [] } = useQuery({
@@ -55,7 +59,7 @@ export default function Shipments() {
     queryFn: async () => {
       let query = supabase
         .from('shipments')
-        .select('id, reference_number, status, transport_mode, origin_city, origin_country, destination_city, destination_country, etd, eta, client_id, updated_at, last_accessed_at, next_update, clients(name)')
+        .select('id, reference_number, status, transport_mode, origin_city, origin_country, destination_city, destination_country, etd, eta, atd, ata, client_id, updated_at, last_accessed_at, next_update, clients(name)')
         .order('created_at', { ascending: false });
 
       if (isSalesperson && clientIds && clientIds.length > 0) {
@@ -70,19 +74,37 @@ export default function Shipments() {
     },
   });
 
-  const filtered = shipments.filter((s: any) =>
-    s.reference_number?.toLowerCase().includes(search.toLowerCase()) ||
-    s.origin_city?.toLowerCase().includes(search.toLowerCase()) ||
-    s.destination_city?.toLowerCase().includes(search.toLowerCase())
-  );
+  const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road', 'multimodal'];
+
+  const filtered = shipments.filter((s: any) => {
+    const matchesSearch = s.reference_number?.toLowerCase().includes(search.toLowerCase()) ||
+      s.origin_city?.toLowerCase().includes(search.toLowerCase()) ||
+      s.destination_city?.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter.length === 0 || statusFilter.includes(s.status);
+    const matchesMode = modeFilter.length === 0 || modeFilter.includes(s.transport_mode);
+    return matchesSearch && matchesStatus && matchesMode;
+  });
+
+  const activeFilterCount = statusFilter.length + modeFilter.length;
+
+  function toggleStatusFilter(value: string) {
+    setStatusFilter((prev) => prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]);
+  }
+  function toggleModeFilter(value: string) {
+    setModeFilter((prev) => prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]);
+  }
+  function clearFilters() {
+    setStatusFilter([]);
+    setModeFilter([]);
+  }
 
   const { sorted, sortState, toggleSort } = useTableSort<any>(filtered, {
     reference_number: (r) => r.reference_number,
     client: (r) => r.clients?.name,
     origin: (r) => r.origin_city,
     destination: (r) => r.destination_city,
-    etd: (r) => r.etd,
-    eta: (r) => r.eta,
+    etd: (r) => r.atd || r.etd,
+    eta: (r) => r.ata || r.eta,
     status: (r) => statusLabelMap.get(r.status) || r.status,
     next_update: (r) => r.next_update,
     updated_at: (r) => r.updated_at,
@@ -90,7 +112,18 @@ export default function Shipments() {
 
   async function updateShipmentField(id: string, field: string, value: any) {
     try {
-      const { error } = await (supabase.from('shipments') as any).update({ [field]: value }).eq('id', id);
+      // Setar updated_at explicitamente conta essa edição (ETD/ETA/Next Update)
+      // como atividade no processo, refletindo no indicador da lista.
+      const payload: Record<string, any> = { [field]: value, updated_at: new Date().toISOString() };
+      // Qualquer alteração no processo (exceto no próprio Next Update, que já é
+      // o que o usuário está definindo manualmente) empurra o Next Update pro
+      // dia seguinte, como lembrete automático de acompanhamento.
+      if (field !== 'next_update') {
+        payload.next_update = addDays(new Date(), 1).toISOString();
+      }
+      const { error } = await (supabase.from('shipments') as any)
+        .update(payload)
+        .eq('id', id);
       if (error) throw error;
       toast.success(t('quotes.changes_saved'));
       refetch();
@@ -115,9 +148,54 @@ export default function Shipments() {
             className="pl-10"
           />
         </div>
-        <Button variant="outline" size="icon">
-          <Filter className="w-4 h-4" />
-        </Button>
+        <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="icon" className="relative">
+              <Filter className="w-4 h-4" />
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 h-4 min-w-[16px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-4" align="end">
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold">Filtros</p>
+                  {activeFilterCount > 0 && (
+                    <button type="button" className="text-xs text-muted-foreground hover:text-foreground underline" onClick={clearFilters}>
+                      Limpar
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
+                <div className="space-y-1.5 max-h-40 overflow-auto">
+                  {statusOptions.map((o: any) => (
+                    <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox checked={statusFilter.includes(o.value)} onCheckedChange={() => toggleStatusFilter(o.value)} />
+                      {o.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Modal</p>
+                <div className="space-y-1.5">
+                  {MODES.map((m) => (
+                    <label key={m} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox checked={modeFilter.includes(m)} onCheckedChange={() => toggleModeFilter(m)} />
+                      {t(`mode.${m}`)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <Card className="glass">
@@ -178,12 +256,14 @@ export default function Shipments() {
                     <TableCell className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
                       <InlineDate
                         value={s.etd}
+                        actualValue={s.atd}
                         onChange={(d) => updateShipmentField(s.id, 'etd', d)}
                       />
                     </TableCell>
                     <TableCell className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
                       <InlineDate
                         value={s.eta}
+                        actualValue={s.ata}
                         onChange={(d) => updateShipmentField(s.id, 'eta', d)}
                       />
                     </TableCell>
@@ -253,10 +333,24 @@ function ActivityIndicator({ updatedAt, lastAccessedAt }: { updatedAt: string; l
 }
 
 function InlineNextUpdate({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
-  const dateValue = value ? new Date(value) : undefined;
+  // Estado local otimista: reflete a data escolhida na hora, sem esperar o
+  // refetch da lista terminar (evita o botão continuar mostrando "Definir..."
+  // por um instante ou em caso de a query pai não re-renderizar a tempo).
+  const [localValue, setLocalValue] = useState(value);
+  useEffect(() => { setLocalValue(value); }, [value]);
+  const [open, setOpen] = useState(false);
+
+  const dateValue = localValue ? new Date(localValue) : undefined;
+
+  function handleSelect(d: Date | undefined) {
+    const iso = d ? d.toISOString() : null;
+    setLocalValue(iso);
+    onChange(iso);
+    setOpen(false);
+  }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -273,7 +367,7 @@ function InlineNextUpdate({ value, onChange }: { value: string | null; onChange:
         <Calendar
           mode="single"
           selected={dateValue}
-          onSelect={(d) => onChange(d ? d.toISOString() : null)}
+          onSelect={handleSelect}
           initialFocus
           className="p-3 pointer-events-auto"
         />
@@ -283,17 +377,36 @@ function InlineNextUpdate({ value, onChange }: { value: string | null; onChange:
 }
 
 // Campo de data editável inline (usado em ETD/ETA), no mesmo padrão do "Next Update".
-function InlineDate({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
-  const dateValue = value ? new Date(value) : undefined;
+// Se `actualValue` (ATD/ATA) estiver preenchido, ele é exibido no lugar da estimativa,
+// já que a data real substitui a previsão. A edição continua sendo do campo estimado.
+function InlineDate({ value, actualValue, onChange }: { value: string | null; actualValue?: string | null; onChange: (v: string | null) => void }) {
+  // Mesmo padrão otimista do InlineNextUpdate: atualiza a exibição na hora,
+  // sem depender do refetch da lista terminar antes de mostrar a data escolhida.
+  const [localValue, setLocalValue] = useState(value);
+  useEffect(() => { setLocalValue(value); }, [value]);
+  const [open, setOpen] = useState(false);
+
+  const displaySource = actualValue || localValue;
+  const dateValue = displaySource ? new Date(displaySource) : undefined;
+  const isActual = !!actualValue;
+
+  function handleSelect(d: Date | undefined) {
+    const iso = d ? d.toISOString() : null;
+    setLocalValue(iso);
+    onChange(iso);
+    setOpen(false);
+  }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
+          title={isActual ? 'Data real' : 'Estimativa'}
           className={cn(
             "h-7 text-xs px-2 font-normal justify-start w-[86px]",
-            !dateValue && "text-muted-foreground"
+            !dateValue && "text-muted-foreground",
+            isActual && "font-semibold text-emerald-600"
           )}
         >
           {dateValue ? format(dateValue, 'dd/MM/yy') : '-'}
@@ -303,7 +416,7 @@ function InlineDate({ value, onChange }: { value: string | null; onChange: (v: s
         <Calendar
           mode="single"
           selected={dateValue}
-          onSelect={(d) => onChange(d ? d.toISOString() : null)}
+          onSelect={handleSelect}
           initialFocus
           className="p-3 pointer-events-auto"
         />
