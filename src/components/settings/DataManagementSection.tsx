@@ -12,7 +12,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { BackupSection } from './BackupSection';
 
 export function DataManagementSection() {
   const { t } = useLanguage();
@@ -81,8 +80,6 @@ export function DataManagementSection() {
 
   return (
     <>
-      <BackupSection />
-
       {/* Quotes */}
       <Card className="glass">
         <CardHeader>
