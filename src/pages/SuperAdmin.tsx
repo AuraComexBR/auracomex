@@ -21,6 +21,8 @@ import { RenewAccessDialog } from '@/components/superadmin/RenewAccessDialog';
 import { PlatformLogoUpload } from '@/components/superadmin/PlatformLogoUpload';
 import { ReleasesPanel } from '@/components/superadmin/ReleasesPanel';
 import { SupportTicketsPanel } from '@/components/superadmin/SupportTicketsPanel';
+import { PlatformMetrics } from '@/components/superadmin/PlatformMetrics';
+import { CompanyPlansTable } from '@/components/superadmin/CompanyPlansTable';
 
 function cleanCnpj(value: string) {
   return value.replace(/\D/g, '');
@@ -158,6 +160,13 @@ export default function SuperAdmin() {
 
       {/* Content */}
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight mb-3">Visão Geral</h2>
+          <PlatformMetrics />
+        </div>
+
+        <CompanyPlansTable />
+
         <PlatformLogoUpload />
         <ReleasesPanel />
         <SupportTicketsPanel />

@@ -11,7 +11,7 @@ const corsHeaders = {
 // Each entry: [tableName, filterColumn|null]
 // filterColumn = column used to scope by company; null = not company-scoped
 // (used for auxiliary tables that follow via FKs — e.g. quote_items scoped by quote_id).
-const COMPANY_TABLES: Array<[string, string | null]> = [
+const COMPANY_TABLES = [
   ["companies", "id"],
   ["company_subscriptions", "company_id"],
   ["company_addons", "company_id"],
@@ -52,47 +52,32 @@ const COMPANY_TABLES: Array<[string, string | null]> = [
 ];
 
 // For each auxiliary table (filterColumn=null), how to fetch it for a company.
-const AUX_FETCHERS: Record<
-  string,
-  (admin: any, companyId: string | null) => Promise<any[]>
-> = {
-  quote_items: async (admin, companyId) => fetchByParent(admin, "quote_items", "quote_id", "quotes", companyId),
-  quote_charges: async (admin, companyId) => fetchByParent(admin, "quote_charges", "quote_id", "quotes", companyId),
-  quote_partners: async (admin, companyId) => fetchByParent(admin, "quote_partners", "quote_id", "quotes", companyId),
-  quote_comments: async (admin, companyId) => fetchByParent(admin, "quote_comments", "quote_id", "quotes", companyId),
-  cost_estimate_items: async (admin, companyId) =>
-    fetchByParent(admin, "cost_estimate_items", "cost_estimate_id", "cost_estimates", companyId),
-  cost_estimate_expenses: async (admin, companyId) =>
-    fetchByParent(admin, "cost_estimate_expenses", "cost_estimate_id", "cost_estimates", companyId),
-  shipment_partners: async (admin, companyId) =>
-    fetchByParent(admin, "shipment_partners", "shipment_id", "shipments", companyId),
-  shipment_audit_log: async (admin, companyId) =>
-    fetchByParent(admin, "shipment_audit_log", "shipment_id", "shipments", companyId),
-  charge_lines: async (admin, companyId) => fetchByParent(admin, "charge_lines", "charge_id", "charges", companyId),
-  debit_note_items: async (admin, companyId) =>
-    fetchByParent(admin, "debit_note_items", "debit_note_id", "debit_notes", companyId),
-  support_ticket_messages: async (admin, companyId) =>
-    fetchByParent(admin, "support_ticket_messages", "ticket_id", "support_tickets", companyId),
+const AUX_FETCHERS = {
+  quote_items: function (admin, companyId) { return fetchByParent(admin, "quote_items", "quote_id", "quotes", companyId); },
+  quote_charges: function (admin, companyId) { return fetchByParent(admin, "quote_charges", "quote_id", "quotes", companyId); },
+  quote_partners: function (admin, companyId) { return fetchByParent(admin, "quote_partners", "quote_id", "quotes", companyId); },
+  quote_comments: function (admin, companyId) { return fetchByParent(admin, "quote_comments", "quote_id", "quotes", companyId); },
+  cost_estimate_items: function (admin, companyId) { return fetchByParent(admin, "cost_estimate_items", "cost_estimate_id", "cost_estimates", companyId); },
+  cost_estimate_expenses: function (admin, companyId) { return fetchByParent(admin, "cost_estimate_expenses", "cost_estimate_id", "cost_estimates", companyId); },
+  shipment_partners: function (admin, companyId) { return fetchByParent(admin, "shipment_partners", "shipment_id", "shipments", companyId); },
+  shipment_audit_log: function (admin, companyId) { return fetchByParent(admin, "shipment_audit_log", "shipment_id", "shipments", companyId); },
+  charge_lines: function (admin, companyId) { return fetchByParent(admin, "charge_lines", "charge_id", "charges", companyId); },
+  debit_note_items: function (admin, companyId) { return fetchByParent(admin, "debit_note_items", "debit_note_id", "debit_notes", companyId); },
+  support_ticket_messages: function (admin, companyId) { return fetchByParent(admin, "support_ticket_messages", "ticket_id", "support_tickets", companyId); },
 };
 
-async function fetchByParent(
-  admin: any,
-  table: string,
-  fk: string,
-  parentTable: string,
-  companyId: string | null,
-): Promise<any[]> {
+async function fetchByParent(admin, table, fk, parentTable, companyId) {
   let parentQ = admin.from(parentTable).select("id");
   if (companyId) parentQ = parentQ.eq("company_id", companyId);
   const { data: parents, error: pErr } = await parentQ;
   if (pErr) throw pErr;
-  const ids = (parents ?? []).map((p: any) => p.id);
+  const ids = (parents ?? []).map((p) => p.id);
   if (ids.length === 0) return [];
   // Chunk to avoid IN () limit
-  const chunks: string[][] = [];
+  const chunks = [];
   const CHUNK = 500;
   for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
-  const rows: any[] = [];
+  const rows = [];
   for (const c of chunks) {
     const { data, error } = await admin.from(table).select("*").in(fk, c);
     if (error) throw error;
@@ -101,7 +86,7 @@ async function fetchByParent(
   return rows;
 }
 
-function sqlLiteral(v: any): string {
+function sqlLiteral(v) {
   if (v === null || v === undefined) return "NULL";
   if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
   if (typeof v === "number") {
@@ -126,13 +111,13 @@ function sqlLiteral(v: any): string {
   return `'${s}'`;
 }
 
-function buildInserts(table: string, rows: any[]): string {
+function buildInserts(table, rows) {
   if (!rows || rows.length === 0) {
     return `-- ${table}: 0 rows\n`;
   }
   const cols = Object.keys(rows[0]);
   const colList = cols.map((c) => `"${c}"`).join(", ");
-  const lines: string[] = [`-- ${table}: ${rows.length} rows`];
+  const lines = [`-- ${table}: ${rows.length} rows`];
   for (const row of rows) {
     const values = cols.map((c) => sqlLiteral(row[c])).join(", ");
     lines.push(
@@ -143,18 +128,14 @@ function buildInserts(table: string, rows: any[]): string {
   return lines.join("\n");
 }
 
-async function dumpCompany(
-  admin: any,
-  companyId: string | null,
-  companyName: string,
-): Promise<string> {
-  const parts: string[] = [];
+async function dumpCompany(admin, companyId, companyName) {
+  const parts = [];
   parts.push(
     `-- === COMPANY: ${companyName} (${companyId ?? "ALL"}) ===\n`,
   );
 
   for (const [table, filterCol] of COMPANY_TABLES) {
-    let rows: any[] = [];
+    let rows = [];
     try {
       if (filterCol === null) {
         const fetcher = AUX_FETCHERS[table];
@@ -168,7 +149,7 @@ async function dumpCompany(
         rows = data ?? [];
       }
       parts.push(buildInserts(table, rows));
-    } catch (err: any) {
+    } catch (err) {
       parts.push(`-- ERROR dumping ${table}: ${err.message}\n`);
     }
   }
@@ -178,7 +159,7 @@ async function dumpCompany(
     let profQ = admin.from("profiles").select("user_id");
     if (companyId) profQ = profQ.eq("company_id", companyId);
     const { data: profs } = await profQ;
-    const userIds = (profs ?? []).map((p: any) => p.user_id);
+    const userIds = (profs ?? []).map((p) => p.user_id);
     if (userIds.length > 0) {
       const { data: roles } = await admin
         .from("user_roles")
@@ -188,7 +169,7 @@ async function dumpCompany(
     } else {
       parts.push(`-- user_roles: 0 rows\n`);
     }
-  } catch (err: any) {
+  } catch (err) {
     parts.push(`-- ERROR dumping user_roles: ${err.message}\n`);
   }
 
@@ -244,23 +225,19 @@ Deno.serve(async (req) => {
     // superadmin. Não aceita mais companyId/scope=all vindos do corpo da requisição
     // (essa opção existia antes pra permitir baixar backup de qualquer empresa ou de
     // todas de uma vez direto da tela de Configurações, o que foi removido de propósito).
-    const scope: "company" = "company";
-    let targetCompanyId: string | null = null;
-
-    {
-      const { data: prof } = await admin
-        .from("profiles")
-        .select("company_id")
-        .eq("user_id", caller.id)
-        .single();
-      if (!prof?.company_id) {
-        return new Response(JSON.stringify({ error: "No company" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      targetCompanyId = prof.company_id;
+    const scope = "company";
+    const { data: profRow } = await admin
+      .from("profiles")
+      .select("company_id")
+      .eq("user_id", caller.id)
+      .single();
+    if (!profRow?.company_id) {
+      return new Response(JSON.stringify({ error: "No company" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    const targetCompanyId = profRow.company_id;
 
     const now = new Date();
     const stamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}${String(now.getUTCMinutes()).padStart(2, "0")}`;
@@ -268,14 +245,14 @@ Deno.serve(async (req) => {
     let sql = "";
     let filenameScope = "";
 
-    const header = (label: string) =>
+    const header = (label) =>
       `-- Aura Comex — Database Backup\n-- Scope: ${label}\n-- Generated (UTC): ${now.toISOString()}\n-- Generated by: ${caller.email}\n--\n-- To restore into another Postgres/Supabase:\n--   psql <connection_string> -f <this-file>.sql\n-- The dump uses INSERT ... ON CONFLICT (id) DO NOTHING; run inside a fresh public schema with the same table structure.\n--\n\nSET session_replication_role = 'replica';\nBEGIN;\n\n`;
     const footer = `\nCOMMIT;\nSET session_replication_role = 'origin';\n-- End of backup\n`;
 
     const { data: comp } = await admin
       .from("companies")
       .select("id, name")
-      .eq("id", targetCompanyId!)
+      .eq("id", targetCompanyId)
       .single();
     if (!comp) {
       return new Response(JSON.stringify({ error: "Company not found" }), {
@@ -299,7 +276,7 @@ Deno.serve(async (req) => {
         user_id: caller.id,
         action: "backup_download",
         details: { scope, target_company_id: targetCompanyId },
-      } as any);
+      });
     } catch {
       // ignore if columns don't match
     }
@@ -314,7 +291,7 @@ Deno.serve(async (req) => {
         "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("backup-database error", err);
     return new Response(
       JSON.stringify({ error: err?.message || "Internal error" }),

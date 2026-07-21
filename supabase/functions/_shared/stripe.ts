@@ -86,3 +86,32 @@ export const ADDON_PRICE_MAP: Record<string, 'cost_estimate_premium' | 'tracking
   aura_addon_tracking_monthly:      'tracking_portal',
   aura_addon_ai_import_monthly:     'ai_import',
 };
+
+// Faixas de preço por assento (volume: todo mundo paga o valor da faixa do total de
+// usuários), espelhando exatamente o que está configurado no Stripe (Billing.tsx usa
+// a mesma tabela no front). Mantido aqui pra calcular o MRR real sem precisar bater
+// na API do Stripe de novo a cada webhook — quantity já vem no payload do evento.
+const PLAN_SEAT_TIERS: Record<string, { upTo: number; unitCents: number }[]> = {
+  starter: [
+    { upTo: 1, unitCents: 14999 },
+    { upTo: 2, unitCents: 13999 },
+    { upTo: Infinity, unitCents: 12999 },
+  ],
+  professional: [
+    { upTo: 1, unitCents: 24999 },
+    { upTo: 2, unitCents: 22999 },
+    { upTo: Infinity, unitCents: 19999 },
+  ],
+  business: [
+    { upTo: 1, unitCents: 39999 },
+    { upTo: 2, unitCents: 36999 },
+    { upTo: Infinity, unitCents: 33999 },
+  ],
+};
+
+export function computeMrrCents(plan: string, seats: number): number {
+  const tiers = PLAN_SEAT_TIERS[plan];
+  if (!tiers || !seats || seats < 1) return 0;
+  const tier = tiers.find((t) => seats <= t.upTo) || tiers[tiers.length - 1];
+  return tier.unitCents * seats;
+}
