@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 
 interface Props {
   shipment: any;
+  quoteId?: string;
   onUpdate?: () => void;
 }
 
@@ -37,7 +38,7 @@ const DEFAULT_STATUSES = [
   { label: 'Cancelado', value: 'cancelled', position: 5 },
 ];
 
-export function LogisticsTab({ shipment, onUpdate }: Props) {
+export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   const { t } = useLanguage();
   const { user, profile } = useAuth();
   const { isFullAccess } = usePermissions();
@@ -321,6 +322,7 @@ export function LogisticsTab({ shipment, onUpdate }: Props) {
           auditLogs.map(log => ({
             ...log,
             shipment_id: shipment.id,
+            quote_id: quoteId || null,
             company_id: shipment.company_id,
             user_id: user?.id || null,
           }))
@@ -433,6 +435,7 @@ export function LogisticsTab({ shipment, onUpdate }: Props) {
                 if (profile) {
                   await (supabase.from('shipment_audit_log') as any).insert({
                     shipment_id: shipment.id,
+                    quote_id: quoteId || null,
                     company_id: shipment.company_id,
                     user_id: user?.id || null,
                     field_name: 'status',

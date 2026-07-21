@@ -230,21 +230,25 @@ export default function Quotes() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{t('quotes.title')}</h1>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (!aiImportGate.hasAccess) {
-                toast.info('Este recurso é um add-on. Ative em Assinatura.');
-                return;
-              }
-              setAiImportOpen(true);
-            }}
-            disabled={isExpired}
-            title={aiImportGate.lockedTitle}
-            className={!aiImportGate.hasAccess ? 'opacity-60' : ''}
-          >
-            <Sparkles className="w-4 h-4 mr-2" />Importar com IA
-          </Button>
+          {/* Importar com IA — escondido por hora enquanto a integração de IA está sendo ajustada.
+              Pra reativar: descomenta este bloco. */}
+          {false && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!aiImportGate.hasAccess) {
+                  toast.info('Este recurso é um add-on. Ative em Assinatura.');
+                  return;
+                }
+                setAiImportOpen(true);
+              }}
+              disabled={isExpired}
+              title={aiImportGate.lockedTitle}
+              className={!aiImportGate.hasAccess ? 'opacity-60' : ''}
+            >
+              <Sparkles className="w-4 h-4 mr-2" />Importar com IA
+            </Button>
+          )}
           <Button onClick={() => setCreateOpen(true)} disabled={isExpired}><Plus className="w-4 h-4 mr-2" />{t('quotes.new')}</Button>
         </div>
       </div>

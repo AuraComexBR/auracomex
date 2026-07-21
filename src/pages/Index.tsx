@@ -6,8 +6,9 @@ import { useSalespersonClients } from '@/hooks/useSalespersonClients';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Ship, FileText, AlertTriangle, CheckCircle,
-  Plus, Send, TrendingUp, Clock, ArrowRight, DollarSign
+  Ship, AlertTriangle, CheckCircle,
+  Plus, TrendingUp, Clock, ArrowRight, DollarSign,
+  CalendarClock, Wallet, PackageSearch,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -234,6 +235,102 @@ export default function Index() {
     },
   });
 
+  // --- "Requer atenção" queries ---
+
+  // Embarques ativos com ETA já vencido ou sem atualização recente
+  const { data: shipmentAlerts = [] } = useQuery({
+    queryKey: ['dashboard-shipment-alerts', scopeFilter],
+    enabled: canAccessShipments,
+    queryFn: async () => {
+      let query = supabase
+        .from('shipments')
+        .select('id, reference_number, status, eta, next_update, clients(name)')
+        .in('status', ['booked', 'in_transit', 'arrived']);
+      if (scopeFilter && scopeFilter.length > 0) {
+        query = query.in('client_id', scopeFilter);
+      } else if (scopeFilter && scopeFilter.length === 0) {
+        return [];
+      }
+      const { data } = await query;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return (data || [])
+        .filter((s: any) => {
+          const etaLate = s.eta && new Date(s.eta) < today;
+          const updateLate = s.next_update && new Date(s.next_update) < today;
+          return etaLate || updateLate;
+        })
+        .map((s: any) => ({
+          ...s,
+          reason: s.eta && new Date(s.eta) < today ? 'eta' : 'update',
+        }))
+        .sort((a: any, b: any) => {
+          const da = new Date(a.eta || a.next_update).getTime();
+          const db = new Date(b.eta || b.next_update).getTime();
+          return da - db;
+        })
+        .slice(0, 5);
+    },
+  });
+
+  // Cotações enviadas que vencem nos próximos 7 dias (ou já venceram)
+  const { data: quotesExpiring = [] } = useQuery({
+    queryKey: ['dashboard-quotes-expiring', scopeFilter],
+    enabled: canAccessQuotes,
+    queryFn: async () => {
+      const in7Days = new Date();
+      in7Days.setDate(in7Days.getDate() + 7);
+      let query = supabase
+        .from('quotes')
+        .select('id, quote_number, valid_until, clients(name)')
+        .eq('status', 'sent')
+        .not('valid_until', 'is', null)
+        .lte('valid_until', in7Days.toISOString());
+      if (scopeFilter && scopeFilter.length > 0) {
+        query = query.in('client_id', scopeFilter);
+      } else if (isScopedToOwnProcesses && user) {
+        query = query.eq('created_by', user.id);
+      }
+      const { data } = await query.order('valid_until', { ascending: true }).limit(5);
+      return data || [];
+    },
+  });
+
+  // Contas a receber/pagar vencidas
+  const { data: overdueFinancial } = useQuery({
+    queryKey: ['dashboard-overdue-financial'],
+    enabled: canAccessFinancial,
+    queryFn: async () => {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const [{ data: ar }, { data: ap }] = await Promise.all([
+        supabase
+          .from('accounts_receivable')
+          .select('id, description, amount, currency, due_date')
+          .in('status', ['aberto', 'atrasado'])
+          .lt('due_date', todayIso)
+          .order('due_date', { ascending: true }),
+        supabase
+          .from('accounts_payable')
+          .select('id, description, amount, currency, due_date')
+          .in('status', ['aberto', 'atrasado'])
+          .lt('due_date', todayIso)
+          .order('due_date', { ascending: true }),
+      ]);
+      return { receivable: ar || [], payable: ap || [] };
+    },
+  });
+
+  const overdueReceivableTotal = (overdueFinancial?.receivable || []).reduce((acc: Record<string, number>, r: any) => {
+    const cur = r.currency || 'USD';
+    acc[cur] = (acc[cur] || 0) + Number(r.amount);
+    return acc;
+  }, {} as Record<string, number>);
+  const overduePayableTotal = (overdueFinancial?.payable || []).reduce((acc: Record<string, number>, r: any) => {
+    const cur = r.currency || 'USD';
+    acc[cur] = (acc[cur] || 0) + Number(r.amount);
+    return acc;
+  }, {} as Record<string, number>);
+
   // Build KPI cards based on permissions
   const kpis = [];
 
@@ -291,15 +388,39 @@ export default function Index() {
     });
   }
 
+  const fmtMoney = (amount: number, currency: string) =>
+    `${currency} ${amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR');
+
+  // Só mostra a seção "Requer atenção" se o usuário tiver acesso a pelo menos uma das áreas
+  const showAttentionSection = canAccessShipments || canAccessQuotes || canAccessFinancial;
+
   return (
     <div className="space-y-6 animate-slide-in">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t('dashboard.title')}</h1>
           <p className="text-muted-foreground">
             {t('dashboard.welcome')}, {profile?.full_name?.split(' ')[0]}
           </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {canAccessQuotes && (
+            <Button asChild size="sm" className="gap-1.5">
+              <Link to="/quotes">
+                <Plus className="w-4 h-4" /> Nova Cotação
+              </Link>
+            </Button>
+          )}
+          {canAccessShipments && (
+            <Button asChild size="sm" variant="outline" className="gap-1.5">
+              <Link to="/shipments">
+                <Ship className="w-4 h-4" /> Ver Embarques
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -338,6 +459,117 @@ export default function Index() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Requer atenção */}
+      {showAttentionSection && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {canAccessShipments && (
+            <Card className="glass">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                  <PackageSearch className="w-4 h-4 text-status-attention" />
+                  Embarques em atenção
+                </CardTitle>
+                <Link to="/shipments" className="text-xs text-primary hover:underline flex items-center gap-0.5">
+                  Ver todos <ArrowRight className="w-3 h-3" />
+                </Link>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {shipmentAlerts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4 text-status-completed" /> Tudo em dia
+                  </p>
+                ) : (
+                  shipmentAlerts.map((s: any) => (
+                    <Link
+                      key={s.id}
+                      to="/shipments"
+                      className="block text-xs border-l-2 border-status-attention pl-2.5 py-0.5 hover:bg-secondary/50 rounded-r"
+                    >
+                      <p className="font-medium">{s.reference_number || '—'} · {s.clients?.name || '-'}</p>
+                      <p className="text-muted-foreground">
+                        {s.reason === 'eta' ? 'ETA vencida' : 'Sem atualização'}: {fmtDate(s.reason === 'eta' ? s.eta : s.next_update)}
+                      </p>
+                    </Link>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {canAccessQuotes && (
+            <Card className="glass">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                  <CalendarClock className="w-4 h-4 text-status-attention" />
+                  Cotações vencendo
+                </CardTitle>
+                <Link to="/quotes" className="text-xs text-primary hover:underline flex items-center gap-0.5">
+                  Ver todas <ArrowRight className="w-3 h-3" />
+                </Link>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {quotesExpiring.length === 0 ? (
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4 text-status-completed" /> Nenhuma cotação vencendo
+                  </p>
+                ) : (
+                  quotesExpiring.map((q: any) => (
+                    <Link
+                      key={q.id}
+                      to="/quotes"
+                      className="block text-xs border-l-2 border-status-attention pl-2.5 py-0.5 hover:bg-secondary/50 rounded-r"
+                    >
+                      <p className="font-medium">{q.quote_number || '—'} · {q.clients?.name || '-'}</p>
+                      <p className="text-muted-foreground">Válida até {fmtDate(q.valid_until)}</p>
+                    </Link>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {canAccessFinancial && (
+            <Card className="glass">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                  <Wallet className="w-4 h-4 text-status-attention" />
+                  Financeiro vencido
+                </CardTitle>
+                <Link to="/financial" className="text-xs text-primary hover:underline flex items-center gap-0.5">
+                  Ver tudo <ArrowRight className="w-3 h-3" />
+                </Link>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(overdueFinancial?.receivable?.length ?? 0) === 0 && (overdueFinancial?.payable?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4 text-status-completed" /> Nada vencido
+                  </p>
+                ) : (
+                  <>
+                    {Object.keys(overdueReceivableTotal).length > 0 && (
+                      <div className="text-xs">
+                        <p className="font-medium text-status-completed">A receber vencido</p>
+                        {Object.entries(overdueReceivableTotal).map(([cur, val]) => (
+                          <p key={cur} className="text-muted-foreground">{fmtMoney(val, cur)}</p>
+                        ))}
+                      </div>
+                    )}
+                    {Object.keys(overduePayableTotal).length > 0 && (
+                      <div className="text-xs">
+                        <p className="font-medium text-destructive">A pagar vencido</p>
+                        {Object.entries(overduePayableTotal).map(([cur, val]) => (
+                          <p key={cur} className="text-muted-foreground">{fmtMoney(val, cur)}</p>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

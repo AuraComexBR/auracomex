@@ -11,12 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Mail, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
-import { ROLE_LABELS } from '@/hooks/usePermissions';
+import { ROLE_LABELS, getAssignableRolesForPlan } from '@/hooks/usePermissions';
+import { useSubscription, PLAN_LABEL } from '@/hooks/useSubscription';
 import type { Database } from '@/integrations/supabase/types';
 
 type AppRole = Database['public']['Enums']['app_role'];
 
-const ASSIGNABLE_ROLES: AppRole[] = [
+const ALL_ASSIGNABLE_ROLES: AppRole[] = [
   'diretor', 'gerente',
   'coordenador_comercial', 'inside',
   'coordenador_operacional', 'operator',
@@ -35,6 +36,7 @@ const DEPARTMENTS = [
 export function InviteUserSection() {
   const { t, language } = useLanguage();
   const { profile } = useAuth();
+  const { data: sub } = useSubscription();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -44,6 +46,9 @@ export function InviteUserSection() {
     role: 'operator' as AppRole,
     department: '',
   });
+
+  const ASSIGNABLE_ROLES = getAssignableRolesForPlan(ALL_ASSIGNABLE_ROLES, sub?.plan);
+  const isBasicPlan = sub?.plan === 'starter';
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -126,6 +131,11 @@ export function InviteUserSection() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {isBasicPlan && (
+                    <p className="text-xs text-muted-foreground">
+                      Plano Básico oferece papéis simples. Faça upgrade para Professional para liberar coordenadores, diretoria e vendedor com comissão.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Departamento</Label>

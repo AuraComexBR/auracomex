@@ -1,6 +1,26 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
-import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
+import Stripe from "https://esm.sh/stripe@22.0.2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+type StripeEnv = 'sandbox' | 'live';
+
+function getEnv(key: string): string {
+  const value = Deno.env.get(key);
+  if (!value) throw new Error(`${key} is not configured`);
+  return value;
+}
+
+function createStripeClient(env: StripeEnv): Stripe {
+  const apiKey = env === 'sandbox' ? getEnv('STRIPE_SANDBOX_API_KEY') : getEnv('STRIPE_LIVE_API_KEY');
+  return new Stripe(apiKey, {
+    apiVersion: '2026-03-25.dahlia',
+    httpClient: Stripe.createFetchHttpClient(),
+  });
+}
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,

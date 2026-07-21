@@ -70,6 +70,32 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Plano Básico só libera papéis simples (sem hierarquia). Superadmin pode sempre
+    // atribuir qualquer papel (uso de suporte/backoffice).
+    if (!isSuperadmin) {
+      const BASIC_PLAN_ROLES = ["admin", "operator", "financeiro", "viewer"];
+      const { data: companySub } = await adminClient
+        .from("company_subscriptions").select("plan, seats_limit").eq("company_id", targetCompanyId).maybeSingle();
+      if (companySub?.plan === "starter" && !BASIC_PLAN_ROLES.includes(role)) {
+        return new Response(JSON.stringify({ error: "Este cargo requer o plano Professional ou superior." }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Bloqueio real de assentos: se a empresa tem um limite (seats_limit não-nulo),
+      // não deixa convidar além dele. Planos com preço por assento no Stripe (todos hoje)
+      // normalmente não têm limite fixo, mas cortesias/planos legados podem ter.
+      if (companySub?.seats_limit != null) {
+        const { count } = await adminClient
+          .from("profiles").select("id", { count: "exact", head: true }).eq("company_id", targetCompanyId);
+        if ((count ?? 0) >= companySub.seats_limit) {
+          return new Response(JSON.stringify({ error: `Limite de ${companySub.seats_limit} usuários do plano atingido. Aumente o número de assentos ou faça upgrade.` }), {
+            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
     const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
       redirectTo: redirect_to || undefined,
       data: {

@@ -81,8 +81,10 @@ export function useHasAddon(addon: AddonKey): boolean {
   return !!data?.addons.has(addon);
 }
 
+// 'starter' no banco agora é vendido como "Básico" (preço por assento/volume no Stripe).
+// Mantido o valor interno pra não precisar de migration no enum subscription_plan.
 export const PLAN_LABEL: Record<SubscriptionPlan, string> = {
-  starter: 'Starter',
+  starter: 'Básico',
   professional: 'Professional',
   business: 'Business',
 };

@@ -73,7 +73,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
       } as any);
     }
     refetch();
-    toast.success(`${files.length} file(s) uploaded`);
+    toast.success(`${files.length} arquivo(s) enviado(s)`);
   }, [shipmentId, companyId, profile, refetch]);
 
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -93,7 +93,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
       } as any);
     }
     refetch();
-    toast.success(`${files.length} file(s) uploaded`);
+    toast.success(`${files.length} arquivo(s) enviado(s)`);
   };
 
   return (
@@ -123,7 +123,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
           className="border-2 border-dashed border-border rounded-xl p-8 text-center mb-4 hover:border-primary/50 transition-colors"
         >
           <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">Drag & drop files here</p>
+          <p className="text-sm text-muted-foreground">Arraste os arquivos aqui</p>
         </div>
 
         {/* Document list */}

@@ -5,7 +5,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2, Package } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Plus, Trash2, Package, Pencil, AlertTriangle } from 'lucide-react';
 
 // Module-level cache for NCM descriptions (code -> description)
 const ncmDescCache = new Map<string, string>();
@@ -20,7 +22,7 @@ async function fetchNcmDescription(code: string): Promise<string> {
     if (res.ok) {
       const data = await res.json();
       let desc = (data.descricao || '').replace(/<[^>]*>/g, '').replace(/^[- ]+/, '').trim();
-      
+
       // If description is generic "Outras" or "Outros", try to get more context from the search endpoint
       // for 4-digit or 6-digit codes which might have better names in a list
       if (desc.toLowerCase() === 'outras' || desc.toLowerCase() === 'outros') {
@@ -28,8 +30,8 @@ async function fetchNcmDescription(code: string): Promise<string> {
         if (searchRes.ok) {
           const searchData = await searchRes.json();
           // Look for a version of this code that might have more text
-          const detailedMatch = searchData.find((d: any) => 
-            d.codigo.replace(/\D/g, '') === cleanCode && 
+          const detailedMatch = searchData.find((d: any) =>
+            d.codigo.replace(/\D/g, '') === cleanCode &&
             d.descricao.length > desc.length
           );
           if (detailedMatch) {
@@ -37,7 +39,7 @@ async function fetchNcmDescription(code: string): Promise<string> {
           }
         }
       }
-      
+
       ncmDescCache.set(cleanCode, desc);
       return desc;
     }
@@ -54,7 +56,7 @@ async function fetchNcmDescription(code: string): Promise<string> {
         }
       }
     }
-    
+
     return '';
   } catch {
     return '';
@@ -74,16 +76,16 @@ async function fetchNcmHierarchy(code: string): Promise<string> {
 
   const unique = Array.from(new Set(levels)).sort((a, b) => a.length - b.length);
   const results = await Promise.all(unique.map(fetchNcmDescription));
-  
+
   const parts = results.filter(Boolean);
-  
+
   const dedup: string[] = [];
   const genericTerms = ['outras', 'outros', '- outras', '- outros', '-- outras', '-- outros'];
-  
+
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i];
     const isGeneric = genericTerms.includes(p.toLowerCase());
-    
+
     // Only add generic terms if it is the very last part of a multi-part hierarchy
     // or if we have no other choice. This avoids "Outras › Outras".
     if (isGeneric) {
@@ -218,8 +220,8 @@ function NcmField({ value, description, onCodeChange, disabled }: { value: strin
   }, [ncmInput, ncmDesc]);
 
   return (
-    <div className="space-y-1">
-      <Label className="text-xs">{t('quotes.ncm_code')}</Label>
+    <div className="space-y-1.5">
+      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.ncm_code')}</Label>
       <Input
         placeholder="0000.00.00"
         value={ncmInput}
@@ -264,6 +266,12 @@ export function calcItemWeight(item: CargoItem): number {
 export function calcChargeableWeight(items: CargoItem[], mode: string): number {
   const totalWeight = items.reduce((s, i) => s + calcItemWeight(i), 0);
   const totalCbm = items.reduce((s, i) => s + getEffectiveVolume(i), 0);
+  return calcChargeableWeightFromTotals(totalWeight, totalCbm, mode);
+}
+
+/** Same formula as calcChargeableWeight, but from pre-aggregated totals
+ *  (used when weight comes from another source, e.g. the Cost Estimate). */
+export function calcChargeableWeightFromTotals(totalWeight: number, totalCbm: number, mode: string): number {
   if (mode === 'air') {
     return Math.max(totalWeight, totalCbm * 1_000_000 / 6000);
   }
@@ -274,18 +282,60 @@ export function calcChargeableWeight(items: CargoItem[], mode: string): number {
   return totalWeight;
 }
 
+function itemTitle(item: CargoItem, mode: string): string {
+  if (mode === 'ocean_fcl' || mode === 'multimodal') {
+    const qty = item.container_qty || 1;
+    return `${qty}x ${item.container_type || '20GP'}`;
+  }
+  if (mode === 'road' && item.vehicle_type) return item.vehicle_type;
+  return item.commodity || 'Item sem descrição';
+}
+
+function itemSubtitle(item: CargoItem, mode: string): string {
+  const parts: string[] = [];
+  const weight = calcItemWeight(item);
+  if (weight > 0) parts.push(`${weight.toLocaleString('pt-BR')} kg`);
+  const cbm = getEffectiveVolume(item);
+  if (cbm > 0) parts.push(`${cbm.toFixed(3)} m³`);
+  if (item.packages) parts.push(`${item.packages} vol.`);
+  if (item.cargo_value) parts.push(`${item.cargo_value_currency || 'USD'} ${item.cargo_value}`);
+  if (mode !== 'ocean_fcl' && mode !== 'multimodal' && item.ncm_code) parts.push(`NCM ${item.ncm_code}`);
+  return parts.length > 0 ? parts.join(' · ') : 'Sem detalhes preenchidos';
+}
+
 export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps) {
   const { t } = useLanguage();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [draft, setDraft] = useState<CargoItem>({ ...emptyCargoItem });
 
-  const updateItem = (index: number, key: keyof CargoItem, value: any) => {
-    const updated = [...items];
-    updated[index] = { ...updated[index], [key]: value };
-    onChange(updated);
+  const patchDraft = (patch: Partial<CargoItem>) => setDraft((d) => ({ ...d, ...patch }));
+
+  const openAddDialog = () => {
+    if (readOnly) return;
+    setDraft({ ...emptyCargoItem });
+    setEditingIndex(null);
+    setDialogOpen(true);
   };
 
-  const addItem = () => !readOnly && onChange([...items, { ...emptyCargoItem }]);
+  const openEditDialog = (idx: number) => {
+    if (readOnly) return;
+    setDraft({ ...items[idx] });
+    setEditingIndex(idx);
+    setDialogOpen(true);
+  };
+
+  const handleSave = () => {
+    if (editingIndex === null) {
+      onChange([...items, draft]);
+    } else {
+      onChange(items.map((it, i) => (i === editingIndex ? draft : it)));
+    }
+    setDialogOpen(false);
+  };
+
   const removeItem = (index: number) => {
-    if (readOnly || items.length <= 1) return;
+    if (readOnly) return;
     onChange(items.filter((_, i) => i !== index));
   };
 
@@ -299,178 +349,62 @@ export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps)
 
   return (
     <div className="space-y-4">
-      {items.map((item, idx) => (
-        <div key={idx} className="relative rounded-lg border border-border p-3 space-y-3">
-          {/* Item header */}
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
-              <Package className="w-3 h-3" /> {t('quotes.item')} {idx + 1}
-            </span>
-            {items.length > 1 && !readOnly && (
-              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeItem(idx)}>
-                <Trash2 className="w-3.5 h-3.5 text-destructive" />
-              </Button>
-            )}
-          </div>
-
-          {/* Container fields – Ocean FCL & Multimodal */}
-          {showContainers && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">{t('quotes.container_type')}</Label>
-                  <Select value={item.container_type} onValueChange={(v) => updateItem(idx, 'container_type', v)} disabled={readOnly}>
-                    <SelectTrigger><SelectValue placeholder="20GP" /></SelectTrigger>
-                    <SelectContent>
-                      {CONTAINER_TYPES.map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Container # moved to Logistics tab */}
-              </div>
-              {CONTAINER_SPECS[item.container_type] && (
-                <div className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5 flex gap-4">
-                  <span>⚖️ Máx: <strong>{CONTAINER_SPECS[item.container_type].maxWeight.toLocaleString()} kg</strong></span>
-                  <span>📦 Máx: <strong>{CONTAINER_SPECS[item.container_type].maxVolume} m³</strong></span>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Weight, Volume & Cargo Value */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">
-                {(parseInt(item.packages) || 0) >= 2
-                  ? `${t('quotes.weight_kg')} por Volume`
-                  : t('quotes.weight_kg')}
-              </Label>
-              <Input inputMode="decimal" placeholder={showContainers && CONTAINER_SPECS[item.container_type] ? `Máx ${CONTAINER_SPECS[item.container_type].maxWeight.toLocaleString()}` : '0'} value={item.weight_kg} onChange={(e) => updateItem(idx, 'weight_kg', e.target.value)} disabled={readOnly} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('quotes.volume_cbm')}</Label>
-              {(() => {
-                const computed = calcItemCbm(item);
-                const displayValue = computed > 0 ? computed.toFixed(4) : item.volume_cbm;
-                const isComputed = computed > 0;
-                return (
-                  <Input
-                    inputMode="decimal"
-                    placeholder="0"
-                    value={displayValue}
-                    readOnly={isComputed || readOnly}
-                    className={isComputed || readOnly ? 'bg-muted/50' : ''}
-                    onChange={(e) => {
-                      if (!isComputed) updateItem(idx, 'volume_cbm', e.target.value);
-                    }}
-                  />
-                );
-              })()}
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Valor da Carga</Label>
-              <div className="flex gap-1">
-                <Select value={item.cargo_value_currency || 'USD'} onValueChange={(v) => updateItem(idx, 'cargo_value_currency', v)} disabled={readOnly}>
-                  <SelectTrigger className="w-20 shrink-0"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {['USD', 'BRL', 'EUR', 'GBP', 'CNY'].map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input inputMode="decimal" placeholder="0.00" value={item.cargo_value} onChange={(e) => updateItem(idx, 'cargo_value', e.target.value)} disabled={readOnly} />
-              </div>
-            </div>
-          </div>
-
-          {/* Dimensions – LCL, Air, Road, Multimodal */}
-          {showDimensions && (
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t('quotes.length_cm')}</Label>
-                <Input inputMode="decimal" placeholder="0" value={item.length_cm} onChange={(e) => updateItem(idx, 'length_cm', e.target.value)} disabled={readOnly} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t('quotes.width_cm')}</Label>
-                <Input inputMode="decimal" placeholder="0" value={item.width_cm} onChange={(e) => updateItem(idx, 'width_cm', e.target.value)} disabled={readOnly} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t('quotes.height_cm')}</Label>
-                <Input inputMode="decimal" placeholder="0" value={item.height_cm} onChange={(e) => updateItem(idx, 'height_cm', e.target.value)} disabled={readOnly} />
-              </div>
-            </div>
-          )}
-
-          {/* Vehicle type – Road */}
-          {showVehicle && (
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('quotes.vehicle_type')}</Label>
-              <Select value={item.vehicle_type} onValueChange={(v) => updateItem(idx, 'vehicle_type', v)} disabled={readOnly}>
-                <SelectTrigger><SelectValue placeholder={t('quotes.vehicle_type')} /></SelectTrigger>
-                <SelectContent>
-                  {VEHICLE_TYPES.map((v) => (
-                    <SelectItem key={v} value={v}>{v}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Packages – hide for FCL */}
-          {mode !== 'ocean_fcl' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t('quotes.packages')}</Label>
-                <Input inputMode="numeric" placeholder="0" value={item.packages} onChange={(e) => updateItem(idx, 'packages', e.target.value)} disabled={readOnly} />
-              </div>
-            </div>
-          )}
-
-          {/* NCM */}
-          <NcmField
-            value={item.ncm_code}
-            description={item.commodity}
-            onCodeChange={(code, desc) => {
-              if (readOnly) return;
-              const updated = [...items];
-              updated[idx] = { ...updated[idx], ncm_code: code, commodity: desc };
-              onChange(updated);
-            }}
-            disabled={readOnly}
-          />
-
-          {/* Dangerous goods */}
-          <div className="flex items-center gap-2">
-            <Checkbox
-              checked={item.dangerous_goods}
-              onCheckedChange={(v) => updateItem(idx, 'dangerous_goods', !!v)}
-              id={`dg-${idx}`}
-              disabled={readOnly}
-            />
-            <Label htmlFor={`dg-${idx}`} className="text-xs cursor-pointer">{t('quotes.dangerous_goods')}</Label>
-          </div>
-
-          {/* Notes / Observações */}
-          <div className="space-y-1.5">
-            <Label className="text-xs">Observações</Label>
-            <Input placeholder="Detalhes adicionais da carga..." value={item.notes} onChange={(e) => updateItem(idx, 'notes', e.target.value)} disabled={readOnly} />
-          </div>
-        </div>
-      ))}
-
-      {/* Add item button */}
+      {/* Add item button — no topo, mesmo padrão do botão "Adicionar Taxa" */}
       {!readOnly && (
-        <Button type="button" variant="outline" size="sm" className="w-full" onClick={addItem}>
-          <Plus className="w-4 h-4 mr-1" /> {t('quotes.add_item')}
+        <Button type="button" size="sm" className="gap-2" onClick={openAddDialog}>
+          <Plus className="w-4 h-4" /> Adicionar Carga
         </Button>
       )}
 
+      {/* Lista organizada dos itens */}
+      <div className="space-y-2">
+        {items.length === 0 ? (
+          <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
+            Nenhuma carga adicionada ainda. Clique em "Adicionar Carga" acima para começar.
+          </div>
+        ) : (
+          items.map((item, idx) => (
+            <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-secondary/50">
+              <button
+                type="button"
+                onClick={() => openEditDialog(idx)}
+                disabled={readOnly}
+                className="flex-1 min-w-0 flex items-center gap-3 text-left disabled:cursor-default"
+              >
+                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary shrink-0">
+                  <Package className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-medium truncate">{itemTitle(item, mode)}</p>
+                    {item.dangerous_goods && (
+                      <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-destructive/40 text-destructive gap-0.5">
+                        <AlertTriangle className="w-2.5 h-2.5" /> IMO
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{itemSubtitle(item, mode)}</p>
+                </div>
+              </button>
+              {!readOnly && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(idx)}>
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeItem(idx)}>
+                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
       {/* Totals */}
       {items.length > 0 && (
-        <div className="rounded-md border border-border bg-muted/30 px-3 py-2 space-y-1">
-          <p className="text-xs font-semibold text-muted-foreground">{t('quotes.totals')}</p>
+        <div className="rounded-lg border bg-muted/20 px-3 py-2.5 space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.totals')}</p>
           <div className="flex flex-wrap gap-4 text-sm">
             <span>{t('quotes.weight_kg')}: <strong className="font-mono">{totalWeight.toFixed(2)}</strong></span>
             <span>{t('quotes.total_cbm')}: <strong className="font-mono">{totalCbm.toFixed(4)}</strong> m³</span>
@@ -480,6 +414,171 @@ export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps)
           </div>
         </div>
       )}
+
+      {/* Dialog de adicionar/editar carga */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
+          <div className="px-6 py-3 border-b bg-muted/30">
+            <DialogHeader className="space-y-0.5">
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <span className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary">
+                  <Package className="w-4 h-4" />
+                </span>
+                {editingIndex === null ? 'Adicionar Carga' : 'Editar Carga'}
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Preencha os dados físicos da carga usados para cotar o frete.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+
+          <div className="px-6 py-4 space-y-3.5 max-h-[70vh] overflow-y-auto">
+            {/* Container */}
+            {showContainers && (
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.container_type')}</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <Select value={draft.container_type} onValueChange={(v) => patchDraft({ container_type: v })}>
+                    <SelectTrigger><SelectValue placeholder="20GP" /></SelectTrigger>
+                    <SelectContent>
+                      {CONTAINER_TYPES.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    inputMode="numeric"
+                    placeholder="Quantidade"
+                    value={draft.container_qty}
+                    onChange={(e) => patchDraft({ container_qty: parseInt(e.target.value) || 1 })}
+                  />
+                </div>
+                {CONTAINER_SPECS[draft.container_type] && (
+                  <div className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5 flex gap-4">
+                    <span>⚖️ Máx: <strong>{CONTAINER_SPECS[draft.container_type].maxWeight.toLocaleString()} kg</strong></span>
+                    <span>📦 Máx: <strong>{CONTAINER_SPECS[draft.container_type].maxVolume} m³</strong></span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Weight, Volume & Cargo Value */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {(parseInt(draft.packages) || 0) >= 2
+                    ? `${t('quotes.weight_kg')} por Volume`
+                    : t('quotes.weight_kg')}
+                </Label>
+                <Input
+                  inputMode="decimal"
+                  placeholder={showContainers && CONTAINER_SPECS[draft.container_type] ? `Máx ${CONTAINER_SPECS[draft.container_type].maxWeight.toLocaleString()}` : '0'}
+                  value={draft.weight_kg}
+                  onChange={(e) => patchDraft({ weight_kg: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.volume_cbm')}</Label>
+                {(() => {
+                  const computed = calcItemCbm(draft);
+                  const displayValue = computed > 0 ? computed.toFixed(4) : draft.volume_cbm;
+                  const isComputed = computed > 0;
+                  return (
+                    <Input
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={displayValue}
+                      readOnly={isComputed}
+                      className={isComputed ? 'bg-muted/50' : ''}
+                      onChange={(e) => {
+                        if (!isComputed) patchDraft({ volume_cbm: e.target.value });
+                      }}
+                    />
+                  );
+                })()}
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Valor da Carga</Label>
+                <div className="flex gap-1.5">
+                  <Select value={draft.cargo_value_currency || 'USD'} onValueChange={(v) => patchDraft({ cargo_value_currency: v })}>
+                    <SelectTrigger className="w-20 shrink-0"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {['USD', 'BRL', 'EUR', 'GBP', 'CNY'].map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input inputMode="decimal" placeholder="0.00" value={draft.cargo_value} onChange={(e) => patchDraft({ cargo_value: e.target.value })} />
+                </div>
+              </div>
+            </div>
+
+            {/* Dimensions – LCL, Air, Road, Multimodal */}
+            {showDimensions && (
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dimensões (cm)</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  <Input inputMode="decimal" placeholder={t('quotes.length_cm')} value={draft.length_cm} onChange={(e) => patchDraft({ length_cm: e.target.value })} />
+                  <Input inputMode="decimal" placeholder={t('quotes.width_cm')} value={draft.width_cm} onChange={(e) => patchDraft({ width_cm: e.target.value })} />
+                  <Input inputMode="decimal" placeholder={t('quotes.height_cm')} value={draft.height_cm} onChange={(e) => patchDraft({ height_cm: e.target.value })} />
+                </div>
+              </div>
+            )}
+
+            {/* Vehicle type & Packages */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {showVehicle && (
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.vehicle_type')}</Label>
+                  <Select value={draft.vehicle_type} onValueChange={(v) => patchDraft({ vehicle_type: v })}>
+                    <SelectTrigger><SelectValue placeholder={t('quotes.vehicle_type')} /></SelectTrigger>
+                    <SelectContent>
+                      {VEHICLE_TYPES.map((v) => (
+                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {mode !== 'ocean_fcl' && (
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.packages')}</Label>
+                  <Input inputMode="numeric" placeholder="0" value={draft.packages} onChange={(e) => patchDraft({ packages: e.target.value })} />
+                </div>
+              )}
+            </div>
+
+            {/* NCM */}
+            <NcmField
+              value={draft.ncm_code}
+              description={draft.commodity}
+              onCodeChange={(code, desc) => patchDraft({ ncm_code: code, commodity: desc })}
+            />
+
+            {/* Dangerous goods */}
+            <label className="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer select-none hover:bg-accent/40 transition-colors">
+              <Checkbox
+                checked={draft.dangerous_goods}
+                onCheckedChange={(v) => patchDraft({ dangerous_goods: !!v })}
+              />
+              <span className="text-sm">{t('quotes.dangerous_goods')}</span>
+            </label>
+
+            {/* Notes / Observações */}
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Observações</Label>
+              <Input placeholder="Detalhes adicionais da carga..." value={draft.notes} onChange={(e) => patchDraft({ notes: e.target.value })} />
+            </div>
+          </div>
+
+          <DialogFooter className="flex-wrap gap-2 sm:justify-between px-6 py-3 border-t bg-muted/20">
+            <Button variant="ghost" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
+            <Button onClick={handleSave}>
+              {editingIndex === null ? 'Adicionar' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

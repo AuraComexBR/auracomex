@@ -3,6 +3,7 @@ import { StripeEmbeddedCheckout } from "@/components/billing/StripeEmbeddedCheck
 
 interface CheckoutOptions {
   priceId: string;
+  seats?: number;
   returnUrl?: string;
 }
 

@@ -4,28 +4,56 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, Check, X, Mail, Users, Ship, CreditCard, ExternalLink, ArrowUpRight } from 'lucide-react';
+import { Sparkles, Check, X, Mail, Users, Ship, CreditCard, ExternalLink } from 'lucide-react';
 import { useSubscription, PLAN_LABEL, ADDON_META, type AddonKey } from '@/hooks/useSubscription';
 import { useStripeCheckout } from '@/hooks/useStripeCheckout';
 import { PaymentTestModeBanner } from '@/components/billing/PaymentTestModeBanner';
 import { getStripeEnvironment, isPaymentsConfigured } from '@/lib/stripe';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-const COMMERCIAL_ADDONS: AddonKey[] = ['cost_estimate_premium', 'tracking_portal', 'ai_import'];
+// Add-ons vendidos avulsos. No Business já vêm inclusos (ver company_has_addon no banco).
+const COMMERCIAL_ADDONS: AddonKey[] = ['cost_estimate_premium'];
 
-const PLAN_PRICES: Record<'starter' | 'professional' | 'business', { price: string; priceId: string }> = {
-  starter:      { price: 'R$ 297', priceId: 'aura_starter_monthly' },
-  professional: { price: 'R$ 697', priceId: 'aura_professional_monthly' },
-  business:     { price: 'R$ 1.497', priceId: 'aura_business_monthly' },
-};
-
-const ADDON_PRICES: Record<'cost_estimate_premium' | 'tracking_portal' | 'ai_import', string> = {
+const ADDON_PRICES: Record<'cost_estimate_premium', string> = {
   cost_estimate_premium: 'aura_addon_cost_estimate_monthly',
-  tracking_portal:       'aura_addon_tracking_monthly',
-  ai_import:             'aura_addon_ai_import_monthly',
 };
+
+type PlanKey = 'starter' | 'professional' | 'business';
+type SelfServePlanKey = 'starter' | 'professional';
+
+// Preço por assento (volume: todo mundo paga o valor da faixa do total de usuários).
+// Business é sob negociação (sem checkout self-service) — ver bloco "Fale conosco" abaixo.
+const PLAN_TIERS: Record<SelfServePlanKey, { priceId: string; shipmentsLabel: string; seatTiers: { upTo: number; unitPrice: number }[] }> = {
+  starter: {
+    priceId: 'aura_basic_monthly',
+    shipmentsLabel: '30 embarques/mês',
+    seatTiers: [
+      { upTo: 1, unitPrice: 149.99 },
+      { upTo: 2, unitPrice: 139.99 },
+      { upTo: Infinity, unitPrice: 129.99 },
+    ],
+  },
+  professional: {
+    priceId: 'aura_professional_monthly',
+    shipmentsLabel: '100 embarques/mês',
+    seatTiers: [
+      { upTo: 1, unitPrice: 249.99 },
+      { upTo: 2, unitPrice: 229.99 },
+      { upTo: Infinity, unitPrice: 199.99 },
+    ],
+  },
+};
+
+function unitPriceFor(plan: SelfServePlanKey, seats: number): number {
+  const tiers = PLAN_TIERS[plan].seatTiers;
+  const tier = tiers.find((t) => seats <= t.upTo) || tiers[tiers.length - 1];
+  return tier.unitPrice;
+}
+function fmtBRL(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
 
 function statusBadge(status: string) {
   const map: Record<string, { label: string; cls: string }> = {
@@ -43,6 +71,7 @@ export default function Billing() {
   const { data: sub, isLoading } = useSubscription();
   const { openCheckout, closeCheckout, isOpen, checkoutElement } = useStripeCheckout();
   const [portalLoading, setPortalLoading] = useState(false);
+  const [seats, setSeats] = useState(1);
 
   const { data: usage } = useQuery({
     queryKey: ['billing-usage', profile?.company_id],
@@ -91,13 +120,21 @@ export default function Billing() {
     }
   }
 
-  function handleSubscribe(priceId: string) {
+  function handleSubscribe(priceId: string, seatCount?: number) {
     if (!isPaymentsConfigured()) {
       toast.error('Pagamentos ainda não estão ativos nesta build.');
       return;
     }
-    openCheckout({ priceId });
+    openCheckout({ priceId, seats: seatCount });
   }
+
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('starter');
+  useEffect(() => {
+    if (sub?.plan) setSelectedPlan(sub.plan as PlanKey);
+  }, [sub?.plan]);
+  const isSelfServe = selectedPlan !== 'business';
+  const selectedUnitPrice = isSelfServe ? unitPriceFor(selectedPlan, seats) : 0;
+  const selectedTotal = selectedUnitPrice * seats;
 
   if (isLoading) return <div className="p-6 text-muted-foreground">Carregando…</div>;
   if (!sub) return <div className="p-6 text-muted-foreground">Nenhuma assinatura encontrada.</div>;
@@ -146,45 +183,81 @@ export default function Billing() {
           </div>
         </CardContent>
         {!isCourtesy && (
-          <CardContent className="pt-0 flex flex-wrap gap-2">
+          <CardContent className="pt-0">
             {hasStripeSub ? (
               <Button onClick={openPortal} disabled={portalLoading} variant="outline">
                 <ExternalLink className="w-4 h-4 mr-2" />
                 {portalLoading ? 'Abrindo…' : 'Gerenciar assinatura'}
               </Button>
             ) : (
-              <Button onClick={() => handleSubscribe(PLAN_PRICES[sub.plan].priceId)}>
-                <CreditCard className="w-4 h-4 mr-2" />
-                Assinar plano {PLAN_LABEL[sub.plan]} — {PLAN_PRICES[sub.plan].price}/mês
-              </Button>
+              <div className="space-y-4 max-w-lg">
+                <div className="grid grid-cols-3 gap-2">
+                  {(['starter', 'professional', 'business'] as PlanKey[]).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setSelectedPlan(p)}
+                      className={`text-left rounded-lg border p-3 transition-colors ${
+                        selectedPlan === p ? 'border-primary bg-primary/10' : 'border-border bg-card/40 hover:bg-card/70'
+                      }`}
+                    >
+                      <p className="font-medium text-sm">{PLAN_LABEL[p]}</p>
+                      {p === 'business' ? (
+                        <>
+                          <p className="text-xs text-muted-foreground">Sem limites</p>
+                          <p className="text-xs text-muted-foreground mt-1">Fale conosco</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">{PLAN_TIERS[p].shipmentsLabel}</p>
+                          <p className="text-xs text-muted-foreground mt-1">a partir de {fmtBRL(PLAN_TIERS[p].seatTiers[PLAN_TIERS[p].seatTiers.length - 1].unitPrice)}/usuário</p>
+                        </>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {selectedPlan === 'business' ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Business é sob medida: embarques e usuários ilimitados, todos os add-ons inclusos. As condições são negociadas direto com nosso time.
+                    </p>
+                    <Button asChild>
+                      <a href="mailto:contato@auracomex.app?subject=Aura%20Business%20-%20Quero%20negociar">
+                        <Mail className="w-4 h-4 mr-2" />Falar com vendas
+                      </a>
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground uppercase tracking-wide">Quantos usuários?</label>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => setSeats((s) => Math.max(1, s - 1))}>-</Button>
+                        <input
+                          type="number"
+                          min={1}
+                          value={seats}
+                          onChange={(e) => setSeats(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="h-9 w-16 text-center rounded-md border border-input bg-background"
+                        />
+                        <Button type="button" size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => setSeats((s) => s + 1)}>+</Button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {fmtBRL(selectedUnitPrice)}/usuário × {seats} = <span className="font-semibold text-foreground">{fmtBRL(selectedTotal)}/mês</span>
+                    </p>
+                    <Button onClick={() => handleSubscribe(PLAN_TIERS[selectedPlan].priceId, seats)}>
+                      <CreditCard className="w-4 h-4 mr-2" />
+                      Assinar plano {PLAN_LABEL[selectedPlan]}
+                    </Button>
+                  </>
+                )}
+              </div>
             )}
           </CardContent>
         )}
       </Card>
-
-      {/* Trocar de plano */}
-      {!isCourtesy && (
-        <Card className="glass">
-          <CardHeader><CardTitle>Mudar de plano</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {(['starter', 'professional', 'business'] as const).map((p) => (
-              <div key={p} className={`p-4 rounded-lg border ${sub.plan === p ? 'border-primary/50 bg-primary/5' : 'border-border bg-card/40'}`}>
-                <p className="font-semibold">{PLAN_LABEL[p]}</p>
-                <p className="text-sm text-muted-foreground mb-3">{PLAN_PRICES[p].price}/mês</p>
-                {sub.plan === p ? (
-                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">Plano atual</Badge>
-                ) : hasStripeSub ? (
-                  <Button size="sm" variant="outline" onClick={openPortal} disabled={portalLoading}>
-                    <ArrowUpRight className="w-4 h-4 mr-1" />Trocar
-                  </Button>
-                ) : (
-                  <Button size="sm" onClick={() => handleSubscribe(PLAN_PRICES[p].priceId)}>Assinar</Button>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
 
       {/* Add-ons */}
       <Card className="glass">
@@ -208,8 +281,8 @@ export default function Billing() {
                     {active ? 'Ativo' : 'Inativo'}
                   </Badge>
                   {!active && !includedInBusiness && !isCourtesy && (
-                    <Button size="sm" variant="outline" onClick={() => handleSubscribe(ADDON_PRICES[key as 'cost_estimate_premium' | 'tracking_portal' | 'ai_import'])}>
-                      <CreditCard className="w-4 h-4 mr-1" />Assinar R$ 197
+                    <Button size="sm" variant="outline" onClick={() => handleSubscribe(ADDON_PRICES[key])}>
+                      <CreditCard className="w-4 h-4 mr-1" />Assinar
                     </Button>
                   )}
                 </div>

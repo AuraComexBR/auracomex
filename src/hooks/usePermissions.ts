@@ -64,6 +64,18 @@ export function usePermissions() {
   };
 }
 
+// Plano Básico só oferece papéis simples (sem hierarquia/coordenadores). Professional e
+// Business liberam os 13 papéis completos. 'client' e 'superadmin' não entram nessa lista
+// porque nunca são atribuíveis pelos formulários de convite/edição de qualquer plano.
+export const BASIC_PLAN_ROLES = ['admin', 'operator', 'financeiro', 'viewer'] as const;
+
+export function getAssignableRolesForPlan<T extends string>(allRoles: readonly T[], plan: string | undefined): T[] {
+  if (plan === 'starter') {
+    return allRoles.filter((r) => (BASIC_PLAN_ROLES as readonly string[]).includes(r));
+  }
+  return [...allRoles];
+}
+
 export const ROLE_LABELS: Record<string, Record<'pt' | 'en', string>> = {
   superadmin: { pt: 'Superadmin', en: 'Superadmin' },
   admin: { pt: 'Administrador', en: 'Administrator' },

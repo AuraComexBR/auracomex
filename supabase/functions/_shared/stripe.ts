@@ -9,34 +9,23 @@ const getEnv = (key: string): string => {
 
 export type StripeEnv = 'sandbox' | 'live';
 
-const GATEWAY_STRIPE_BASE = 'https://connector-gateway.lovable.dev/stripe';
-
 export function getConnectionApiKey(env: StripeEnv): string {
   return env === 'sandbox'
     ? getEnv('STRIPE_SANDBOX_API_KEY')
     : getEnv('STRIPE_LIVE_API_KEY');
 }
 
+// Conecta direto na API oficial do Stripe (api.stripe.com), sem passar por
+// gateway de terceiro. Antes isso ia via connector-gateway.lovable.dev,
+// o que deixava checkout/portal de cobrança dependentes da conta da Lovable
+// continuar ativa — risco desnecessário já que as chaves aqui já são as
+// chaves reais da conta Stripe.
 export function createStripeClient(env: StripeEnv): Stripe {
   const connectionApiKey = getConnectionApiKey(env);
-  const lovableApiKey = getEnv('LOVABLE_API_KEY');
 
   return new Stripe(connectionApiKey, {
     apiVersion: '2026-03-25.dahlia',
-    httpClient: Stripe.createFetchHttpClient((input, init) => {
-      const stripeUrl = input instanceof Request ? input.url : input.toString();
-      const gatewayUrl = stripeUrl.replace('https://api.stripe.com', GATEWAY_STRIPE_BASE);
-      return fetch(gatewayUrl, {
-        ...init,
-        headers: {
-          ...Object.fromEntries(
-            new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).entries(),
-          ),
-          'X-Connection-Api-Key': connectionApiKey,
-          'Lovable-API-Key': lovableApiKey,
-        },
-      });
-    }),
+    httpClient: Stripe.createFetchHttpClient(),
   });
 }
 
@@ -82,9 +71,13 @@ export async function verifyWebhook(req: Request, env: StripeEnv): Promise<{ typ
 }
 
 // Aura plan/add-on catalog — maps human-readable price IDs to internal keys.
+// "Básico" reaproveita o valor 'starter' do enum do banco (subscription_plan) pra
+// não precisar de migration — só o rótulo exibido mudou (ver PLAN_LABEL). O preço
+// no Stripe é por assento (tiered/volume: 1º usuário R$149,99, 2º R$139,99, 3º+
+// R$129,99 cada), então quantity no checkout = nº de usuários, não fixo em 1.
 export const PLAN_PRICE_MAP: Record<string, { kind: 'plan'; plan: 'starter' | 'professional' | 'business'; seats: number | null; shipments: number | null }> = {
-  aura_starter_monthly:      { kind: 'plan', plan: 'starter',      seats: 3,    shipments: 30 },
-  aura_professional_monthly: { kind: 'plan', plan: 'professional', seats: 10,   shipments: 100 },
+  aura_basic_monthly:        { kind: 'plan', plan: 'starter',      seats: null, shipments: 30 },
+  aura_professional_monthly: { kind: 'plan', plan: 'professional', seats: null, shipments: 100 },
   aura_business_monthly:     { kind: 'plan', plan: 'business',     seats: null, shipments: null },
 };
 

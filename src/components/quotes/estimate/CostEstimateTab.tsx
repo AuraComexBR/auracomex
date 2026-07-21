@@ -11,6 +11,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 
 import { useExchangeRate } from '@/hooks/useExchangeRate';
+import { useAuth } from '@/contexts/AuthContext';
+import { logAuditEvent } from '@/lib/auditLog';
 import { useCostEstimate, computeBreakdown, EstimateItemRow, EstimateExpenseRow, EstimateRow, syncEstimateFromCharges, syncEstimateItemsFromQuote } from '@/hooks/useCostEstimate';
 import { syncGeneralFieldsToEstimate } from '@/lib/estimateHeaderSync';
 import { pct, toBRL } from '@/lib/costEstimate';
@@ -63,6 +65,7 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
   { quoteId, quote, quoteItems, quotePartners = [], companyId, charges, getBillingMultiplier, onStateChange },
   ref,
 ) {
+  const { profile } = useAuth();
   const { data, isLoading, createEstimate, deleteEstimate, invalidate } = useCostEstimate(quoteId, companyId);
   const { usdBrl: latestUsdBrl, eurBrl: latestEurBrl, refetch: refetchRates, loading: ratesLoadingQuery } = useExchangeRate();
   const [frozenUsdBrl, setFrozenUsdBrl] = useState<number | null>(null);
@@ -521,6 +524,16 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
 
       setSaveState('saved');
       toast.success(`Estimativa salva (${dirtyCount} alteração${dirtyCount > 1 ? 'ões' : ''}).`);
+      if (companyId) {
+        logAuditEvent({
+          quoteId,
+          companyId,
+          userId: profile?.user_id,
+          field_name: 'estimate',
+          old_value: null,
+          new_value: `Estimativa salva (${dirtyCount} alteração${dirtyCount > 1 ? 'ões' : ''})`,
+        });
+      }
       invalidate();
       setTimeout(() => { exitEdit(); }, 900);
     } catch (err: any) {

@@ -1,18 +1,21 @@
 import { useQuery } from '@tanstack/react-query';
 
+export type ExchangeRateSource = 'AwesomeAPI' | 'ExchangeRate-API' | 'Open ER-API';
+
 interface ExchangeRates {
   usdBrl: number | null;
   eurBrl: number | null;
+  source: ExchangeRateSource | null;
   loading: boolean;
   refetch: () => Promise<any>;
 }
 
-async function fetchRates(date?: string): Promise<{ usdBrl: number; eurBrl: number }> {
+async function fetchRates(date?: string): Promise<{ usdBrl: number; eurBrl: number; source: ExchangeRateSource }> {
   const fetchFromAwesome = async () => {
     if (date) {
       const cleanDate = date.replace(/-/g, '');
       const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-      
+
       if (cleanDate !== today) {
         const [usdRes, eurRes] = await Promise.all([
           fetch(`https://economia.awesomeapi.com.br/json/daily/USD-BRL/?start_date=${cleanDate}&end_date=${cleanDate}`),
@@ -20,7 +23,7 @@ async function fetchRates(date?: string): Promise<{ usdBrl: number; eurBrl: numb
         ]);
 
         if (!usdRes.ok || !eurRes.ok) throw new Error('AwesomeAPI Historical Failed');
-        
+
         const usdData = await usdRes.json();
         const eurData = await eurRes.json();
 
@@ -40,36 +43,36 @@ async function fetchRates(date?: string): Promise<{ usdBrl: number; eurBrl: numb
     };
   };
 
-  const fetchFromFallback = async () => {
+  const fetchFromFallback = async (): Promise<{ usdBrl: number; eurBrl: number; source: ExchangeRateSource }> => {
     try {
       // Primary Fallback: ExchangeRate-API (v4)
       const res = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
       if (!res.ok) throw new Error('ExchangeRate-API Failed');
       const data = await res.json();
-      
+
       const usdBrl = data.rates.BRL;
       const eurRate = data.rates.EUR;
       const eurBrl = usdBrl / eurRate; // Cross rate triangulation
 
-      return { usdBrl, eurBrl };
+      return { usdBrl, eurBrl, source: 'ExchangeRate-API' };
     } catch (e) {
       // Secondary Fallback: Open ER-API
       const res = await fetch('https://open.er-api.com/v6/latest/USD');
       if (!res.ok) throw new Error('Open ER-API Failed');
       const data = await res.json();
-      
+
       const usdBrl = data.rates.BRL;
       const eurRate = data.rates.EUR;
       const eurBrl = usdBrl / eurRate;
 
-      return { usdBrl, eurBrl };
+      return { usdBrl, eurBrl, source: 'Open ER-API' };
     }
   };
 
   try {
     const rates = await fetchFromAwesome();
     if (rates.usdBrl === 0) throw new Error('Invalid AwesomeAPI data');
-    return rates;
+    return { ...rates, source: 'AwesomeAPI' };
   } catch (error) {
     console.warn('Primary exchange API failed, using fallback:', error);
     return await fetchFromFallback();
@@ -89,6 +92,7 @@ export function useExchangeRate(date?: string): ExchangeRates {
   return {
     usdBrl: data?.usdBrl ?? null,
     eurBrl: data?.eurBrl ?? null,
+    source: data?.source ?? null,
     loading: isLoading || isFetching,
     refetch,
   };

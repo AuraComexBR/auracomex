@@ -7,7 +7,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useHasAddon } from '@/hooks/useSubscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, TrendingDown, TrendingUp, Send, MapPin, DollarSign, Activity, Package, Info, Users, ShoppingCart, Undo2, Calculator, Pencil, X, RotateCw } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, DollarSign, Package, Info, Users, ShoppingCart, Undo2, Calculator, Pencil, X, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History } from 'lucide-react';
 import { CostEstimateTab, type CostEstimateTabHandle } from './estimate/CostEstimateTab';
 import { FloatingSaveButton } from './estimate/FloatingSaveButton';
 import { QuotePdfPreviewDialog } from './QuotePdfPreviewDialog';
@@ -27,7 +27,8 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { PortSelect } from '@/components/shared/PortSelect';
-import { ModeFields, emptyCargoItem, type CargoItem, calcItemCbm, calcItemWeight, calcChargeableWeight, getEffectiveVolume } from './ModeFields';
+import { ModeFields, emptyCargoItem, type CargoItem, calcItemCbm, calcItemWeight, calcChargeableWeight, calcChargeableWeightFromTotals, getEffectiveVolume } from './ModeFields';
+import { useCostEstimate } from '@/hooks/useCostEstimate';
 import { countryCodeToFlag, extractCountryFromPort } from '@/lib/countryFlag';
 import { BenchmarkCard } from '@/components/shared/BenchmarkCard';
 import { format } from 'date-fns';
@@ -36,15 +37,16 @@ import confetti from 'canvas-confetti';
 import { cn } from '@/lib/utils';
 import { LogisticsTab } from '@/components/shipments/LogisticsTab';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
-import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { collectPercentUpdates, computePercentCharge, isCollectFeeName, isPercentCharge, type PercentChargeLike, type CollectFxRates } from '@/lib/collectFee';
 import { PercentBaseDialog } from '@/components/quotes/PercentBaseDialog';
 
 import { DocumentsTab } from '@/components/shipments/DocumentsTab';
-import { ActivityTab } from '@/components/shipments/ActivityTab';
+import { HistoryPanel } from './HistoryPanel';
+// ActivityTab removida como aba própria: histórico agora é unificado no HistoryPanel (botão no header).
+import { logAuditChanges, logAuditEvent } from '@/lib/auditLog';
 
 const LEGS = ['origin', 'freight', 'destination'] as const;
 const CURRENCIES = ['USD', 'BRL', 'EUR', 'GBP', 'CNY'];
@@ -125,6 +127,12 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const hasEstimateAddon = useHasAddon('cost_estimate_premium');
   // Mantém compat com a flag antiga da empresa; add-on comercial libera o mesmo módulo.
   const estimateEnabled = legacyEstimateFlag && hasEstimateAddon;
+  // Estimativa de custo: quando preenchida, seus itens (peso/NCM/mercadoria) passam a ser a
+  // fonte usada no cálculo das Taxas por kg/ton, em vez da Resumo da Carga. Volume (m³) e
+  // containers continuam sempre vindos da Resumo da Carga, pois a Estimativa não tem esses campos.
+  const { data: costEstimateData } = useCostEstimate(quoteId, profile?.company_id);
+  const estimateItemsForCargo = costEstimateData?.estimate ? (costEstimateData.items || []) : [];
+  const hasEstimateOverride = estimateItemsForCargo.length > 0;
   const [reverting, setReverting] = useState(false);
   const [showRevertConfirm, setShowRevertConfirm] = useState(false);
   const isShipmentMode = !!shipmentId;
@@ -164,28 +172,40 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   });
   // Charge percentual sendo configurada (dialog aberto)
   const [percentDialogChargeId, setPercentDialogChargeId] = useState<string | null>(null);
-  const [addingSide, setAddingSide] = useState<'buy' | 'sell' | 'both' | null>(null);
+  const [isAddingCharge, setIsAddingCharge] = useState(false);
   const [addChargeOpen, setAddChargeOpen] = useState(false);
-  const [bidirectional, setBidirectional] = useState(true);
+  // Campos do lado "Venda" — independentes dos campos de compra (chargeForm),
+  // permitindo empresa, unidade de cobrança, moeda e valor diferentes para cada lado.
+  // Basta deixar um dos lados sem valor para criar a taxa só de compra ou só de venda.
+  const [sellPartnerId, setSellPartnerId] = useState('');
+  const [sellBillingUnit, setSellBillingUnit] = useState('fixed');
+  const [sellCurrency, setSellCurrency] = useState('USD');
+  const [sellAmount, setSellAmount] = useState('');
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [chargeDescSearch, setChargeDescSearch] = useState('');
   const [showChargeSuggestions, setShowChargeSuggestions] = useState(false);
   const chargeDescInputRef = useRef<HTMLInputElement>(null);
   const [commentText, setCommentText] = useState('');
-  const [zeroChargeConfirm, setZeroChargeConfirm] = useState<{ side: 'buy' | 'sell'; amount: number } | null>(null);
+  // Onboarding da aba Taxas (mostrado automaticamente na primeira visita)
+  const [showChargesOnboarding, setShowChargesOnboarding] = useState(false);
+  const [chargesOnboardingStep, setChargesOnboardingStep] = useState(0);
 
   // Aba ativa controlada + integração com a aba Estimativa
   const [activeTab, setActiveTab] = useState<string>(isShipmentMode ? 'logistics' : 'general');
   const [estimateState, setEstimateState] = useState({ editMode: false, dirtyCount: 0, hasEstimate: false });
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [leaveTabOpen, setLeaveTabOpen] = useState(false);
+  const [dnView, setDnView] = useState<'partner' | 'client'>('partner');
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const estimateRef = useRef<CostEstimateTabHandle>(null);
   const [backConfirmOpen, setBackConfirmOpen] = useState(false);
 
   // Handler para o botão voltar: se houver alterações não salvas, confirma antes.
   const handleBackClick = () => {
-    if (hasChanges && form.status !== 'converted' && !isShipmentMode) {
+    const unsavedInQuoteMode = hasChanges && form.status !== 'converted' && !isShipmentMode;
+    const unsavedCargoInShipment = hasChanges && isShipmentMode && canEditCargo;
+    if (unsavedInQuoteMode || unsavedCargoInShipment) {
       setBackConfirmOpen(true);
       return;
     }
@@ -201,7 +221,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
     
     // Se estiver editando a cotação (campos gerais, carga, etc) e houver alterações não salvas
-    if (isEditing && hasChanges && next !== activeTab) {
+    const editingCargoInShipment = isShipmentMode && activeTab === 'cargo' && canEditCargo;
+    if ((isEditing || editingCargoInShipment) && hasChanges && next !== activeTab) {
       setPendingTab(next);
       setShowUnsavedConfirm(true);
       return;
@@ -386,11 +407,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
 
   const incoterms = useMemo(() => INCOTERMS_BY_MODE[form.transport_mode] || INCOTERMS_BY_MODE.ocean_fcl, [form.transport_mode]);
 
-  // Cargo metrics for billing unit calculations
+  // Cargo metrics for billing unit calculations.
+  // Volume e containers vêm sempre da Resumo da Carga (a Estimativa não tem esses campos).
+  // Peso vem da Estimativa quando ela estiver preenchida; senão, vem da Resumo da Carga.
   const cargoMetrics = useMemo(() => {
-    const totalWeight = cargoItems.reduce((s, i) => s + calcItemWeight(i), 0);
     const totalCbm = cargoItems.reduce((s, i) => s + getEffectiveVolume(i), 0);
-    const totalChargeable = calcChargeableWeight(cargoItems, form.transport_mode);
     let totalContainers20 = 0;
     let totalContainers40 = 0;
     for (const i of cargoItems) {
@@ -400,8 +421,16 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       else if (size === 40) totalContainers40 += qty;
     }
     const totalContainers = totalContainers20 + totalContainers40;
+
+    const totalWeight = hasEstimateOverride
+      ? estimateItemsForCargo.reduce((s: number, it: any) => s + (Number(it.peso) || 0) * (Number(it.quantidade) || 1), 0)
+      : cargoItems.reduce((s, i) => s + calcItemWeight(i), 0);
+    const totalChargeable = hasEstimateOverride
+      ? calcChargeableWeightFromTotals(totalWeight, totalCbm, form.transport_mode)
+      : calcChargeableWeight(cargoItems, form.transport_mode);
+
     return { totalWeight, totalCbm, totalChargeable, totalContainers, totalContainers20, totalContainers40 };
-  }, [cargoItems, form.transport_mode]);
+  }, [cargoItems, form.transport_mode, hasEstimateOverride, estimateItemsForCargo]);
 
   // Check if form or cargo items have changed compared to original quote/items
   const hasChanges = useMemo(() => {
@@ -466,6 +495,18 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }, [estimateEnabled, activeTab, isShipmentMode]);
 
+  // Onboarding da aba Taxas: mostra automaticamente na primeira vez que o usuário abre a aba.
+  useEffect(() => {
+    if (activeTab !== 'charges') return;
+    try {
+      const seen = localStorage.getItem('auracomex_taxas_onboarding_v1');
+      if (!seen) {
+        setChargesOnboardingStep(0);
+        setShowChargesOnboarding(true);
+      }
+    } catch { /* localStorage indisponível — ignora */ }
+  }, [activeTab]);
+
   // Aviso nativo do navegador ao recarregar/fechar com alterações não salvas.
   useEffect(() => {
     if (!hasChanges || form.status === 'converted' || isShipmentMode) return;
@@ -523,7 +564,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   });
 
   // BRL consolidation using daily FX rate - Manual update only
-  const { usdBrl: latestUsdBrl, eurBrl: latestEurBrl, loading: ratesLoading, refetch: refetchRates } = useExchangeRate();
+  const { usdBrl: latestUsdBrl, eurBrl: latestEurBrl, loading: ratesLoading } = useExchangeRate();
   const [usdBrl, setUsdBrl] = useState<number | null>(null);
   const [eurBrl, setEurBrl] = useState<number | null>(null);
 
@@ -683,6 +724,27 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     setSaving(true);
     try {
       setSaveState('saving');
+
+      // Monta o diff dos campos gerais contra os dados originais (antes de sobrescrever) para o histórico.
+      const generalFieldChecks: { field: string; old: any; next: any }[] = [
+        { field: 'client_id', old: (quote as any)?.client_id, next: form.client_id || null },
+        { field: 'origin', old: (quote as any)?.origin, next: form.origin || null },
+        { field: 'destination', old: (quote as any)?.destination, next: form.destination || null },
+        { field: 'transport_mode', old: (quote as any)?.transport_mode, next: form.transport_mode },
+        { field: 'incoterm', old: (quote as any)?.incoterm, next: (form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : null },
+        { field: 'valid_until', old: (quote as any)?.valid_until ? format(new Date((quote as any).valid_until), 'yyyy-MM-dd') : null, next: form.valid_until || null },
+        { field: 'status', old: (quote as any)?.status, next: form.status },
+      ];
+      const generalChanges = generalFieldChecks
+        .filter((c) => String(c.old ?? '') !== String(c.next ?? ''))
+        .map((c) => {
+          const fmt = (v: any) => {
+            if (c.field === 'client_id') return clients.find((cl: any) => cl.id === v)?.name || v || null;
+            return v ?? null;
+          };
+          return { field_name: c.field, old_value: fmt(c.old), new_value: fmt(c.next) };
+        });
+
       const { error } = await supabase.from('quotes').update({
         client_id: form.client_id || null,
         origin: form.origin || null,
@@ -752,6 +814,30 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         await supabase.from('quote_items').delete().eq('quote_id', quoteId);
       }
 
+      // Resumo da Carga: compara ids originais vs. atuais para o histórico (nível de evento, não campo a campo).
+      const originalItemIds = new Set((items as any[]).map((i: any) => i.id));
+      const added = cargoItems.filter((i) => !i.id).length;
+      const removed = Array.from(originalItemIds).filter((id) => !seenItemIds.has(id as string)).length;
+      const editedIds = cargoItems.filter((i) => i.id && seenItemIds.has(i.id)).length;
+      const cargoChanges: { field_name: string; old_value: string | null; new_value: string | null }[] = [];
+      if (added || removed || editedIds !== originalItemIds.size || originalItemIds.size !== seenItemIds.size) {
+        const parts: string[] = [];
+        if (added) parts.push(`${added} item(ns) adicionado(s)`);
+        if (removed) parts.push(`${removed} item(ns) removido(s)`);
+        if (parts.length === 0 && editedIds > 0) parts.push('itens editados');
+        if (parts.length > 0) {
+          cargoChanges.push({ field_name: 'cargo_summary', old_value: `${originalItemIds.size} item(ns)`, new_value: parts.join(', ') });
+        }
+      }
+
+      await logAuditChanges({
+        quoteId,
+        shipmentId: isShipmentMode ? shipmentId : null,
+        companyId: profile.company_id,
+        userId: profile.user_id,
+        changes: [...generalChanges, ...cargoChanges],
+      });
+
       await syncTotals();
       queryClient.invalidateQueries({ queryKey: ['quote-detail', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['quote-items', quoteId] });
@@ -776,6 +862,30 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       toast.info(t('quotes.already_converted') || 'Esta cotação já foi convertida em embarque.');
       return;
     }
+
+    // Bloqueio real de limite de embarques/mês do plano.
+    if (profile.company_id) {
+      const { data: companySub } = await supabase
+        .from('company_subscriptions')
+        .select('shipments_limit')
+        .eq('company_id', profile.company_id)
+        .maybeSingle();
+      if (companySub?.shipments_limit != null) {
+        const monthStart = new Date();
+        monthStart.setDate(1);
+        monthStart.setHours(0, 0, 0, 0);
+        const { count } = await supabase
+          .from('shipments')
+          .select('id', { count: 'exact', head: true })
+          .eq('company_id', profile.company_id)
+          .gte('created_at', monthStart.toISOString());
+        if ((count ?? 0) >= companySub.shipments_limit) {
+          toast.error(`Limite de ${companySub.shipments_limit} embarques/mês do plano atingido. Faça upgrade para continuar convertendo cotações.`);
+          return;
+        }
+      }
+    }
+
     try {
       // Sync totals first
       await syncTotals();
@@ -886,6 +996,16 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       }).eq('id', quoteId);
       if (error) throw error;
 
+      await logAuditEvent({
+        quoteId,
+        shipmentId: newShipment.id,
+        companyId: profile.company_id,
+        userId: profile.user_id,
+        field_name: 'conversion',
+        old_value: `Cotação (${quote?.status || form.status})`,
+        new_value: `Embarque criado (${refNumber})`,
+      });
+
       setForm((f) => ({ ...f, status: 'converted' }));
       queryClient.invalidateQueries({ queryKey: ['quote-detail', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
@@ -900,52 +1020,102 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
-  async function handleAddCharge(side: 'buy' | 'sell' | 'both', opts?: { keepOpen?: boolean }) {
-    if (!profile || !chargeForm.description.trim()) return;
-    if (!chargeForm.partner_id) {
-      toast.error(t('financial.partner_required') || 'Selecione uma empresa');
-      return;
-    }
-
-    const amount = parseFloat(chargeForm.amount) || 0;
-    
-    // 1.6 - Zero charge confirmation via in-app dialog
-    if (amount === 0) {
-      setZeroChargeConfirm({ side: side === 'both' ? 'buy' : side, amount });
-      return;
-    }
-
-    await executeAddCharge(side, amount, opts);
+  function resetChargeFormAfterAdd() {
+    const keepDefault = form.client_id || '';
+    setChargeForm({ charge_catalog_id: '', description: '', charge_type: 'freight', leg: 'freight', amount: '', currency: 'USD', partner_id: keepDefault, billing_unit: 'fixed' });
+    setSellPartnerId(keepDefault);
+    setSellBillingUnit('fixed');
+    setSellCurrency('USD');
+    setSellAmount('');
+    setChargeDescSearch('');
   }
 
-  async function executeAddCharge(side: 'buy' | 'sell' | 'both', amount: number, opts?: { keepOpen?: boolean }) {
+  // Compra e venda com empresa, unidade, moeda e valor totalmente independentes.
+  // Basta deixar um dos lados sem valor para criar só a compra ou só a venda.
+  async function handleAddCharge(opts?: { keepOpen?: boolean }) {
     if (!profile || !chargeForm.description.trim()) return;
-    setAddingSide(side);
+
+    const buyAmt = parseFloat(chargeForm.amount) || 0;
+    const sellAmt = parseFloat(sellAmount) || 0;
+    if (buyAmt === 0 && sellAmt === 0) {
+      toast.error('Informe o valor de compra e/ou de venda');
+      return;
+    }
+    if (buyAmt !== 0 && !chargeForm.partner_id) {
+      toast.error('Selecione a empresa de compra');
+      return;
+    }
+    if (sellAmt !== 0 && !sellPartnerId) {
+      toast.error('Selecione a empresa de venda');
+      return;
+    }
+
+    await executeAddCharge(buyAmt, sellAmt, opts);
+  }
+
+  // Grava compra e venda como duas linhas independentes (cada uma com sua empresa, unidade
+  // de cobrança, moeda e valor), pulando o lado cujo valor ficou zerado.
+  async function executeAddCharge(buyAmt: number, sellAmt: number, opts?: { keepOpen?: boolean }) {
+    if (!profile || !chargeForm.description.trim()) return;
+    setIsAddingCharge(true);
     try {
-      const isPercent = chargeForm.billing_unit === 'percent';
-      const insertRow: any = {
+      const baseRow: any = {
         quote_id: quoteId,
         company_id: profile.company_id,
         description: chargeForm.description.trim(),
         charge_type: chargeForm.charge_type,
         leg: chargeForm.leg,
         charge_catalog_id: chargeForm.charge_catalog_id || null,
-        buy_amount: side === 'buy' || side === 'both' ? amount : 0,
-        sell_amount: side === 'sell' || side === 'both' ? amount : 0,
-        currency: isPercent ? 'USD' : chargeForm.currency,
-        partner_id: chargeForm.partner_id || null,
-        billing_unit: chargeForm.billing_unit,
       };
-      if (isPercent) {
-        insertRow.percent_base_charge_ids = [];
-        insertRow.computed_buy_amount = 0;
-        insertRow.computed_sell_amount = 0;
-      }
-      const { data: inserted, error } = await supabase.from('quote_charges').insert(insertRow as any).select('id').single();
-      if (error) throw error;
 
-      setChargeForm({ charge_catalog_id: '', description: '', charge_type: 'freight', leg: 'freight', amount: '', currency: 'USD', partner_id: '', billing_unit: 'fixed' });
-      setChargeDescSearch('');
+      let percentRowId: string | null = null;
+
+      if (buyAmt !== 0) {
+        const isPercent = chargeForm.billing_unit === 'percent';
+        const row: any = {
+          ...baseRow,
+          buy_amount: buyAmt,
+          sell_amount: 0,
+          currency: isPercent ? 'USD' : chargeForm.currency,
+          partner_id: chargeForm.partner_id || null,
+          billing_unit: chargeForm.billing_unit,
+        };
+        if (isPercent) { row.percent_base_charge_ids = []; row.computed_buy_amount = 0; row.computed_sell_amount = 0; }
+        const { data, error } = await supabase.from('quote_charges').insert(row as any).select('id').single();
+        if (error) throw error;
+        if (isPercent) percentRowId = (data as any)?.id || null;
+      }
+
+      if (sellAmt !== 0) {
+        const isPercent = sellBillingUnit === 'percent';
+        const row: any = {
+          ...baseRow,
+          buy_amount: 0,
+          sell_amount: sellAmt,
+          currency: isPercent ? 'USD' : sellCurrency,
+          partner_id: sellPartnerId || null,
+          billing_unit: sellBillingUnit,
+        };
+        if (isPercent) { row.percent_base_charge_ids = []; row.computed_buy_amount = 0; row.computed_sell_amount = 0; }
+        const { data, error } = await supabase.from('quote_charges').insert(row as any).select('id').single();
+        if (error) throw error;
+        if (isPercent && !percentRowId) percentRowId = (data as any)?.id || null;
+      }
+
+      const addedParts: string[] = [];
+      if (buyAmt !== 0) addedParts.push(`compra ${chargeForm.currency} ${buyAmt.toFixed(2)}`);
+      if (sellAmt !== 0) addedParts.push(`venda ${sellCurrency} ${sellAmt.toFixed(2)}`);
+      await logAuditEvent({
+        quoteId,
+        shipmentId: isShipmentMode ? shipmentId : null,
+        companyId: profile.company_id,
+        userId: profile.user_id,
+        field_name: 'charge',
+        old_value: null,
+        new_value: `${chargeForm.description.trim()} (${addedParts.join(' / ')})`,
+      });
+
+      resetChargeFormAfterAdd();
       await recalcPercentCharges();
       await syncTotals();
       queryClient.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
@@ -953,9 +1123,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['cost-estimate', quoteId] });
       toast.success(t('financial.charge_added'));
-      if (isPercent && inserted?.id) {
-        // Abre o dialog para selecionar as taxas base logo após criar
-        setPercentDialogChargeId(inserted.id as string);
+      if (percentRowId) {
+        setPercentDialogChargeId(percentRowId);
         setAddChargeOpen(false);
       } else if (!opts?.keepOpen) {
         setAddChargeOpen(false);
@@ -963,14 +1132,27 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     } catch (err: any) {
       toast.error(err.message);
     } finally {
-      setAddingSide(null);
+      setIsAddingCharge(false);
     }
   }
 
   async function handleDeleteCharge(chargeId: string) {
     try {
+      const charge = (charges as any[]).find((c: any) => c.id === chargeId);
       const { error } = await supabase.from('quote_charges').delete().eq('id', chargeId);
       if (error) throw error;
+      if (charge && profile) {
+        const amt = charge.buy_amount > 0 ? `compra ${charge.currency} ${charge.buy_amount}` : `venda ${charge.currency} ${charge.sell_amount}`;
+        await logAuditEvent({
+          quoteId,
+          shipmentId: isShipmentMode ? shipmentId : null,
+          companyId: profile.company_id,
+          userId: profile.user_id,
+          field_name: 'charge',
+          old_value: `${charge.description} (${amt})`,
+          new_value: null,
+        });
+      }
       await recalcPercentCharges();
       await syncTotals();
       queryClient.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
@@ -984,8 +1166,23 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
 
   async function handleUpdateCharge(chargeId: string, updates: Record<string, any>) {
     try {
+      const charge = (charges as any[]).find((c: any) => c.id === chargeId);
       const { error } = await supabase.from('quote_charges').update(updates as any).eq('id', chargeId);
       if (error) throw error;
+      if (charge && profile) {
+        const changedKeys = Object.keys(updates).filter((k) => String((charge as any)[k] ?? '') !== String(updates[k] ?? ''));
+        if (changedKeys.length > 0) {
+          await logAuditEvent({
+            quoteId,
+            shipmentId: isShipmentMode ? shipmentId : null,
+            companyId: profile.company_id,
+            userId: profile.user_id,
+            field_name: 'charge',
+            old_value: `${charge.description}: ${changedKeys.map((k) => `${k}=${(charge as any)[k] ?? '-'}`).join(', ')}`,
+            new_value: `${charge.description}: ${changedKeys.map((k) => `${k}=${updates[k] ?? '-'}`).join(', ')}`,
+          });
+        }
+      }
       await recalcPercentCharges();
       await syncTotals();
       queryClient.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
@@ -1034,31 +1231,125 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const isProcessOwner = profile?.user_id === quote.created_by;
   const canSeeFinancials = isFullAccess || isProcessOwner;
   const canEditCharges = !isShipmentMode || isFullAccess || isProcessOwner;
+  // Mesma regra da Taxas, mas preservando o trava adicional de "cotação já convertida"
+  // (fora do modo embarque) que existia antes só para usuários sem acesso total.
+  const canEditCargo = (!isShipmentMode && form.status !== 'converted') || isFullAccess || isProcessOwner;
 
   const showPort = form.transport_mode !== 'road';
 
+  const chargesOnboardingSteps = [
+    {
+      icon: Plus,
+      title: 'Adicionar uma taxa',
+      desc: 'Clique em "Adicionar Taxa" para lançar uma nova cobrança. Escolha o trecho (frete, origem, destino...) e descreva a taxa — o sistema sugere nomes já usados antes e aprende novos conforme você digita.',
+    },
+    {
+      icon: Wallet,
+      title: 'Compra e venda independentes',
+      desc: 'Cada taxa tem um lado de Compra e um de Venda, cada um com sua própria empresa, unidade de cobrança, moeda e valor. Preencha só o lado que fizer sentido — não precisa dos dois.',
+    },
+    {
+      icon: Building,
+      title: 'Escolha as empresas certas',
+      desc: 'Defina para quem você paga (Compra) e quem paga você (Venda). O cliente da cotação já vem pré-selecionado; troque quando o parceiro for outro, como um armador, CIA aérea ou agente.',
+    },
+    {
+      icon: ListChecks,
+      title: 'Acompanhe tudo organizado',
+      desc: 'As taxas aparecem em duas colunas — Compra e Venda —, com totais e margem calculados automaticamente. Você pode editar, clonar ou excluir qualquer taxa quando quiser.',
+    },
+  ];
+
   return (
     <div className="space-y-6 animate-slide-in">
-      {/* Zero charge confirmation dialog */}
-      <AlertDialog open={!!zeroChargeConfirm} onOpenChange={(open) => { if (!open) setZeroChargeConfirm(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('quotes.zero_charge_confirm')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {chargeForm.description || ''}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setZeroChargeConfirm(null)}>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
-              if (zeroChargeConfirm) {
-                executeAddCharge(zeroChargeConfirm.side, zeroChargeConfirm.amount);
-              }
-              setZeroChargeConfirm(null);
-            }}>{t('common.confirm') || 'Confirmar'}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Onboarding da aba Taxas */}
+      <Dialog
+        open={showChargesOnboarding}
+        onOpenChange={(o) => {
+          setShowChargesOnboarding(o);
+          if (!o) {
+            try { localStorage.setItem('auracomex_taxas_onboarding_v1', '1'); } catch { /* ignore */ }
+          }
+        }}
+      >
+        <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
+          <div className="px-6 py-4 border-b bg-muted/30">
+            <DialogHeader className="space-y-0.5">
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <span className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary">
+                  <Sparkles className="w-4 h-4" />
+                </span>
+                Conheça a aba Taxas
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Um guia rápido de como lançar e organizar as cobranças da cotação.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+
+          <div className="px-6 py-5 space-y-4 min-h-[180px]">
+            {(() => {
+              const step = chargesOnboardingSteps[chargesOnboardingStep];
+              const StepIcon = step.icon;
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary mx-auto">
+                    <StepIcon className="w-6 h-6" />
+                  </div>
+                  <div className="text-center space-y-1.5">
+                    <p className="text-sm font-semibold">{step.title}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{step.desc}</p>
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="flex items-center justify-center gap-1.5 pt-1">
+              {chargesOnboardingSteps.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1.5 rounded-full transition-all ${i === chargesOnboardingStep ? 'w-5 bg-primary' : 'w-1.5 bg-muted-foreground/30'}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter className="flex-row items-center justify-between gap-2 px-6 py-3 border-t bg-muted/20 sm:justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setShowChargesOnboarding(false);
+                try { localStorage.setItem('auracomex_taxas_onboarding_v1', '1'); } catch { /* ignore */ }
+              }}
+            >
+              Pular
+            </Button>
+            <div className="flex gap-2">
+              {chargesOnboardingStep > 0 && (
+                <Button variant="outline" size="sm" onClick={() => setChargesOnboardingStep((s) => s - 1)}>
+                  <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Voltar
+                </Button>
+              )}
+              {chargesOnboardingStep < chargesOnboardingSteps.length - 1 ? (
+                <Button size="sm" onClick={() => setChargesOnboardingStep((s) => s + 1)}>
+                  Próximo <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setShowChargesOnboarding(false);
+                    try { localStorage.setItem('auracomex_taxas_onboarding_v1', '1'); } catch { /* ignore */ }
+                  }}
+                >
+                  Entendi
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Revert confirmation dialog (shipment mode only) */}
       {showRevertConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -1080,37 +1371,46 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       )}
 
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={handleBackClick}>
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button variant="ghost" size="icon" className="shrink-0" onClick={handleBackClick}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight font-mono">{quote.quote_number}</h1>
-            {isShipmentMode && shipment && <StatusBadge status={shipment.status} />}
-            {!isShipmentMode && <StatusBadge status={form.status} />}
-            <ModeIcon mode={form.transport_mode} showLabel />
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            {clients.find((c: any) => c.id === form.client_id)?.name || '-'} ·{' '}
-            {originFlag && <span className="text-base mr-1">{originFlag}</span>}
+        <div className="flex items-center gap-2.5 flex-wrap min-w-0 flex-1">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight font-mono shrink-0">{quote.quote_number}</h1>
+          {isShipmentMode && shipment && <StatusBadge status={shipment.status} />}
+          {!isShipmentMode && <StatusBadge status={form.status} />}
+          <ModeIcon mode={form.transport_mode} showLabel />
+          <span className="text-muted-foreground/40 shrink-0">·</span>
+          <span className="text-sm text-muted-foreground truncate min-w-0">
+            {clients.find((c: any) => c.id === form.client_id)?.name || '-'}
+            {' · '}
+            {originFlag && <span className="text-base mr-0.5">{originFlag}</span>}
             {form.origin || '?'} →{' '}
-            {destFlag && <span className="text-base mr-1">{destFlag}</span>}
+            {destFlag && <span className="text-base mr-0.5">{destFlag}</span>}
             {form.destination || '?'}
-          </p>
+          </span>
         </div>
         {!isShipmentMode && form.status === 'converted' && (
-          <div className="flex items-center gap-1.5 text-green-600 font-semibold text-sm">
+          <div className="flex items-center gap-1.5 text-green-600 font-semibold text-sm shrink-0">
             <CheckCircle className="w-4 h-4" />
             {t('quote_status.converted')}
           </div>
         )}
 
-        {!isShipmentMode && 
-         form.status !== 'converted' && 
-         activeTab !== 'estimate' && 
-         activeTab !== 'documents' && 
-         activeTab !== 'comments' && activeTab !== 'charges' && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          title="Histórico de alterações"
+          onClick={() => setHistoryOpen(true)}
+        >
+          <History className="w-4 h-4" />
+        </Button>
+
+        {!isShipmentMode &&
+         form.status !== 'converted' &&
+         activeTab !== 'estimate' &&
+         activeTab !== 'documents' && activeTab !== 'charges' && (
           <Button
             variant={isEditing ? "outline" : "default"}
             onClick={() => {
@@ -1154,86 +1454,63 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       {/* KPI Cards - hidden for non-owner in shipment mode */}
       {canSeeFinancials && (
       <div className="space-y-2">
-        <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-          {ratesLoading && <span>Carregando câmbio…</span>}
-          {!ratesLoading && ratesAvailable && (
-            <div className="flex items-center gap-2">
-              <span className="font-mono">
-                Câmbio: USD {usdBrl!.toFixed(4)} · EUR {eurBrl!.toFixed(4)}
+        {(!ratesLoading && !ratesAvailable) || (unsupportedCurrencies.length > 0 && ratesAvailable) ? (
+          <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+            {!ratesLoading && !ratesAvailable && (
+              <span className="text-amber-500">Câmbio indisponível — exibindo por moeda (atualize no menu lateral)</span>
+            )}
+            {unsupportedCurrencies.length > 0 && ratesAvailable && (
+              <span className="text-amber-500">
+                {unsupportedCurrencies.length} moeda(s) não convertida(s): {unsupportedCurrencies.join(', ')}
               </span>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6" 
-                onClick={() => {
-                  refetchRates().then((res) => {
-                    if (res.data) {
-                      setUsdBrl(res.data.usdBrl);
-                      setEurBrl(res.data.eurBrl);
-                      toast.success(t('common.updated'));
-                    }
-                  });
-                }}
-                disabled={ratesLoading}
-              >
-                <RotateCw className={cn("h-3 w-3", ratesLoading && "animate-spin")} />
-              </Button>
-            </div>
-          )}
-          {!ratesLoading && !ratesAvailable && (
-            <span className="text-amber-500">Câmbio indisponível — exibindo por moeda</span>
-          )}
-          {unsupportedCurrencies.length > 0 && ratesAvailable && (
-            <span className="text-amber-500">
-              · {unsupportedCurrencies.length} moeda(s) não convertida(s): {unsupportedCurrencies.join(', ')}
-            </span>
-          )}
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            )}
+          </div>
+        ) : null}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="glass">
-            <CardContent className="pt-4 pb-3 px-4">
+            <CardContent className="p-3 sm:p-4 flex flex-col justify-center min-h-[76px]">
               <p className="text-xs text-muted-foreground">{t('quotes.total_buy')}</p>
               {ratesAvailable ? (
                 <>
-                  <div className="text-lg font-bold font-mono">{fmtBRL(buyBRL.total)}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono mt-1 truncate" title={detailLine(buyByCurrency)}>
+                  <div className="text-base sm:text-lg font-bold font-mono truncate">{fmtBRL(buyBRL.total)}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono mt-1 break-words" title={detailLine(buyByCurrency)}>
                     {detailLine(buyByCurrency)}
                   </div>
                 </>
               ) : (
-                <div className="text-lg font-bold font-mono">{formatCurrencyMap(buyByCurrency)}</div>
+                <div className="text-base sm:text-lg font-bold font-mono break-words">{formatCurrencyMap(buyByCurrency)}</div>
               )}
             </CardContent>
           </Card>
           <Card className="glass">
-            <CardContent className="pt-4 pb-3 px-4">
+            <CardContent className="p-3 sm:p-4 flex flex-col justify-center min-h-[76px]">
               <p className="text-xs text-muted-foreground">{t('quotes.total_sell')}</p>
               {ratesAvailable ? (
                 <>
-                  <div className="text-lg font-bold font-mono">{fmtBRL(sellBRL.total)}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono mt-1 truncate" title={detailLine(sellByCurrency)}>
+                  <div className="text-base sm:text-lg font-bold font-mono truncate">{fmtBRL(sellBRL.total)}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono mt-1 break-words" title={detailLine(sellByCurrency)}>
                     {detailLine(sellByCurrency)}
                   </div>
                 </>
               ) : (
-                <div className="text-lg font-bold font-mono">{formatCurrencyMap(sellByCurrency)}</div>
+                <div className="text-base sm:text-lg font-bold font-mono break-words">{formatCurrencyMap(sellByCurrency)}</div>
               )}
             </CardContent>
           </Card>
           <Card className="glass">
-            <CardContent className="pt-4 pb-3 px-4">
+            <CardContent className="p-3 sm:p-4 flex flex-col justify-center min-h-[76px]">
               <p className="text-xs text-muted-foreground">{t('financial.profit')}</p>
               {ratesAvailable ? (
                 <>
-                  <div className={`text-lg font-bold font-mono ${profitBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
+                  <div className={`text-base sm:text-lg font-bold font-mono truncate ${profitBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
                     {fmtBRL(profitBRLValue)}
                   </div>
-                  <div className="text-[10px] text-muted-foreground font-mono mt-1 truncate">
+                  <div className="text-[10px] text-muted-foreground font-mono mt-1 break-words">
                     {Object.keys(profitByCurrency).length === 0 ? '—' : Object.entries(profitByCurrency).map(([cur, v]) => fmtMoney(cur, v)).join(' + ')}
                   </div>
                 </>
               ) : (
-                <div className="text-lg font-bold font-mono">
+                <div className="text-base sm:text-lg font-bold font-mono">
                   {Object.entries(profitByCurrency).map(([cur, val]) => (
                     <span key={cur} className={`block ${val >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
                       {cur} {val.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1245,11 +1522,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             </CardContent>
           </Card>
           <Card className="glass">
-            <CardContent className="pt-4 pb-3 px-4">
+            <CardContent className="p-3 sm:p-4 flex flex-col justify-center min-h-[76px]">
               <p className="text-xs text-muted-foreground">{t('financial.margin')}</p>
               {ratesAvailable ? (
                 <>
-                  <div className={`text-lg font-bold font-mono ${marginBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
+                  <div className={`text-base sm:text-lg font-bold font-mono truncate ${marginBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
                     {sellBRL.total > 0 ? `${marginBRLValue.toFixed(1)}%` : '—'}
                   </div>
                   <div className="text-[10px] text-muted-foreground font-mono mt-1">
@@ -1257,7 +1534,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   </div>
                 </>
               ) : (
-                <div className="text-lg font-bold font-mono">
+                <div className="text-base sm:text-lg font-bold font-mono">
                   {Object.entries(marginByCurrency).map(([cur, val]) => (
                     <span key={cur} className="block">{cur} {val.toFixed(1)}%</span>
                   ))}
@@ -1271,48 +1548,45 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       )}
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4 pb-28">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="general" className="gap-1.5">
-            <Info className="w-4 h-4" /> {t('quotes.general')}
-          </TabsTrigger>
-          <TabsTrigger value="cargo" className="gap-1.5">
-            <Package className="w-4 h-4" /> {t('quotes.cargo')}
-          </TabsTrigger>
-          <TabsTrigger value="partners" className="gap-1.5">
-            <Users className="w-4 h-4" /> {t('quotes.partners_tab')}
-          </TabsTrigger>
-          <TabsTrigger value="charges" className="gap-1.5">
-            <ShoppingCart className="w-4 h-4" /> Taxas
-          </TabsTrigger>
-          {estimateEnabled && (
-            <TabsTrigger value="estimate" className="gap-1.5">
-              <Calculator className="w-4 h-4" /> Estimativa
-            </TabsTrigger>
-          )}
-          <TabsTrigger value="debit_notes" className="gap-1.5">
-            <Receipt className="w-4 h-4" /> DN Parceiros
-          </TabsTrigger>
-          <TabsTrigger value="client_dn" className="gap-1.5">
-            <DollarSign className="w-4 h-4" /> DN Cliente
-          </TabsTrigger>
-          {/* Documents tab available in both modes */}
-          <TabsTrigger value="documents" className="gap-1.5">
-            <FileText className="w-4 h-4" /> {t('shipments.documents')}
-          </TabsTrigger>
-          {isShipmentMode && (
-            <>
-              <TabsTrigger value="logistics" className="gap-1.5">
-                <MapPin className="w-4 h-4" /> {t('shipments.logistics')}
-              </TabsTrigger>
-              <TabsTrigger value="activity" className="gap-1.5">
-                <Activity className="w-4 h-4" /> {t('shipments.activity')}
-              </TabsTrigger>
-            </>
-          )}
-          <TabsTrigger value="comments" className="gap-1.5">
-            <Send className="w-4 h-4" /> {t('quotes.comments')}
-          </TabsTrigger>
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+        <TabsList className="flex h-auto justify-center gap-1 p-1 w-full overflow-x-auto overflow-y-hidden flex-nowrap">
+          {(() => {
+            const triggerCls = "gap-1 sm:gap-1.5 text-[11px] sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 whitespace-nowrap shrink-0";
+            const iconCls = "w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0";
+            return (
+              <>
+                <TabsTrigger value="general" className={triggerCls}>
+                  <Info className={iconCls} /> {t('quotes.general')}
+                </TabsTrigger>
+                <TabsTrigger value="cargo" className={triggerCls}>
+                  <Package className={iconCls} /> {t('quotes.cargo')}
+                </TabsTrigger>
+                <TabsTrigger value="partners" className={triggerCls}>
+                  <Users className={iconCls} /> {t('quotes.partners_tab')}
+                </TabsTrigger>
+                <TabsTrigger value="charges" className={triggerCls}>
+                  <ShoppingCart className={iconCls} /> Taxas
+                </TabsTrigger>
+                {estimateEnabled && (
+                  <TabsTrigger value="estimate" className={triggerCls}>
+                    <Calculator className={iconCls} /> Estimativa
+                  </TabsTrigger>
+                )}
+                <TabsTrigger value="dn" className={triggerCls}>
+                  <Receipt className={iconCls} /> DN
+                </TabsTrigger>
+                {/* Documents tab available in both modes */}
+                <TabsTrigger value="documents" className={triggerCls}>
+                  <FileText className={iconCls} /> {t('shipments.documents')}
+                </TabsTrigger>
+                {isShipmentMode && (
+                  <TabsTrigger value="logistics" className={triggerCls}>
+                    <MapPin className={iconCls} /> {t('shipments.logistics')}
+                  </TabsTrigger>
+                )}
+              </>
+            );
+          })()}
         </TabsList>
 
         {/* General Tab */}
@@ -1612,7 +1886,15 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         <TabsContent value="cargo">
           <Card className="glass">
             <CardContent className="pt-6 space-y-4">
-              {hasChanges && form.status !== 'converted' && !isShipmentMode && (
+              {hasEstimateOverride && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 text-xs px-3 py-2 flex items-center gap-2">
+                  <Info className="w-4 h-4 shrink-0 text-primary" />
+                  <span>
+                    Esta cotação tem uma Estimativa de custo preenchida: o <strong>peso total</strong> usado para calcular as taxas por kg vem da aba Estimativa, não daqui. Volume (m³) e containers continuam vindo desta aba.
+                  </span>
+                </div>
+              )}
+              {hasChanges && (isShipmentMode ? canEditCargo : form.status !== 'converted') && (
                 <div className="rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-200 px-3 py-2 text-xs flex items-center gap-2">
                   <Bell className="w-4 h-4 shrink-0" />
                   <span>
@@ -1620,11 +1902,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   </span>
                 </div>
               )}
-              <ModeFields 
-                mode={form.transport_mode} 
-                items={cargoItems} 
-                onChange={setCargoItems} 
-                readOnly={isShipmentMode || form.status === 'converted'}
+              <ModeFields
+                mode={form.transport_mode}
+                items={cargoItems}
+                onChange={setCargoItems}
+                readOnly={!canEditCargo}
               />
             </CardContent>
           </Card>
@@ -1649,7 +1931,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         <TabsContent value="charges">
           <div className="space-y-4">
             <div className="flex justify-between items-center flex-wrap gap-2">
-              <div>
+              <div className="flex items-center gap-2">
                 {canEditCharges && (
                   <Button
                     type="button"
@@ -1661,6 +1943,16 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     Adicionar Taxa
                   </Button>
                 )}
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-muted-foreground"
+                  title="Como funciona a aba Taxas"
+                  onClick={() => { setChargesOnboardingStep(0); setShowChargesOnboarding(true); }}
+                >
+                  <HelpCircle className="w-4 h-4" />
+                </Button>
               </div>
               <div className="flex gap-2">
                 <Button
@@ -1700,33 +1992,62 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             )}
             {/* Add charge dialog - only for authorized users */}
             {canEditCharges && (
-              <Dialog open={addChargeOpen} onOpenChange={(o) => { setAddChargeOpen(o); if (!o) { setChargeForm({ charge_catalog_id: '', description: '', charge_type: 'freight', leg: 'freight', amount: '', currency: 'USD', partner_id: '', billing_unit: 'fixed' }); setChargeDescSearch(''); } }}>
-                <DialogContent className="max-w-3xl">
-                  <DialogHeader>
-                    <DialogTitle>{t('quotes.add_charge')}</DialogTitle>
-                  </DialogHeader>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
-                  {/* Leg filter + Description with autocomplete */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">{t('financial.description')}</Label>
-                    <div className="flex gap-2 items-center">
-                      {/* Leg filter buttons */}
-                      <div className="flex gap-1 shrink-0">
+              <Dialog open={addChargeOpen} onOpenChange={(o) => {
+                setAddChargeOpen(o);
+                if (o) {
+                  // Ao abrir: pré-preenche compra e venda com o cliente da cotação
+                  const def = form.client_id || '';
+                  setChargeForm((cf) => ({ ...cf, partner_id: cf.partner_id || def }));
+                  setSellPartnerId((sp) => sp || def);
+                } else {
+                  setChargeForm({ charge_catalog_id: '', description: '', charge_type: 'freight', leg: 'freight', amount: '', currency: 'USD', partner_id: '', billing_unit: 'fixed' });
+                  setSellPartnerId('');
+                  setSellBillingUnit('fixed');
+                  setSellCurrency('USD');
+                  setSellAmount('');
+                  setChargeDescSearch('');
+                }
+              }}>
+                <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden">
+                  <div className="px-6 py-3 border-b bg-muted/30">
+                    <DialogHeader className="space-y-0.5">
+                      <DialogTitle className="flex items-center gap-2 text-base">
+                        <span className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary">
+                          <Plus className="w-4 h-4" />
+                        </span>
+                        {t('quotes.add_charge')}
+                      </DialogTitle>
+                      <DialogDescription className="text-xs">
+                        Escolha o trecho, descreva a taxa e preencha compra e/ou venda — cada lado com sua empresa, unidade, moeda e valor.
+                      </DialogDescription>
+                    </DialogHeader>
+                  </div>
+
+                  <div className="px-6 py-4 space-y-3.5 max-h-[85vh] overflow-y-auto">
+                  {/* Trecho + Descrição na mesma linha */}
+                  <div className="flex gap-3 items-end flex-wrap">
+                    <div className="space-y-1.5 shrink-0">
+                      <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Trecho</Label>
+                      <div className="flex gap-1.5 flex-wrap">
                         {LEGS.map((leg) => (
                           <Button
                             key={leg}
                             type="button"
                             size="sm"
                             variant={chargeForm.leg === leg ? 'default' : 'outline'}
-                            className="h-8 text-xs px-2.5"
+                            className="h-9 text-xs px-3 rounded-full"
                             onClick={() => setChargeForm({ ...chargeForm, leg })}
                           >
                             {legLabels[leg]}
                           </Button>
                         ))}
                       </div>
-                       {/* Description input */}
-                       <div className="relative flex-1">
+                    </div>
+
+                  {/* Description with autocomplete */}
+                  <div className="space-y-1.5 flex-1 min-w-[220px]">
+                    <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('financial.description')}</Label>
+                       <div className="relative">
                          <Input
                            ref={chargeDescInputRef}
                            value={chargeForm.description}
@@ -1744,6 +2065,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                           onFocus={() => setShowChargeSuggestions(true)}
                           onBlur={() => setTimeout(() => setShowChargeSuggestions(false), 200)}
                           placeholder="THC, BL FEE, OCEAN FREIGHT..."
+                          className="h-10"
                           style={{ textTransform: 'uppercase' }}
                         />
                          {showChargeSuggestions && (() => {
@@ -1825,14 +2147,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                            );
                         })()}
                       </div>
-                    </div>
                   </div>
-                  {/* Empresa — client + quote partners */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">{t('financial.partner')}</Label>
-                    <Select value={chargeForm.partner_id} onValueChange={(v) => setChargeForm({ ...chargeForm, partner_id: v })}>
-                      <SelectTrigger><SelectValue placeholder={t('financial.select_partner')} /></SelectTrigger>
-                      <SelectContent>
+                  </div>
+
+                  {/* Empresa(s), unidade de cobrança e valor — campos de Compra e Venda ficam
+                      totalmente independentes quando bidirecional está ligado. */}
+                  {(() => {
+                    const partnerOptions = (
+                      <>
                         {form.client_id && (() => {
                           const client = clients.find((c: any) => c.id === form.client_id);
                           return client ? <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem> : null;
@@ -1850,115 +2172,146 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                               </SelectItem>
                             );
                           })}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="flex items-end gap-4 mt-3">
-                  {/* Grupo 1: Base + Moeda + Valor */}
-                  <div className="flex gap-2 items-end">
-                     <Select value={chargeForm.billing_unit} onValueChange={(v) => setChargeForm({ ...chargeForm, billing_unit: v })}>
-                       <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
-                       <SelectContent>
-                         {BILLING_UNITS.map((u) => {
-                           const mixed = cargoMetrics.totalContainers20 > 0 && cargoMetrics.totalContainers40 > 0;
-                           // Força escolher 20' ou 40' quando a carga é mista
-                           if (u === 'per_container' && mixed) {
-                             return <SelectItem key={u} value={u} disabled>{t(`quotes.billing_${u}`)} (carga mista — escolha 20' ou 40')</SelectItem>;
-                           }
-                           if (u === 'per_container_20' && cargoMetrics.totalContainers20 === 0) return null;
-                           if (u === 'per_container_40' && cargoMetrics.totalContainers40 === 0) return null;
-                           return <SelectItem key={u} value={u}>{t(`quotes.billing_${u}`)}</SelectItem>;
-                         })}
-                       </SelectContent>
-                     </Select>
-                    <Select value={chargeForm.currency} onValueChange={(v) => setChargeForm({ ...chargeForm, currency: v })} disabled={chargeForm.billing_unit === 'percent'}>
-                      <SelectTrigger className="w-20 h-8 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="number"
-                      placeholder={chargeForm.billing_unit === 'percent' ? '%' : '0.00'}
-                      value={chargeForm.amount}
-                      onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
-                      className="w-28 h-8 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    {chargeForm.billing_unit === 'percent' && (
-                      <span className="text-[10px] text-muted-foreground whitespace-nowrap self-center">
-                        % das taxas base (defina após criar)
-                      </span>
-                    )}
-                    {chargeForm.billing_unit !== 'fixed' && chargeForm.billing_unit !== 'percent' && (
-                      <span className="text-[10px] text-muted-foreground whitespace-nowrap self-center">
-                        {chargeForm.billing_unit === 'per_cw' && `× ${cargoMetrics.totalChargeable.toFixed(2)} kg`}
-                        {chargeForm.billing_unit === 'per_ton' && `× ${(cargoMetrics.totalWeight / 1000).toFixed(3)} ton`}
-                        {chargeForm.billing_unit === 'per_cbm' && `× ${cargoMetrics.totalCbm.toFixed(4)} m³`}
-                        {chargeForm.billing_unit === 'per_wm' && (() => {
+                      </>
+                    );
+
+                    const billingUnitOptions = (
+                      <>
+                        {BILLING_UNITS.map((u) => {
+                          const mixed = cargoMetrics.totalContainers20 > 0 && cargoMetrics.totalContainers40 > 0;
+                          // Força escolher 20' ou 40' quando a carga é mista
+                          if (u === 'per_container' && mixed) {
+                            return <SelectItem key={u} value={u} disabled>{t(`quotes.billing_${u}`)} (carga mista — escolha 20' ou 40')</SelectItem>;
+                          }
+                          if (u === 'per_container_20' && cargoMetrics.totalContainers20 === 0) return null;
+                          if (u === 'per_container_40' && cargoMetrics.totalContainers40 === 0) return null;
+                          return <SelectItem key={u} value={u}>{t(`quotes.billing_${u}`)}</SelectItem>;
+                        })}
+                      </>
+                    );
+
+                    const billingHint = (unit: string): string | null => {
+                      if (unit === 'percent') return '% das taxas base (defina após criar)';
+                      switch (unit) {
+                        case 'per_cw': return `× ${cargoMetrics.totalChargeable.toFixed(2)} kg`;
+                        case 'per_ton': return `× ${(cargoMetrics.totalWeight / 1000).toFixed(3)} ton`;
+                        case 'per_cbm': return `× ${cargoMetrics.totalCbm.toFixed(4)} m³`;
+                        case 'per_wm': {
                           const tons = cargoMetrics.totalWeight / 1000;
                           const cbm = cargoMetrics.totalCbm;
                           const winner = tons >= cbm ? `${tons.toFixed(3)} ton` : `${cbm.toFixed(4)} m³`;
                           return `× ${winner} (W/M)`;
-                        })()}
-                        {chargeForm.billing_unit === 'per_container' && `× ${cargoMetrics.totalContainers} cntr`}
-                        {chargeForm.billing_unit === 'per_container_20' && `× ${cargoMetrics.totalContainers20} cntr 20'`}
-                        {chargeForm.billing_unit === 'per_container_40' && `× ${cargoMetrics.totalContainers40} cntr 40'`}
-                        {chargeForm.billing_unit === 'per_bl' && `× 1 BL`}
-                      </span>
-                    )}
+                        }
+                        case 'per_container': return `× ${cargoMetrics.totalContainers} cntr`;
+                        case 'per_container_20': return `× ${cargoMetrics.totalContainers20} cntr 20'`;
+                        case 'per_container_40': return `× ${cargoMetrics.totalContainers40} cntr 40'`;
+                        case 'per_bl': return `× 1 BL`;
+                        default: return null;
+                      }
+                    };
+
+                    return (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {/* Card Compra */}
+                          <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3 space-y-2.5">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Compra</p>
+                            <div className="space-y-1.5">
+                              <Label className="text-[11px] text-muted-foreground">Empresa</Label>
+                              <Select value={chargeForm.partner_id} onValueChange={(v) => setChargeForm({ ...chargeForm, partner_id: v })}>
+                                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={t('financial.select_partner')} /></SelectTrigger>
+                                <SelectContent>{partnerOptions}</SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-[11px] text-muted-foreground">Unidade de cobrança</Label>
+                              <Select value={chargeForm.billing_unit} onValueChange={(v) => setChargeForm({ ...chargeForm, billing_unit: v })}>
+                                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                                <SelectContent>{billingUnitOptions}</SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-[11px] text-muted-foreground">Moeda / Valor</Label>
+                              <div className="flex gap-1.5">
+                                <Select value={chargeForm.currency} onValueChange={(v) => setChargeForm({ ...chargeForm, currency: v })} disabled={chargeForm.billing_unit === 'percent'}>
+                                  <SelectTrigger className="w-20 h-9 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  type="number"
+                                  placeholder={chargeForm.billing_unit === 'percent' ? '%' : '0.00'}
+                                  value={chargeForm.amount}
+                                  onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
+                                  className="flex-1 min-w-[100px] h-9 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+                              {billingHint(chargeForm.billing_unit) && (
+                                <p className="text-[11px] text-muted-foreground">{billingHint(chargeForm.billing_unit)}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Card Venda */}
+                          <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 space-y-2.5">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Venda</p>
+                            <div className="space-y-1.5">
+                              <Label className="text-[11px] text-muted-foreground">Empresa</Label>
+                              <Select value={sellPartnerId} onValueChange={setSellPartnerId}>
+                                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={t('financial.select_partner')} /></SelectTrigger>
+                                <SelectContent>{partnerOptions}</SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-[11px] text-muted-foreground">Unidade de cobrança</Label>
+                              <Select value={sellBillingUnit} onValueChange={setSellBillingUnit}>
+                                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                                <SelectContent>{billingUnitOptions}</SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-[11px] text-muted-foreground">Moeda / Valor</Label>
+                              <div className="flex gap-1.5">
+                                <Select value={sellCurrency} onValueChange={setSellCurrency} disabled={sellBillingUnit === 'percent'}>
+                                  <SelectTrigger className="w-20 h-9 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  type="number"
+                                  placeholder={sellBillingUnit === 'percent' ? '%' : '0.00'}
+                                  value={sellAmount}
+                                  onChange={(e) => setSellAmount(e.target.value)}
+                                  className="flex-1 min-w-[100px] h-9 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+                              {billingHint(sellBillingUnit) && (
+                                <p className="text-[11px] text-muted-foreground">{billingHint(sellBillingUnit)}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                    );
+                  })()}
                   </div>
-
-                  <div className="h-6 w-px bg-border" />
-
-                  {/* Bidirecional switch */}
-                  <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
-                    <Switch checked={bidirectional} onCheckedChange={setBidirectional} />
-                    <span>Bidirecional (mesmo valor em compra e venda)</span>
-                  </label>
-                </div>
-                <DialogFooter className="flex-wrap gap-2 sm:justify-between">
+                <DialogFooter className="flex-wrap gap-2 sm:justify-between px-6 py-3 border-t bg-muted/20">
                   <Button variant="ghost" onClick={() => setAddChargeOpen(false)}>{t('common.cancel')}</Button>
                   <div className="flex gap-2 flex-wrap">
-                    {bidirectional ? (
-                      <>
-                        <Button
-                          variant="outline"
-                          onClick={() => handleAddCharge('both', { keepOpen: true })}
-                          disabled={addingSide !== null || !chargeForm.description.trim()}
-                        >
-                          <Plus className="w-3.5 h-3.5 mr-1" />
-                          Adicionar e criar outra
-                        </Button>
-                        <Button
-                          onClick={() => handleAddCharge('both')}
-                          disabled={addingSide !== null || !chargeForm.description.trim()}
-                        >
-                          Adicionar
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          variant="outline"
-                          className="border-blue-500/30 text-blue-600 hover:bg-blue-500/10"
-                          onClick={() => handleAddCharge('buy', { keepOpen: true })}
-                          disabled={addingSide !== null || !chargeForm.description.trim()}
-                        >
-                          <TrendingDown className="w-3.5 h-3.5 mr-1" />
-                          {chargeForm.billing_unit === 'percent' ? '% Compra' : t('quotes.add_buy')}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
-                          onClick={() => handleAddCharge('sell', { keepOpen: true })}
-                          disabled={addingSide !== null || !chargeForm.description.trim()}
-                        >
-                          <TrendingUp className="w-3.5 h-3.5 mr-1" />
-                          {chargeForm.billing_unit === 'percent' ? '% Venda' : t('quotes.add_sell')}
-                        </Button>
-                      </>
-                    )}
+                    <Button
+                      variant="outline"
+                      onClick={() => handleAddCharge({ keepOpen: true })}
+                      disabled={isAddingCharge || !chargeForm.description.trim()}
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" />
+                      Adicionar e criar outra
+                    </Button>
+                    <Button
+                      onClick={() => handleAddCharge()}
+                      disabled={isAddingCharge || !chargeForm.description.trim()}
+                    >
+                      Adicionar
+                    </Button>
                   </div>
                 </DialogFooter>
                 </DialogContent>
@@ -2055,70 +2408,50 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           </TabsContent>
         )}
 
-        {/* Debit Notes Tab */}
-        <TabsContent value="debit_notes">
-          <DebitNotesTab
-            quoteId={quoteId}
-            companyId={profile?.company_id || ''}
-            partners={(() => {
-              const allowedIds = new Set(
-                (quotePartners as any[]).map((qp) => qp.client_id).filter(Boolean)
-              );
-              return (partners as any[])
-                .filter((p) => allowedIds.has(p.id))
-                .map((p) => ({ id: p.id, name: p.name, partner_category: p.partner_category }));
-            })()}
-          />
-        </TabsContent>
-
-        <TabsContent value="client_dn">
-          <ClientDebitNotesTab
-            quoteId={quoteId}
-            companyId={profile?.company_id || ''}
-            clientId={(quote as any)?.client_id || null}
-          />
-        </TabsContent>
-
-        {/* Comments Tab */}
-        <TabsContent value="comments">
-          <Card className="glass">
-            <CardContent className="pt-6 space-y-4">
-              <div className="flex gap-2">
-                <Textarea
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  placeholder={t('quotes.add_comment')}
-                  rows={2}
-                  className="flex-1"
-                />
-                <Button
-                  className="self-end"
-                  disabled={!commentText.trim()}
-                  onClick={async () => {
-                    if (!profile || !commentText.trim()) return;
-                    try {
-                      const { error } = await supabase.from('quote_comments' as any).insert({
-                        quote_id: quoteId,
-                        company_id: profile.company_id,
-                        user_id: profile.user_id,
-                        content: commentText.trim(),
-                      });
-                      if (error) throw error;
-                      setCommentText('');
-                      queryClient.invalidateQueries({ queryKey: ['quote-comments', quoteId] });
-                      toast.success(t('quotes.comment_added'));
-                    } catch (err: any) {
-                      toast.error(err.message);
-                    }
-                  }}
-                >
-                  <Send className="w-4 h-4 mr-1" />
-                  {t('common.create')}
-                </Button>
-              </div>
-              <QuoteCommentsList quoteId={quoteId} />
-            </CardContent>
-          </Card>
+        {/* DN Tab — Fornecedor e Cliente reunidos com seletor interno */}
+        <TabsContent value="dn">
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-muted/50">
+              <Button
+                type="button"
+                size="sm"
+                variant={dnView === 'partner' ? 'default' : 'ghost'}
+                className="gap-1.5 h-8"
+                onClick={() => setDnView('partner')}
+              >
+                <Receipt className="w-3.5 h-3.5" /> Fornecedor
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={dnView === 'client' ? 'default' : 'ghost'}
+                className="gap-1.5 h-8"
+                onClick={() => setDnView('client')}
+              >
+                <DollarSign className="w-3.5 h-3.5" /> Cliente
+              </Button>
+            </div>
+            {dnView === 'partner' ? (
+              <DebitNotesTab
+                quoteId={quoteId}
+                companyId={profile?.company_id || ''}
+                partners={(() => {
+                  const allowedIds = new Set(
+                    (quotePartners as any[]).map((qp) => qp.client_id).filter(Boolean)
+                  );
+                  return (partners as any[])
+                    .filter((p) => allowedIds.has(p.id))
+                    .map((p) => ({ id: p.id, name: p.name, partner_category: p.partner_category }));
+                })()}
+              />
+            ) : (
+              <ClientDebitNotesTab
+                quoteId={quoteId}
+                companyId={profile?.company_id || ''}
+                clientId={(quote as any)?.client_id || null}
+              />
+            )}
+          </div>
         </TabsContent>
 
         {/* Documents tab - available in both modes */}
@@ -2142,18 +2475,21 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
 
         {/* Shipment-specific tabs (only in shipment mode) */}
         {isShipmentMode && shipment && (
-          <>
-            <TabsContent value="logistics">
-              <LogisticsTab shipment={shipment} onUpdate={() => queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] })} />
-            </TabsContent>
-            <TabsContent value="activity">
-              <ActivityTab shipmentId={shipmentId!} companyId={shipment.company_id} />
-            </TabsContent>
-          </>
+          <TabsContent value="logistics">
+            <LogisticsTab
+              shipment={shipment}
+              quoteId={quoteId}
+              onUpdate={() => queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] })}
+            />
+          </TabsContent>
         )}
       </Tabs>
 
-      {!isShipmentMode && activeTab !== 'estimate' && activeTab !== 'documents' && activeTab !== 'comments' && (
+      {/* Fora do modo embarque: salvar Geral/Carga normalmente.
+          No modo embarque: só a aba Resumo da Carga pode ser editada (canEditCargo),
+          então o botão de salvar aparece só ali — sem isso, alterações de carga feitas
+          num embarque ficavam só no estado local e nunca eram gravadas. */}
+      {!isShipmentMode && activeTab !== 'estimate' && activeTab !== 'documents' && (
         <FloatingSaveButton
           visible={(isEditing || activeTab === 'cargo') && hasChanges && form.status !== 'converted'}
           dirtyCount={dirtyCount}
@@ -2161,11 +2497,72 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           onSave={handleSave}
         />
       )}
+      {isShipmentMode && activeTab === 'cargo' && canEditCargo && (
+        <FloatingSaveButton
+          visible={hasChanges}
+          dirtyCount={dirtyCount}
+          state={saveState}
+          onSave={handleSave}
+        />
+      )}
+
+      {/* Comentários — sempre visível no rodapé da página, fora das abas */}
+      <Card className="glass">
+        <CardContent className="pt-6 space-y-4">
+          <h3 className="text-sm font-semibold flex items-center gap-1.5">
+            <Send className="w-4 h-4" /> {t('quotes.comments')}
+          </h3>
+          <div className="flex gap-2">
+            <Textarea
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder={t('quotes.add_comment')}
+              rows={2}
+              className="flex-1"
+            />
+            <Button
+              className="self-end"
+              disabled={!commentText.trim()}
+              onClick={async () => {
+                if (!profile || !commentText.trim()) return;
+                try {
+                  const { error } = await supabase.from('quote_comments' as any).insert({
+                    quote_id: quoteId,
+                    company_id: profile.company_id,
+                    user_id: profile.user_id,
+                    content: commentText.trim(),
+                  });
+                  if (error) throw error;
+                  setCommentText('');
+                  queryClient.invalidateQueries({ queryKey: ['quote-comments', quoteId] });
+                  toast.success(t('quotes.comment_added'));
+                } catch (err: any) {
+                  toast.error(err.message);
+                }
+              }}
+            >
+              <Send className="w-4 h-4 mr-1" />
+              {t('common.create')}
+            </Button>
+          </div>
+          <QuoteCommentsList quoteId={quoteId} />
+        </CardContent>
+      </Card>
+
+      {/* Respiro no fim da página, pra não ficar por baixo do botão flutuante de Salvar */}
+      <div className="h-20" />
 
       <QuotePdfPreviewDialog
         quoteId={quoteId}
         open={pdfPreviewOpen}
         onClose={() => setPdfPreviewOpen(false)}
+      />
+
+      <HistoryPanel
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        quoteId={quoteId}
+        shipmentId={isShipmentMode ? shipmentId : null}
       />
 
       <AlertDialog open={leaveTabOpen} onOpenChange={setLeaveTabOpen}>
@@ -2722,9 +3119,11 @@ interface QuotePartnersListProps {
 
 function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChanged }: QuotePartnersListProps) {
   const { t } = useLanguage();
+  const { profile } = useAuth();
   const [searchText, setSearchText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const addedClientIds = new Set(quotePartners.map((qp: any) => qp.clients?.id || qp.client_id));
   const filteredPartners = partners
@@ -2741,6 +3140,15 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
         company_id: companyId,
       });
       if (error) throw error;
+      const partnerName = partners.find((p: any) => p.id === partnerId)?.name || partnerId;
+      await logAuditEvent({
+        quoteId,
+        companyId,
+        userId: profile?.user_id,
+        field_name: 'partner',
+        old_value: null,
+        new_value: partnerName,
+      });
       setSearchText('');
       setShowSuggestions(false);
       onChanged();
@@ -2754,8 +3162,17 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
 
   async function handleRemove(id: string) {
     try {
+      const removedPartner = quotePartners.find((qp: any) => qp.id === id);
       const { error } = await supabase.from('quote_partners' as any).delete().eq('id', id);
       if (error) throw error;
+      await logAuditEvent({
+        quoteId,
+        companyId,
+        userId: profile?.user_id,
+        field_name: 'partner',
+        old_value: removedPartner?.clients?.name || null,
+        new_value: null,
+      });
       onChanged();
       toast.success(t('quotes.partner_removed'));
     } catch (err: any) {
@@ -2765,45 +3182,63 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
 
   return (
     <div className="space-y-4">
-      <div className="relative max-w-md">
-        <Input
-          value={searchText}
-          onChange={(e) => {
-            setSearchText(e.target.value);
-            setShowSuggestions(true);
-          }}
-          onFocus={() => setShowSuggestions(true)}
-          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-          placeholder={t('quotes.add_partner')}
-        />
-        {showSuggestions && filteredPartners.length > 0 && (
-          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
-            {filteredPartners.slice(0, 10).map((p: any) => (
-              <button
-                key={p.id}
-                className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex items-center justify-between"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  handleAdd(p.id);
-                }}
-                disabled={adding}
-              >
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span>{p.name}</span>
-                </div>
-                {p.partner_category ? (
-                  <Badge variant="secondary" className="text-[10px] h-5 bg-primary/10 text-primary border-primary/20">
-                    {t(`registrations.category_${p.partner_category}`) !== `registrations.category_${p.partner_category}` 
-                      ? t(`registrations.category_${p.partner_category}`) 
-                      : p.partner_category}
-                  </Badge>
-                ) : null}
-              </button>
-            ))}
+      <Popover open={pickerOpen} onOpenChange={(o) => { setPickerOpen(o); if (!o) { setSearchText(''); setShowSuggestions(false); } }}>
+        <PopoverTrigger asChild>
+          <Button type="button" size="sm" className="gap-2">
+            <Plus className="w-4 h-4" /> Adicionar Empresa
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-80 p-3 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Vincule uma empresa já cadastrada a este processo. Ela servirá de base para as Taxas e, futuramente, para os documentos.
+          </p>
+          <div className="relative">
+            <Input
+              autoFocus
+              value={searchText}
+              onChange={(e) => {
+                setSearchText(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              placeholder={t('quotes.add_partner')}
+            />
+            {showSuggestions && filteredPartners.length > 0 && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                {filteredPartners.slice(0, 10).map((p: any) => (
+                  <button
+                    key={p.id}
+                    className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex items-center justify-between"
+                    onMouseDown={async (e) => {
+                      e.preventDefault();
+                      await handleAdd(p.id);
+                      setPickerOpen(false);
+                    }}
+                    disabled={adding}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span>{p.name}</span>
+                    </div>
+                    {p.partner_category ? (
+                      <Badge variant="secondary" className="text-[10px] h-5 bg-primary/10 text-primary border-primary/20">
+                        {t(`registrations.category_${p.partner_category}`) !== `registrations.category_${p.partner_category}`
+                          ? t(`registrations.category_${p.partner_category}`)
+                          : p.partner_category}
+                      </Badge>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            )}
+            {searchText.length >= 1 && filteredPartners.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Nenhuma empresa encontrada. Cadastre em <strong>Cadastros</strong> primeiro.
+              </p>
+            )}
           </div>
-        )}
-      </div>
+        </PopoverContent>
+      </Popover>
 
       {quotePartners.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">{t('quotes.no_partners')}</p>

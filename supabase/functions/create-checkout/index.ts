@@ -1,6 +1,26 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
-import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
+import Stripe from "https://esm.sh/stripe@22.0.2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+type StripeEnv = 'sandbox' | 'live';
+
+function getEnv(key: string): string {
+  const value = Deno.env.get(key);
+  if (!value) throw new Error(`${key} is not configured`);
+  return value;
+}
+
+function createStripeClient(env: StripeEnv): Stripe {
+  const apiKey = env === 'sandbox' ? getEnv('STRIPE_SANDBOX_API_KEY') : getEnv('STRIPE_LIVE_API_KEY');
+  return new Stripe(apiKey, {
+    apiVersion: '2026-03-25.dahlia',
+    httpClient: Stripe.createFetchHttpClient(),
+  });
+}
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -53,6 +73,9 @@ Deno.serve(async (req) => {
     const priceId: string = body.priceId;
     const environment: StripeEnv = body.environment === 'live' ? 'live' : 'sandbox';
     const returnUrl: string = body.returnUrl;
+    // Quantidade de assentos — só é relevante pra preços por volume (plano Básico).
+    // Add-ons e outros planos ignoram isso na prática (quantity 1).
+    const seats: number = Number.isInteger(body.seats) && body.seats > 0 ? body.seats : 1;
 
     if (!priceId || !/^[a-zA-Z0-9_-]+$/.test(priceId)) {
       return new Response(JSON.stringify({ error: 'Invalid priceId' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -76,7 +99,7 @@ Deno.serve(async (req) => {
     });
 
     const session = await stripe.checkout.sessions.create({
-      line_items: [{ price: stripePrice.id, quantity: 1 }],
+      line_items: [{ price: stripePrice.id, quantity: seats }],
       mode: 'subscription',
       ui_mode: 'embedded_page',
       return_url: returnUrl,

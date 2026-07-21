@@ -8,32 +8,36 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const PLANS = [
   {
-    key: 'starter',
-    name: 'Starter',
-    price: 'R$ 297',
-    tagline: 'Para o agente solo que quer sair da planilha.',
-    features: ['Até 3 usuários', 'Até 30 embarques/mês', 'Cotações + PDF profissional', 'Embarques com workflow', 'Financeiro (AP/AR)', 'Cadastros e Dashboard', 'Suporte por email'],
+    key: 'basic',
+    name: 'Básico',
+    price: 'a partir de R$ 129,99',
+    priceSuffix: '/usuário',
+    tagline: 'Preço por usuário: 1º R$ 149,99 · 2º R$ 139,99 · 3º em diante R$ 129,99 cada.',
+    features: ['Até 30 embarques/mês', 'Usuários ilimitados (preço por assento)', 'Cotações + PDF profissional', 'Embarques com workflow', 'Financeiro (AP/AR)', 'Cadastros e Dashboard', 'Suporte por email'],
     highlight: false,
   },
   {
     key: 'professional',
     name: 'Professional',
-    price: 'R$ 697',
-    tagline: 'Para times de 3 a 10 pessoas que querem escalar.',
-    features: ['Até 10 usuários', 'Até 100 embarques/mês', 'Tudo do Starter', 'RBAC completo (13 perfis)', 'Comissões de vendedor', 'Notas rápidas colaborativas', '1 add-on incluso à sua escolha'],
+    price: 'a partir de R$ 199,99',
+    priceSuffix: '/usuário',
+    tagline: 'Preço por usuário: 1º R$ 249,99 · 2º R$ 229,99 · 3º em diante R$ 199,99 cada.',
+    features: ['Até 100 embarques/mês', 'Tudo do Básico', 'Perfis de acesso completos (RBAC)', 'Comissão de vendedor com forecast', 'Suporte prioritário'],
     highlight: true,
   },
   {
     key: 'business',
     name: 'Business',
-    price: 'R$ 1.497',
-    tagline: 'Para operações que já rodam alto volume.',
-    features: ['Usuários ilimitados', 'Embarques ilimitados', 'Tudo do Professional', 'Todos os add-ons inclusos', 'Onboarding dedicado', 'Suporte prioritário'],
+    price: 'Fale conosco',
+    priceSuffix: '',
+    tagline: 'Sem limites. Condições negociadas direto com nosso time.',
+    features: ['Embarques ilimitados', 'Usuários ilimitados', 'Tudo do Professional', 'Todos os add-ons inclusos', 'Múltiplas empresas', 'Suporte dedicado'],
     highlight: false,
+    contactOnly: true,
   },
 ];
 
-const COMMERCIAL_ADDONS = ['cost_estimate_premium', 'tracking_portal', 'ai_import'] as const;
+const COMMERCIAL_ADDONS = ['cost_estimate_premium'] as const;
 
 export default function Pricing() {
   const navigate = useNavigate();
@@ -44,6 +48,10 @@ export default function Pricing() {
   function handleCta() {
     if (user) navigate('/settings#assinatura');
     else navigate('/signup');
+  }
+
+  function handleContactSales() {
+    window.location.href = 'mailto:contato@auracomex.app?subject=Aura%20Business%20-%20Quero%20negociar';
   }
 
   return (
@@ -83,7 +91,7 @@ export default function Pricing() {
       </section>
 
       {/* Plans */}
-      <section className="px-6 pb-20 max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+      <section className="px-6 pb-20 max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         {PLANS.map((p) => (
           <Card
             key={p.key}
@@ -95,13 +103,15 @@ export default function Pricing() {
           >
             <CardContent className="p-6 flex flex-col h-full">
               {p.highlight && (
-                <span className="inline-block text-xs font-semibold text-[hsl(213,100%,50%)] mb-3">MAIS ESCOLHIDO</span>
+                <span className="self-start text-[10px] font-semibold tracking-wide uppercase text-[hsl(213,100%,50%)] bg-[hsl(213,100%,50%)]/10 border border-[hsl(213,100%,50%)]/30 rounded-full px-2.5 py-1 mb-3">
+                  Mais escolhido
+                </span>
               )}
               <h3 className="text-xl font-bold mb-1">{p.name}</h3>
               <p className="text-sm text-[hsl(240,5%,58%)] mb-4">{p.tagline}</p>
               <div className="mb-6">
                 <span className="text-4xl font-extrabold">{p.price}</span>
-                <span className="text-[hsl(240,5%,58%)]">/mês</span>
+                <span className="text-[hsl(240,5%,58%)]">{p.priceSuffix || '/mês'}</span>
               </div>
               <ul className="space-y-2 mb-6 flex-1">
                 {p.features.map((f) => (
@@ -112,11 +122,11 @@ export default function Pricing() {
                 ))}
               </ul>
               <Button
-                onClick={handleCta}
+                onClick={p.contactOnly ? handleContactSales : handleCta}
                 className={p.highlight ? 'bg-[hsl(213,100%,50%)] text-[hsl(240,17%,5%)] hover:bg-[hsl(213,100%,58%)]' : ''}
                 variant={p.highlight ? 'default' : 'outline'}
               >
-                {user ? 'Assinar agora' : 'Começar 14 dias grátis'} <ArrowRight className="ml-2 w-4 h-4" />
+                {p.contactOnly ? 'Falar com vendas' : (user ? 'Assinar agora' : 'Começar 14 dias grátis')} <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
             </CardContent>
           </Card>
@@ -127,9 +137,9 @@ export default function Pricing() {
       <section className="px-6 pb-20 max-w-5xl mx-auto">
         <div className="text-center mb-10">
           <h2 className="text-3xl font-bold mb-2">Add-ons</h2>
-          <p className="text-[hsl(240,5%,58%)]">R$ 197/mês cada — inclusos no Business.</p>
+          <p className="text-[hsl(240,5%,58%)]">Recursos extras, cobrados à parte nos planos Básico e Professional — já inclusos no Business.</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 max-w-sm mx-auto gap-6">
           {COMMERCIAL_ADDONS.map((key) => {
             const meta = ADDON_META[key];
             return (
@@ -151,8 +161,8 @@ export default function Pricing() {
         <div className="space-y-3">
           {[
             { q: 'Posso trocar de plano depois?', a: 'Sim, a qualquer momento. Upgrades são imediatos, downgrades entram no próximo ciclo.' },
-            { q: 'Como funcionam os add-ons?', a: 'São recursos extras que você adiciona por R$ 197/mês cada nos planos Starter/Professional. No Business, todos já vêm inclusos.' },
-            { q: 'Tem período de teste?', a: 'Sim, novos cadastros começam com 14 dias grátis do plano Professional.' },
+            { q: 'Como funcionam os add-ons?', a: 'São recursos extras que você adiciona aos planos Básico e Professional, cobrados separadamente. No Business já vêm todos inclusos.' },
+            { q: 'Tem período de teste?', a: 'Sim, novos cadastros começam com 14 dias grátis.' },
             { q: 'Preciso instalar algo?', a: 'Não. O Aura roda 100% no navegador, inclusive celular.' },
           ].map((f) => (
             <div key={f.q} className="border border-[hsl(240,13%,16%)] rounded-lg p-4 bg-[hsl(240,13%,9%)]">

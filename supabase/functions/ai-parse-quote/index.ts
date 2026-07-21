@@ -67,91 +67,80 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build multimodal content
-    const userContent: any[] = [
-      { type: "text", text: "Extraia os dados dos documentos abaixo e chame a função extract_quote." },
+    // Build multimodal content (Gemini nativo aceita imagem e PDF inline via inline_data)
+    const userParts: any[] = [
+      { text: "Extraia os dados dos documentos abaixo e chame a função extract_quote." },
     ];
     for (const f of files) {
-      const dataUrl = `data:${f.mime};base64,${f.base64}`;
-      if (f.mime === "application/pdf") {
-        userContent.push({
-          type: "file",
-          file: { filename: f.name, file_data: dataUrl },
-        });
-      } else {
-        userContent.push({ type: "image_url", image_url: { url: dataUrl } });
-      }
+      userParts.push({ inline_data: { mime_type: f.mime, data: f.base64 } });
     }
 
-    const tool = {
-      type: "function",
-      function: {
-        name: "extract_quote",
-        description: "Retorna os dados estruturados extraídos dos documentos para criar uma cotação.",
-        parameters: {
-          type: "object",
-          properties: {
-            shipper_name: { type: "string" },
-            shipper_country: { type: "string", description: "ISO alpha-2" },
-            shipper_address: { type: "string" },
-            shipper_tax_id: { type: "string" },
-            consignee_name: { type: "string" },
-            consignee_country: { type: "string", description: "ISO alpha-2" },
-            consignee_address: { type: "string" },
-            consignee_tax_id: { type: "string" },
-            invoice_number: { type: "string" },
-            invoice_date: { type: "string", description: "YYYY-MM-DD se possível" },
-            incoterm: { type: "string" },
-            origin_port: { type: "string" },
-            destination_port: { type: "string" },
-            currency: { type: "string" },
-            transport_mode_guess: { type: "string", enum: ["ocean_fcl", "ocean_lcl", "air", "road"] },
-            direction: { type: "string", enum: ["IMP", "EXP"] },
-            total_amount: { type: "number" },
-            total_weight_kg: { type: "number" },
-            total_volume_cbm: { type: "number" },
-            total_packages: { type: "number" },
+    const extractQuoteFunction = {
+      name: "extract_quote",
+      description: "Retorna os dados estruturados extraídos dos documentos para criar uma cotação.",
+      parameters: {
+        type: "object",
+        properties: {
+          shipper_name: { type: "string" },
+          shipper_country: { type: "string", description: "ISO alpha-2" },
+          shipper_address: { type: "string" },
+          shipper_tax_id: { type: "string" },
+          consignee_name: { type: "string" },
+          consignee_country: { type: "string", description: "ISO alpha-2" },
+          consignee_address: { type: "string" },
+          consignee_tax_id: { type: "string" },
+          invoice_number: { type: "string" },
+          invoice_date: { type: "string", description: "YYYY-MM-DD se possível" },
+          incoterm: { type: "string" },
+          origin_port: { type: "string" },
+          destination_port: { type: "string" },
+          currency: { type: "string" },
+          transport_mode_guess: { type: "string", enum: ["ocean_fcl", "ocean_lcl", "air", "road"] },
+          direction: { type: "string", enum: ["IMP", "EXP"] },
+          total_amount: { type: "number" },
+          total_weight_kg: { type: "number" },
+          total_volume_cbm: { type: "number" },
+          total_packages: { type: "number" },
+          items: {
+            type: "array",
             items: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  commodity: { type: "string" },
-                  ncm_code: { type: "string" },
-                  specification: { type: "string" },
-                  quantity: { type: "number" },
-                  unit: { type: "string" },
-                  unit_price: { type: "number" },
-                  total_amount: { type: "number" },
-                  weight_kg: { type: "number" },
-                  volume_cbm: { type: "number" },
-                  packages: { type: "number" },
-                },
-                required: ["commodity"],
+              type: "object",
+              properties: {
+                commodity: { type: "string" },
+                ncm_code: { type: "string" },
+                specification: { type: "string" },
+                quantity: { type: "number" },
+                unit: { type: "string" },
+                unit_price: { type: "number" },
+                total_amount: { type: "number" },
+                weight_kg: { type: "number" },
+                volume_cbm: { type: "number" },
+                packages: { type: "number" },
               },
+              required: ["commodity"],
             },
           },
-          required: ["transport_mode_guess", "direction", "currency", "items"],
         },
+        required: ["transport_mode_guess", "direction", "currency", "items"],
       },
     };
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
-        "Content-Type": "application/json",
+    const aiResp = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": Deno.env.get("GEMINI_API_KEY") ?? "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ role: "user", parts: userParts }],
+          tools: [{ function_declarations: [extractQuoteFunction] }],
+          tool_config: { function_calling_config: { mode: "ANY", allowed_function_names: ["extract_quote"] } },
+        }),
       },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userContent },
-        ],
-        tools: [tool],
-        tool_choice: { type: "function", function: { name: "extract_quote" } },
-      }),
-    });
+    );
 
     if (!aiResp.ok) {
       const errText = await aiResp.text();
@@ -161,9 +150,9 @@ Deno.serve(async (req) => {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (aiResp.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos de IA esgotados. Adicione créditos no workspace." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      if (aiResp.status === 403) {
+        return new Response(JSON.stringify({ error: "Chave da IA inválida ou sem permissão. Confira o secret GEMINI_API_KEY." }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       return new Response(JSON.stringify({ error: "Falha ao processar com IA" }), {
@@ -172,21 +161,15 @@ Deno.serve(async (req) => {
     }
 
     const aiJson = await aiResp.json();
-    const toolCall = aiJson?.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) {
+    const functionCall = aiJson?.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
+    if (!functionCall?.args) {
+      console.error("Sem functionCall na resposta:", JSON.stringify(aiJson));
       return new Response(JSON.stringify({ error: "IA não retornou dados estruturados" }), {
         status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    let extracted: any;
-    try {
-      extracted = JSON.parse(toolCall.function.arguments);
-    } catch (e) {
-      return new Response(JSON.stringify({ error: "Resposta da IA inválida" }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const extracted: any = functionCall.args;
 
     return new Response(JSON.stringify({ data: extracted }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Ship, FileText, DollarSign, Database,
-  Settings, ChevronLeft, ChevronRight, Anchor, ArrowLeft, CreditCard, LifeBuoy
+  Settings, ChevronLeft, ChevronRight, Anchor, ArrowLeft, CreditCard, LifeBuoy, RefreshCw
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { cn } from '@/lib/utils';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -44,6 +45,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const permissions = usePermissions();
   const queryClient = useQueryClient();
+  const { usdBrl, eurBrl, source: ratesSource, loading: ratesLoading, refetch: refetchRates } = useExchangeRate();
 
   const { data: company } = useQuery({
     queryKey: ['company', profile?.company_id],
@@ -188,6 +190,47 @@ export function AppSidebar() {
           })}
         </nav>
       </div>
+
+      {/* Câmbio do dia — fixo no menu, evita repetir em várias páginas */}
+      {collapsed ? (
+        <div className="px-2 pb-2">
+          <button
+            onClick={() => refetchRates()}
+            title={`USD/BRL ${usdBrl ? usdBrl.toFixed(4) : '—'} · EUR/BRL ${eurBrl ? eurBrl.toFixed(4) : '—'}${ratesSource ? ` · Fonte: ${ratesSource}` : ''}`}
+            className="flex items-center justify-center w-full py-2 rounded-lg hover:bg-sidebar-accent transition-colors text-sidebar-foreground/70"
+          >
+            <RefreshCw className={cn('w-4 h-4', ratesLoading && 'animate-spin')} />
+          </button>
+        </div>
+      ) : (
+        <div className="px-2 pb-2">
+          <div className="rounded-lg bg-sidebar-accent/50 px-3 py-2.5 text-xs text-sidebar-foreground">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/50 font-semibold">Câmbio</span>
+              <button
+                onClick={() => refetchRates()}
+                title="Atualizar câmbio"
+                className="text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
+              >
+                <RefreshCw className={cn('w-3 h-3', ratesLoading && 'animate-spin')} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between font-mono">
+              <span className="text-sidebar-foreground/70">USD/BRL</span>
+              <span className="font-semibold">{usdBrl ? usdBrl.toFixed(4) : '—'}</span>
+            </div>
+            <div className="flex items-center justify-between font-mono">
+              <span className="text-sidebar-foreground/70">EUR/BRL</span>
+              <span className="font-semibold">{eurBrl ? eurBrl.toFixed(4) : '—'}</span>
+            </div>
+            {ratesSource && (
+              <p className="text-[9px] text-sidebar-foreground/40 mt-1.5 truncate" title={`Fonte: ${ratesSource}`}>
+                Fonte: {ratesSource}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <div className="p-2 border-t border-sidebar-border space-y-1">

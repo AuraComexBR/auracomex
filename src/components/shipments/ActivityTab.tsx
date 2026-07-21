@@ -36,13 +36,26 @@ export function ActivityTab({ shipmentId, companyId }: Props) {
   const { data: logs = [] } = useQuery({
     queryKey: ['shipment-audit', shipmentId],
     queryFn: async () => {
+      // shipment_audit_log.user_id não tem FK declarada para profiles, então o embed
+      // `profiles:user_id(...)` falha com 400 no PostgREST. Busca os nomes à parte.
       const { data, error } = await (supabase
         .from('shipment_audit_log') as any)
-        .select('*, profiles:user_id(full_name)')
+        .select('*')
         .eq('shipment_id', shipmentId)
         .order('changed_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      const rows = (data || []) as any[];
+      if (rows.length === 0) return [];
+      const userIds = [...new Set(rows.map((r: any) => r.user_id).filter(Boolean))];
+      let nameMap = new Map<string, string>();
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+        nameMap = new Map((profiles || []).map((p: any) => [p.user_id, p.full_name]));
+      }
+      return rows.map((r: any) => ({ ...r, profiles: { full_name: nameMap.get(r.user_id) || null } }));
     },
   });
 

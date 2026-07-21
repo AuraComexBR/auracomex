@@ -12,12 +12,13 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { ROLE_LABELS } from '@/hooks/usePermissions';
+import { ROLE_LABELS, getAssignableRolesForPlan } from '@/hooks/usePermissions';
+import { useSubscription } from '@/hooks/useSubscription';
 import type { Database } from '@/integrations/supabase/types';
 
 type AppRole = Database['public']['Enums']['app_role'];
 
-const ASSIGNABLE_ROLES: AppRole[] = [
+const ALL_ASSIGNABLE_ROLES: AppRole[] = [
   'admin', 'diretor', 'gerente',
   'coordenador_comercial', 'inside',
   'coordenador_operacional', 'operator',
@@ -28,8 +29,12 @@ const ASSIGNABLE_ROLES: AppRole[] = [
 export function UserRolesSection() {
   const { t, language } = useLanguage();
   const { profile, user } = useAuth();
+  const { data: sub } = useSubscription();
   const queryClient = useQueryClient();
   const [resetting, setResetting] = useState<string | null>(null);
+
+  const ASSIGNABLE_ROLES = getAssignableRolesForPlan(ALL_ASSIGNABLE_ROLES, sub?.plan);
+  const isBasicPlan = sub?.plan === 'starter';
 
   const { data: users = [] } = useQuery({
     queryKey: ['company-users', profile?.company_id],
@@ -119,6 +124,11 @@ export function UserRolesSection() {
     <Card className="glass">
       <CardHeader>
         <CardTitle>{t('settings.users')}</CardTitle>
+        {isBasicPlan && (
+          <p className="text-xs text-muted-foreground">
+            Plano Básico oferece papéis simples. Faça upgrade para Professional para liberar coordenadores, diretoria e vendedor com comissão.
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-3">
         {users.map((u) => (
@@ -138,7 +148,7 @@ export function UserRolesSection() {
                 <SelectValue placeholder={t('settings.select_role')} />
               </SelectTrigger>
               <SelectContent>
-                {ASSIGNABLE_ROLES.map((role) => (
+                {(ASSIGNABLE_ROLES.includes(u.role as AppRole) ? ASSIGNABLE_ROLES : [...ASSIGNABLE_ROLES, u.role as AppRole]).map((role) => (
                   <SelectItem key={role} value={role}>
                     {ROLE_LABELS[role]?.[language] || role}
                   </SelectItem>
