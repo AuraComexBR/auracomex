@@ -1,6 +1,11 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
+import { toast } from 'sonner';
+
+function sessionMarkerKey(userId: string) {
+  return `aura_session_marker:${userId}`;
+}
 
 interface Profile {
   id: string;
@@ -44,13 +49,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
   const [activeCompanyName, setActiveCompanyName] = useState<string | null>(null);
   const [originalCompanyId, setOriginalCompanyId] = useState<string | null>(null);
+  const mySessionIdRef = useRef<string | null>(null);
+
+  // Garante que esta aba/dispositivo tenha uma marca de sessão própria, e a reivindica
+  // no banco se ainda não houver nenhuma marca local salva (ex: primeira carga após o
+  // recurso ser ativado). Logins explícitos (signIn) sempre geram uma marca nova.
+  async function claimSessionIfNeeded(userId: string) {
+    const existing = localStorage.getItem(sessionMarkerKey(userId));
+    if (existing) {
+      mySessionIdRef.current = existing;
+      return;
+    }
+    const marker = crypto.randomUUID();
+    mySessionIdRef.current = marker;
+    localStorage.setItem(sessionMarkerKey(userId), marker);
+    await supabase.from('profiles').update({ active_session_id: marker } as any).eq('user_id', userId);
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      else setLoading(false);
+      if (session?.user) {
+        claimSessionIfNeeded(session.user.id);
+        fetchProfile(session.user.id);
+      } else setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -75,6 +98,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Escuta em tempo real a marca de sessão do próprio usuário. Se ela mudar para um
+  // valor diferente do desta aba, significa que a conta foi logada em outro lugar —
+  // encerra a sessão local imediatamente (sem revogar a sessão nova, que é a legítima).
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`profile-session-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const newMarker = (payload.new as any)?.active_session_id as string | null;
+          if (newMarker && mySessionIdRef.current && newMarker !== mySessionIdRef.current) {
+            toast.error('Sua conta foi acessada em outro lugar. Esta sessão foi encerrada.');
+            localStorage.removeItem(sessionMarkerKey(user.id));
+            mySessionIdRef.current = null;
+            supabase.auth.signOut({ scope: 'local' });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
 
   async function fetchProfile(userId: string) {
     // Fetch profile and role in parallel to reduce roundtrips
@@ -153,7 +202,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [profile, originalCompanyId]);
 
   async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (!error && data.user) {
+      // Nova marca de sessão para esta aba/dispositivo — grava no perfil e
+      // dispara o evento em tempo real que derruba qualquer sessão antiga
+      // aberta em outro lugar com a mesma conta.
+      const marker = crypto.randomUUID();
+      mySessionIdRef.current = marker;
+      localStorage.setItem(sessionMarkerKey(data.user.id), marker);
+      await supabase.from('profiles').update({ active_session_id: marker } as any).eq('user_id', data.user.id);
+      // Defesa extra: revoga os refresh tokens de qualquer outra sessão ativa
+      // dessa conta, para que não consigam renovar o login depois.
+      await supabase.auth.signOut({ scope: 'others' }).catch(() => {});
+    }
     return { error: error as Error | null };
   }
 
@@ -165,6 +226,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .update({ company_id: originalCompanyId })
         .eq('user_id', profile.user_id);
     }
+    if (user) {
+      localStorage.removeItem(sessionMarkerKey(user.id));
+      await supabase.from('profiles').update({ active_session_id: null } as any).eq('user_id', user.id).catch(() => {});
+    }
+    mySessionIdRef.current = null;
     await supabase.auth.signOut();
     setProfile(null);
     setRole(null);
