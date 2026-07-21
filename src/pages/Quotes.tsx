@@ -225,8 +225,7 @@ export default function Quotes() {
 
   return (
     <div className="space-y-6 animate-slide-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{t('quotes.title')}</h1>
+      <div className="flex items-center justify-end">
         <div className="flex gap-2">
           {/* Importar com IA — escondido por hora enquanto a integração de IA está sendo ajustada.
               Pra reativar: descomenta este bloco. */}
@@ -294,17 +293,17 @@ export default function Quotes() {
 
       <Card className="glass">
         <CardContent className="p-0">
-          <Table>
+          <Table className="text-[15px]">
             <TableHeader>
               <TableRow>
-                <SortableHeader label={t('quotes.number')} sortKey="quote_number" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label={t('shipments.client')} sortKey="client" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label={t('shipments.origin')} sortKey="origin" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label={t('shipments.destination')} sortKey="destination" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label="Lucro Estimado" sortKey="profit" state={sortState} onToggle={toggleSort} className="text-right" align="right" />
-                <SortableHeader label={t('quotes.valid_until')} sortKey="valid_until" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label={t('shipments.status')} sortKey="status" state={sortState} onToggle={toggleSort} />
-                <TableHead className="w-24"></TableHead>
+                <SortableHeader label={t('quotes.number')} sortKey="quote_number" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
+                <SortableHeader label={t('shipments.client')} sortKey="client" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
+                <SortableHeader label={t('shipments.origin')} sortKey="origin" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
+                <SortableHeader label={t('shipments.destination')} sortKey="destination" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
+                <SortableHeader label="Lucro Estimado" sortKey="profit" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm text-right" align="right" />
+                <SortableHeader label={t('quotes.valid_until')} sortKey="valid_until" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
+                <SortableHeader label={t('shipments.status')} sortKey="status" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
+                <TableHead className="w-28 h-10 px-4"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -314,14 +313,14 @@ export default function Quotes() {
                 sorted.map((q: any) => (
                   <TableRow
                     key={q.id}
-                    className="cursor-pointer hover:bg-secondary/50"
+                    className="cursor-pointer hover:bg-secondary/50 whitespace-nowrap"
                     onClick={() => setSelectedQuoteId(q.id)}
                   >
-                    <TableCell className="font-mono font-medium">{q.quote_number}</TableCell>
-                    <TableCell>{(q.clients as any)?.name || '-'}</TableCell>
-                    <TableCell>{q.origin || '-'}</TableCell>
-                    <TableCell>{q.destination || '-'}</TableCell>
-                    <TableCell className="text-right font-mono text-sm font-semibold">
+                    <TableCell className="py-2.5 px-4 font-mono font-medium">{q.quote_number}</TableCell>
+                    <TableCell className="py-2.5 px-4 max-w-[180px] truncate">{(q.clients as any)?.name || '-'}</TableCell>
+                    <TableCell className="py-2.5 px-4">{q.origin || '-'}</TableCell>
+                    <TableCell className="py-2.5 px-4">{q.destination || '-'}</TableCell>
+                    <TableCell className="py-2.5 px-4 text-right font-mono text-[15px] font-semibold">
                       {(() => {
                         const qCharges = (q as any).quote_charges || [];
                         const qItems = ((q as any).quote_items || []).map((item: any) => ({
@@ -382,10 +381,10 @@ export default function Quotes() {
                         );
                       })()}
                     </TableCell>
-                    <TableCell>{q.valid_until ? format(new Date(q.valid_until), 'dd/MM/yy') : '-'}</TableCell>
-                    <TableCell><StatusBadge status={q.status} /></TableCell>
-                    <TableCell>
-                        <div className="flex items-center gap-1">
+                    <TableCell className="py-2.5 px-4">{q.valid_until ? format(new Date(q.valid_until), 'dd/MM/yy') : '-'}</TableCell>
+                    <TableCell className="py-2.5 px-4"><StatusBadge status={q.status} /></TableCell>
+                    <TableCell className="py-1.5 px-3">
+                        <div className="flex items-center gap-1.5">
                         {/* Mark as sent */}
                         <Tooltip>
                           <TooltipTrigger asChild>

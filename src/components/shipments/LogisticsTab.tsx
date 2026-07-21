@@ -32,10 +32,12 @@ const modeIcons: Record<string, typeof Ship> = {
 const DEFAULT_STATUSES = [
   { label: 'Aprovado', value: 'approved', position: 0 },
   { label: 'Reservado', value: 'booked', position: 1 },
-  { label: 'Em Trânsito', value: 'in_transit', position: 2 },
-  { label: 'Atracou', value: 'arrived', position: 3 },
-  { label: 'Entregue', value: 'delivered', position: 4 },
-  { label: 'Cancelado', value: 'cancelled', position: 5 },
+  { label: 'Coletado', value: 'collected_at_origin', position: 2 },
+  { label: 'Docs', value: 'docs_at_origin', position: 3 },
+  { label: 'Trânsito', value: 'in_transit', position: 4 },
+  { label: 'Atracou', value: 'arrived', position: 5 },
+  { label: 'Entregue', value: 'delivered', position: 6 },
+  { label: 'Cancelado', value: 'cancelled', position: 7 },
 ];
 
 export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {

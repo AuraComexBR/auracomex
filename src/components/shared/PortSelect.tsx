@@ -35,10 +35,43 @@ export function PortSelect({ value, onChange, transportMode, placeholder = 'Busc
   const [results, setResults] = useState<Port[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Guarda o código do último porto selecionado/exibido, pra não sobrescrever
+  // o texto amigável ("CÓDIGO - Nome") com o código puro assim que o valor
+  // volta do componente pai (que só guarda o código).
+  const lastKnownCodeRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setQuery(value || '');
+    // Se o valor recebido é o mesmo porto que acabamos de exibir com nome
+    // (seleção local ou lookup), não mexe na exibição.
+    if (value && lastKnownCodeRef.current === value) return;
+
+    if (!value) {
+      setQuery('');
+      lastKnownCodeRef.current = null;
+      return;
+    }
+
+    // Valor veio de fora (ex: cotação já existente) — busca o nome do porto
+    // pra exibir "CÓDIGO - Nome" em vez do código sozinho.
+    setQuery(value);
+    let cancelled = false;
+    supabase
+      .from('ports')
+      .select('code, name')
+      .eq('code', value)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data) {
+          lastKnownCodeRef.current = value;
+          setQuery(`${data.code} - ${data.name}`);
+        } else {
+          lastKnownCodeRef.current = value;
+        }
+      });
+    return () => { cancelled = true; };
   }, [value]);
 
   useEffect(() => {
@@ -68,6 +101,7 @@ export function PortSelect({ value, onChange, transportMode, placeholder = 'Busc
 
     const { data } = await q.order('code');
     setResults((data as Port[]) || []);
+    setHighlighted(0);
     setLoading(false);
   }
 
@@ -80,9 +114,27 @@ export function PortSelect({ value, onChange, transportMode, placeholder = 'Busc
 
   function handleSelect(port: Port) {
     const display = `${port.code} - ${port.name}`;
+    lastKnownCodeRef.current = port.code;
     setQuery(display);
     onChange(port.code);
     setOpen(false);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open || results.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlighted((h) => (h + 1) % results.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlighted((h) => (h - 1 + results.length) % results.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const chosen = results[highlighted] || results[0];
+      if (chosen) handleSelect(chosen);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
   }
 
   const TypeIcon = ({ type }: { type: string }) => {
@@ -97,18 +149,23 @@ export function PortSelect({ value, onChange, transportMode, placeholder = 'Busc
         value={query}
         onChange={(e) => handleInputChange(e.target.value)}
         onFocus={() => { if (query.length >= 2) { setOpen(true); search(query); } }}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder}
         className="font-mono text-xs"
         disabled={disabled}
       />
       {open && results.length > 0 && (
         <div className="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md border bg-popover shadow-lg">
-          {results.map((port) => (
+          {results.map((port, idx) => (
             <button
               key={port.id}
               type="button"
               onClick={() => handleSelect(port)}
-              className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
+              onMouseEnter={() => setHighlighted(idx)}
+              className={cn(
+                'flex items-center gap-2 w-full px-3 py-2 text-left text-sm transition-colors',
+                idx === highlighted ? 'bg-accent' : 'hover:bg-accent'
+              )}
             >
               <TypeIcon type={port.type} />
               <span className="font-mono font-semibold text-xs">{port.code}</span>

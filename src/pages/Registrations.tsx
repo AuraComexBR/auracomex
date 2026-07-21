@@ -367,8 +367,7 @@ export default function Registrations() {
 
   return (
     <div className="space-y-6 animate-slide-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{t('registrations.title')}</h1>
+      <div className="flex items-center justify-end">
         <Button onClick={() => { resetForm(); setEditingId(null); setShowAdd(true); }}>
           <Plus className="w-4 h-4 mr-2" />
           {t('registrations.new')}
@@ -414,34 +413,32 @@ export default function Registrations() {
         <TabsContent value={activeTab} className="mt-4">
           <Card className="glass">
             <CardContent className="p-0">
-              <Table>
+              <Table className="text-sm">
                 <TableHeader>
                 <TableRow>
-                    <TableHead>{t('registrations.name')}</TableHead>
-                    <TableHead>
-                      {t('registrations.partner_category')}
+                    <TableHead className="h-9 px-3 text-xs">{t('registrations.name')}</TableHead>
+                    <TableHead className="h-9 px-3 text-xs">
+                      Categoria
                     </TableHead>
-                    <TableHead>{t('registrations.tax_id')}</TableHead>
-                    <TableHead>{t('registrations.contact')}</TableHead>
-                    <TableHead>{t('registrations.email')}</TableHead>
-                    <TableHead>{t('registrations.phone')}</TableHead>
-                    <TableHead>{t('registrations.salesperson')}</TableHead>
-                    <TableHead>{t('registrations.commission_rate')}</TableHead>
-                    <TableHead className="min-w-[170px] text-right">Ações</TableHead>
+                    <TableHead className="h-9 px-3 text-xs">{t('registrations.tax_id')}</TableHead>
+                    <TableHead className="h-9 px-3 text-xs">{t('registrations.contact')}</TableHead>
+                    <TableHead className="h-9 px-3 text-xs">{t('registrations.email')}</TableHead>
+                    <TableHead className="h-9 px-3 text-xs">{t('registrations.phone')}</TableHead>
+                    <TableHead className="h-9 px-3 text-xs min-w-[150px] text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                         {t('common.no_data')}
                       </TableCell>
                     </TableRow>
                   ) : (
                     filtered.map((c: any) => (
-                      <TableRow key={c.id} className="hover:bg-secondary/50">
-                        <TableCell className="font-medium">{c.name}</TableCell>
-                        <TableCell>
+                      <TableRow key={c.id} className="hover:bg-secondary/50 whitespace-nowrap">
+                        <TableCell className="py-2 px-3 font-medium max-w-[180px] truncate">{c.name}</TableCell>
+                        <TableCell className="py-2 px-3">
                           <div className="flex flex-col gap-1">
                             {activeTab === 'client' ? (
                               <Badge variant="outline" className={typeColors[c.type as ClientType] || ''}>
@@ -450,8 +447,8 @@ export default function Registrations() {
                             ) : (
                               c.partner_category ? (
                                 <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                                  {t(`registrations.category_${c.partner_category}`) !== `registrations.category_${c.partner_category}` 
-                                    ? t(`registrations.category_${c.partner_category}`) 
+                                  {t(`registrations.category_${c.partner_category}`) !== `registrations.category_${c.partner_category}`
+                                    ? t(`registrations.category_${c.partner_category}`)
                                     : c.partner_category}
                                 </Badge>
                               ) : (
@@ -462,28 +459,26 @@ export default function Registrations() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className="py-2 px-3 font-mono text-xs">
                           {c.tax_id ? formatTaxId(c.tax_id, c.tax_id_type) : '-'}
                         </TableCell>
-                        <TableCell>{c.contact_person || '-'}</TableCell>
-                        <TableCell>{c.email || '-'}</TableCell>
-                        <TableCell>{c.phone || '-'}</TableCell>
-                        <TableCell>{c.profiles?.full_name || salespersons.find((s: any) => s.user_id === c.salesperson_id)?.full_name || '-'}</TableCell>
-                        <TableCell>{c.commission_rate != null ? `${c.commission_rate}%` : '-'}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="py-2 px-3">{c.contact_person || '-'}</TableCell>
+                        <TableCell className="py-2 px-3">{c.email || '-'}</TableCell>
+                        <TableCell className="py-2 px-3">{c.phone || '-'}</TableCell>
+                        <TableCell className="py-1 px-2 text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="sm" className="h-8 gap-1.5" onClick={() => openEdit(c)} title="Editar">
-                              <Pencil className="h-4 w-4" />
+                            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => openEdit(c)} title="Editar">
+                              <Pencil className="h-3.5 w-3.5" />
                               Editar
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 gap-1.5 text-destructive hover:text-destructive"
+                              className="h-7 gap-1 text-xs px-2 text-destructive hover:text-destructive"
                               onClick={() => setDeleteId(c.id)}
                               title="Excluir"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-3.5 w-3.5" />
                               Excluir
                             </Button>
                           </div>

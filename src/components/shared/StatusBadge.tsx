@@ -6,6 +6,8 @@ const statusStyles: Record<string, string> = {
   quoting: 'status-new border',
   quoted: 'status-new border',
   booked: 'status-transit border',
+  collected_at_origin: 'status-transit border',
+  docs_at_origin: 'status-transit border',
   in_transit: 'status-transit border animate-pulse-neon',
   arrived: 'status-attention border',
   delivered: 'status-completed border',

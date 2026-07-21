@@ -1,5 +1,4 @@
 import { useSearchParams } from 'react-router-dom';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import OverviewTab from '@/components/financial/OverviewTab';
 import FixedAccountsTab from '@/components/financial/FixedAccountsTab';
@@ -10,15 +9,12 @@ const VALID = ['geral', 'receber', 'pagar', 'fixas'] as const;
 type TabKey = typeof VALID[number];
 
 export default function Financial() {
-  const { t } = useLanguage();
   const [params, setParams] = useSearchParams();
   const raw = params.get('tab');
   const active: TabKey = (VALID as readonly string[]).includes(raw || '') ? (raw as TabKey) : 'geral';
 
   return (
     <div className="space-y-6 animate-slide-in">
-      <h1 className="text-2xl font-bold tracking-tight">{t('financial.page_title')}</h1>
-
       <Tabs value={active} onValueChange={(v) => setParams({ tab: v }, { replace: true })} className="space-y-4">
         <TabsList>
           <TabsTrigger value="geral">Visão Geral</TabsTrigger>

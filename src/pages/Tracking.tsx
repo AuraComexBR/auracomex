@@ -18,7 +18,9 @@ import { buildCourierTrackingUrl } from '@/lib/utils';
 const statusLabels: Record<string, string> = {
   approved: 'Aprovado',
   booked: 'Reservado',
-  in_transit: 'Em Trânsito',
+  collected_at_origin: 'Coletado',
+  docs_at_origin: 'Docs',
+  in_transit: 'Trânsito',
   arrived: 'Chegou',
   delivered: 'Entregue',
   cancelled: 'Cancelado',
@@ -32,6 +34,8 @@ const statusLabels: Record<string, string> = {
 const statusColors: Record<string, string> = {
   approved: 'bg-emerald-500/10 text-emerald-600',
   booked: 'bg-indigo-500/10 text-indigo-600',
+  collected_at_origin: 'bg-indigo-500/10 text-indigo-600',
+  docs_at_origin: 'bg-indigo-500/10 text-indigo-600',
   in_transit: 'bg-amber-500/10 text-amber-600',
   arrived: 'bg-emerald-500/10 text-emerald-600',
   delivered: 'bg-green-500/10 text-green-600',

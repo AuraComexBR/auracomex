@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Bell, Search, Globe, Sparkles, LogOut, CheckCheck, Trash2, X, UserCircle } from 'lucide-react';
+import { Bell, Globe, Sparkles, LogOut, CheckCheck, Trash2, X, UserCircle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,16 +37,7 @@ export function TopBar() {
     .slice(0, 2) || 'FF';
 
   return (
-    <header className="h-16 border-b border-border bg-card/50 backdrop-blur-lg flex items-center justify-between px-6">
-      {/* Search (oculta em telas muito pequenas) */}
-      <div className="relative w-full max-w-md hidden sm:block">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder={t('common.search')}
-          className="pl-10 bg-secondary/50 border-border/50"
-        />
-      </div>
-
+    <header className="h-16 border-b border-border bg-card/50 backdrop-blur-lg flex items-center justify-end px-6">
       {/* Right side */}
       <div className="flex items-center gap-3">
         <div data-tour="plan-badge"><PlanBadge /></div>

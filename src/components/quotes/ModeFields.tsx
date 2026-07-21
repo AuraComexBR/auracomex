@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Trash2, Package, Pencil, AlertTriangle } from 'lucide-react';
 
 // Module-level cache for NCM descriptions (code -> description)
@@ -305,7 +304,7 @@ function itemSubtitle(item: CargoItem, mode: string): string {
 
 export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps) {
   const { t } = useLanguage();
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<CargoItem>({ ...emptyCargoItem });
 
@@ -315,14 +314,14 @@ export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps)
     if (readOnly) return;
     setDraft({ ...emptyCargoItem });
     setEditingIndex(null);
-    setDialogOpen(true);
+    setFormOpen(true);
   };
 
   const openEditDialog = (idx: number) => {
     if (readOnly) return;
     setDraft({ ...items[idx] });
     setEditingIndex(idx);
-    setDialogOpen(true);
+    setFormOpen(true);
   };
 
   const handleSave = () => {
@@ -331,7 +330,7 @@ export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps)
     } else {
       onChange(items.map((it, i) => (i === editingIndex ? draft : it)));
     }
-    setDialogOpen(false);
+    setFormOpen(false);
   };
 
   const removeItem = (index: number) => {
@@ -346,6 +345,168 @@ export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps)
   const totalCbm = items.reduce((s, i) => s + getEffectiveVolume(i), 0);
   const totalWeight = items.reduce((s, i) => s + calcItemWeight(i), 0);
   const totalChargeable = calcChargeableWeight(items, mode);
+
+  if (formOpen) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 pb-1">
+          <span className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary">
+            <Package className="w-4 h-4" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold leading-tight">{editingIndex === null ? 'Adicionar Carga' : 'Editar Carga'}</p>
+            <p className="text-xs text-muted-foreground">Preencha os dados físicos da carga usados para cotar o frete.</p>
+          </div>
+        </div>
+
+        <div className="space-y-3.5">
+          {/* Container */}
+          {showContainers && (
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.container_type')}</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <Select value={draft.container_type} onValueChange={(v) => patchDraft({ container_type: v })}>
+                  <SelectTrigger><SelectValue placeholder="20GP" /></SelectTrigger>
+                  <SelectContent>
+                    {CONTAINER_TYPES.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  inputMode="numeric"
+                  placeholder="Quantidade"
+                  value={draft.container_qty}
+                  onChange={(e) => patchDraft({ container_qty: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+              {CONTAINER_SPECS[draft.container_type] && (
+                <div className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5 flex gap-4">
+                  <span>⚖️ Máx: <strong>{CONTAINER_SPECS[draft.container_type].maxWeight.toLocaleString()} kg</strong></span>
+                  <span>📦 Máx: <strong>{CONTAINER_SPECS[draft.container_type].maxVolume} m³</strong></span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Weight, Volume & Cargo Value */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {(parseInt(draft.packages) || 0) >= 2
+                  ? `${t('quotes.weight_kg')} por Volume`
+                  : t('quotes.weight_kg')}
+              </Label>
+              <Input
+                inputMode="decimal"
+                placeholder={showContainers && CONTAINER_SPECS[draft.container_type] ? `Máx ${CONTAINER_SPECS[draft.container_type].maxWeight.toLocaleString()}` : '0'}
+                value={draft.weight_kg}
+                onChange={(e) => patchDraft({ weight_kg: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.volume_cbm')}</Label>
+              {(() => {
+                const computed = calcItemCbm(draft);
+                const displayValue = computed > 0 ? computed.toFixed(4) : draft.volume_cbm;
+                const isComputed = computed > 0;
+                return (
+                  <Input
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={displayValue}
+                    readOnly={isComputed}
+                    className={isComputed ? 'bg-muted/50' : ''}
+                    onChange={(e) => {
+                      if (!isComputed) patchDraft({ volume_cbm: e.target.value });
+                    }}
+                  />
+                );
+              })()}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Valor da Carga</Label>
+              <div className="flex gap-1.5">
+                <Select value={draft.cargo_value_currency || 'USD'} onValueChange={(v) => patchDraft({ cargo_value_currency: v })}>
+                  <SelectTrigger className="w-20 shrink-0"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['USD', 'BRL', 'EUR', 'GBP', 'CNY'].map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input inputMode="decimal" placeholder="0.00" value={draft.cargo_value} onChange={(e) => patchDraft({ cargo_value: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          {/* Dimensions – LCL, Air, Road, Multimodal */}
+          {showDimensions && (
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dimensões (cm)</Label>
+              <div className="grid grid-cols-3 gap-3">
+                <Input inputMode="decimal" placeholder={t('quotes.length_cm')} value={draft.length_cm} onChange={(e) => patchDraft({ length_cm: e.target.value })} />
+                <Input inputMode="decimal" placeholder={t('quotes.width_cm')} value={draft.width_cm} onChange={(e) => patchDraft({ width_cm: e.target.value })} />
+                <Input inputMode="decimal" placeholder={t('quotes.height_cm')} value={draft.height_cm} onChange={(e) => patchDraft({ height_cm: e.target.value })} />
+              </div>
+            </div>
+          )}
+
+          {/* Vehicle type & Packages */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {showVehicle && (
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.vehicle_type')}</Label>
+                <Select value={draft.vehicle_type} onValueChange={(v) => patchDraft({ vehicle_type: v })}>
+                  <SelectTrigger><SelectValue placeholder={t('quotes.vehicle_type')} /></SelectTrigger>
+                  <SelectContent>
+                    {VEHICLE_TYPES.map((v) => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {mode !== 'ocean_fcl' && (
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.packages')}</Label>
+                <Input inputMode="numeric" placeholder="0" value={draft.packages} onChange={(e) => patchDraft({ packages: e.target.value })} />
+              </div>
+            )}
+          </div>
+
+          {/* NCM */}
+          <NcmField
+            value={draft.ncm_code}
+            description={draft.commodity}
+            onCodeChange={(code, desc) => patchDraft({ ncm_code: code, commodity: desc })}
+          />
+
+          {/* Dangerous goods */}
+          <label className="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer select-none hover:bg-accent/40 transition-colors">
+            <Checkbox
+              checked={draft.dangerous_goods}
+              onCheckedChange={(v) => patchDraft({ dangerous_goods: !!v })}
+            />
+            <span className="text-sm">{t('quotes.dangerous_goods')}</span>
+          </label>
+
+          {/* Notes / Observações */}
+          <div className="space-y-1.5">
+            <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Observações</Label>
+            <Input placeholder="Detalhes adicionais da carga..." value={draft.notes} onChange={(e) => patchDraft({ notes: e.target.value })} />
+          </div>
+        </div>
+
+        <div className="flex justify-between pt-1 border-t mt-4 pt-3">
+          <Button type="button" variant="ghost" onClick={() => setFormOpen(false)}>{t('common.cancel')}</Button>
+          <Button type="button" onClick={handleSave}>
+            {editingIndex === null ? 'Adicionar' : 'Salvar'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -415,170 +576,6 @@ export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps)
         </div>
       )}
 
-      {/* Dialog de adicionar/editar carga */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
-          <div className="px-6 py-3 border-b bg-muted/30">
-            <DialogHeader className="space-y-0.5">
-              <DialogTitle className="flex items-center gap-2 text-base">
-                <span className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary">
-                  <Package className="w-4 h-4" />
-                </span>
-                {editingIndex === null ? 'Adicionar Carga' : 'Editar Carga'}
-              </DialogTitle>
-              <DialogDescription className="text-xs">
-                Preencha os dados físicos da carga usados para cotar o frete.
-              </DialogDescription>
-            </DialogHeader>
-          </div>
-
-          <div className="px-6 py-4 space-y-3.5 max-h-[70vh] overflow-y-auto">
-            {/* Container */}
-            {showContainers && (
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.container_type')}</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <Select value={draft.container_type} onValueChange={(v) => patchDraft({ container_type: v })}>
-                    <SelectTrigger><SelectValue placeholder="20GP" /></SelectTrigger>
-                    <SelectContent>
-                      {CONTAINER_TYPES.map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    inputMode="numeric"
-                    placeholder="Quantidade"
-                    value={draft.container_qty}
-                    onChange={(e) => patchDraft({ container_qty: parseInt(e.target.value) || 1 })}
-                  />
-                </div>
-                {CONTAINER_SPECS[draft.container_type] && (
-                  <div className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5 flex gap-4">
-                    <span>⚖️ Máx: <strong>{CONTAINER_SPECS[draft.container_type].maxWeight.toLocaleString()} kg</strong></span>
-                    <span>📦 Máx: <strong>{CONTAINER_SPECS[draft.container_type].maxVolume} m³</strong></span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Weight, Volume & Cargo Value */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {(parseInt(draft.packages) || 0) >= 2
-                    ? `${t('quotes.weight_kg')} por Volume`
-                    : t('quotes.weight_kg')}
-                </Label>
-                <Input
-                  inputMode="decimal"
-                  placeholder={showContainers && CONTAINER_SPECS[draft.container_type] ? `Máx ${CONTAINER_SPECS[draft.container_type].maxWeight.toLocaleString()}` : '0'}
-                  value={draft.weight_kg}
-                  onChange={(e) => patchDraft({ weight_kg: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.volume_cbm')}</Label>
-                {(() => {
-                  const computed = calcItemCbm(draft);
-                  const displayValue = computed > 0 ? computed.toFixed(4) : draft.volume_cbm;
-                  const isComputed = computed > 0;
-                  return (
-                    <Input
-                      inputMode="decimal"
-                      placeholder="0"
-                      value={displayValue}
-                      readOnly={isComputed}
-                      className={isComputed ? 'bg-muted/50' : ''}
-                      onChange={(e) => {
-                        if (!isComputed) patchDraft({ volume_cbm: e.target.value });
-                      }}
-                    />
-                  );
-                })()}
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Valor da Carga</Label>
-                <div className="flex gap-1.5">
-                  <Select value={draft.cargo_value_currency || 'USD'} onValueChange={(v) => patchDraft({ cargo_value_currency: v })}>
-                    <SelectTrigger className="w-20 shrink-0"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {['USD', 'BRL', 'EUR', 'GBP', 'CNY'].map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input inputMode="decimal" placeholder="0.00" value={draft.cargo_value} onChange={(e) => patchDraft({ cargo_value: e.target.value })} />
-                </div>
-              </div>
-            </div>
-
-            {/* Dimensions – LCL, Air, Road, Multimodal */}
-            {showDimensions && (
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dimensões (cm)</Label>
-                <div className="grid grid-cols-3 gap-3">
-                  <Input inputMode="decimal" placeholder={t('quotes.length_cm')} value={draft.length_cm} onChange={(e) => patchDraft({ length_cm: e.target.value })} />
-                  <Input inputMode="decimal" placeholder={t('quotes.width_cm')} value={draft.width_cm} onChange={(e) => patchDraft({ width_cm: e.target.value })} />
-                  <Input inputMode="decimal" placeholder={t('quotes.height_cm')} value={draft.height_cm} onChange={(e) => patchDraft({ height_cm: e.target.value })} />
-                </div>
-              </div>
-            )}
-
-            {/* Vehicle type & Packages */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {showVehicle && (
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.vehicle_type')}</Label>
-                  <Select value={draft.vehicle_type} onValueChange={(v) => patchDraft({ vehicle_type: v })}>
-                    <SelectTrigger><SelectValue placeholder={t('quotes.vehicle_type')} /></SelectTrigger>
-                    <SelectContent>
-                      {VEHICLE_TYPES.map((v) => (
-                        <SelectItem key={v} value={v}>{v}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {mode !== 'ocean_fcl' && (
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.packages')}</Label>
-                  <Input inputMode="numeric" placeholder="0" value={draft.packages} onChange={(e) => patchDraft({ packages: e.target.value })} />
-                </div>
-              )}
-            </div>
-
-            {/* NCM */}
-            <NcmField
-              value={draft.ncm_code}
-              description={draft.commodity}
-              onCodeChange={(code, desc) => patchDraft({ ncm_code: code, commodity: desc })}
-            />
-
-            {/* Dangerous goods */}
-            <label className="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer select-none hover:bg-accent/40 transition-colors">
-              <Checkbox
-                checked={draft.dangerous_goods}
-                onCheckedChange={(v) => patchDraft({ dangerous_goods: !!v })}
-              />
-              <span className="text-sm">{t('quotes.dangerous_goods')}</span>
-            </label>
-
-            {/* Notes / Observações */}
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Observações</Label>
-              <Input placeholder="Detalhes adicionais da carga..." value={draft.notes} onChange={(e) => patchDraft({ notes: e.target.value })} />
-            </div>
-          </div>
-
-          <DialogFooter className="flex-wrap gap-2 sm:justify-between px-6 py-3 border-t bg-muted/20">
-            <Button variant="ghost" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSave}>
-              {editingIndex === null ? 'Adicionar' : 'Salvar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { PortSelect } from '@/components/shared/PortSelect';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { findFreeQuoteNumber } from '@/lib/referenceUtils';
 
 const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road'] as const;
 
@@ -95,7 +96,9 @@ export function DuplicateQuoteDialog({ quote, onClose, onDuplicated }: Props) {
       const baseRef = quote.base_reference || quote.quote_number.replace(/-[AFLRM][IE]$/, '');
       const modeLetter = MODE_LETTER[mode] || 'F';
       const dirLetter = DIRECTION_LETTER[direction] || 'I';
-      const quoteNum = `${baseRef}-${modeLetter}${dirLetter}`;
+      // Garante que a referência gerada não colide com uma já existente
+      // (ex: duplicar o mesmo modo/direção mais de uma vez).
+      const quoteNum = await findFreeQuoteNumber(profile.company_id, `${baseRef}-${modeLetter}${dirLetter}`);
 
       // Insert new quote
       const { data: newQuote, error: qErr } = await supabase.from('quotes').insert([{

@@ -11,6 +11,7 @@ import { PortSelect } from '@/components/shared/PortSelect';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { findFreeQuoteNumber } from '@/lib/referenceUtils';
 
 const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road'] as const;
 
@@ -80,7 +81,9 @@ export function DuplicateShipmentDialog({ shipment, onClose, onDuplicated }: Pro
       const baseRef = (shipment.reference_number || '').replace(/-[AFLRM][IE]$/, '') || shipment.reference_number;
       const modeLetter = MODE_LETTER[mode] || 'F';
       const dirLetter = DIRECTION_LETTER[direction] || 'I';
-      const quoteNum = `${baseRef}-${modeLetter}${dirLetter}`;
+      // Garante que a referência gerada não colide com uma já existente
+      // (ex: duplicar o mesmo embarque mais de uma vez no mesmo modo/direção).
+      const quoteNum = await findFreeQuoteNumber(profile.company_id, `${baseRef}-${modeLetter}${dirLetter}`);
 
       const { data: newQuote, error: qErr } = await supabase.from('quotes').insert([{
         company_id: profile.company_id,

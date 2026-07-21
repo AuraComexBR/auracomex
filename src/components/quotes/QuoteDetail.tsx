@@ -184,6 +184,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [chargeDescSearch, setChargeDescSearch] = useState('');
   const [showChargeSuggestions, setShowChargeSuggestions] = useState(false);
+  const [chargeDescHighlighted, setChargeDescHighlighted] = useState(0);
   const chargeDescInputRef = useRef<HTMLInputElement>(null);
   const [commentText, setCommentText] = useState('');
   // Onboarding da aba Taxas (mostrado automaticamente na primeira visita)
@@ -281,6 +282,81 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       return data as any[];
     },
   });
+
+  // Sugestões filtradas do catálogo de taxas pra descrição (compartilhado entre
+  // renderização e navegação por teclado).
+  const chargeFilteredSuggestions = useMemo(() => {
+    const activeLeg = chargeForm.leg;
+    return catalog
+      .filter((c: any) => {
+        const legs: string[] = c.legs || [];
+        if (!legs.includes(activeLeg)) return false;
+        if (chargeDescSearch.length >= 1) {
+          return c.name.toLowerCase().includes(chargeDescSearch.toLowerCase());
+        }
+        return true;
+      })
+      .slice(0, 8);
+  }, [catalog, chargeForm.leg, chargeDescSearch]);
+
+  const chargeDescExactMatch = useMemo(
+    () => catalog.some((c: any) => c.name.toLowerCase() === chargeDescSearch.toLowerCase()),
+    [catalog, chargeDescSearch]
+  );
+
+  // "Adicionar ao catálogo" conta como mais um item navegável no fim da lista.
+  const chargeDescShowAddOption = chargeDescSearch.length >= 2 && !chargeDescExactMatch;
+  const chargeDescOptionCount = chargeFilteredSuggestions.length + (chargeDescShowAddOption ? 1 : 0);
+
+  useEffect(() => {
+    setChargeDescHighlighted(0);
+  }, [chargeFilteredSuggestions.length, chargeDescShowAddOption]);
+
+  function selectChargeSuggestion(s: any) {
+    setChargeForm({ ...chargeForm, description: s.name, charge_catalog_id: s.id });
+    setChargeDescSearch('');
+    setShowChargeSuggestions(false);
+  }
+
+  async function addChargeDescToCatalog() {
+    if (!profile) return;
+    try {
+      const { data, error } = await supabase.from('charge_catalog' as any).insert({
+        company_id: profile.company_id,
+        name: chargeDescSearch.trim().toUpperCase(),
+        legs: [chargeForm.leg],
+      } as any).select('*').single();
+      if (error) throw error;
+      setChargeForm({ ...chargeForm, description: (data as any).name, charge_catalog_id: (data as any).id });
+      setChargeDescSearch('');
+      setShowChargeSuggestions(false);
+      queryClient.invalidateQueries({ queryKey: ['charge-catalog'] });
+      toast.success(t('quotes.add_to_catalog'));
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
+
+  function handleChargeDescKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!showChargeSuggestions || chargeDescOptionCount === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setChargeDescHighlighted((h) => (h + 1) % chargeDescOptionCount);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setChargeDescHighlighted((h) => (h - 1 + chargeDescOptionCount) % chargeDescOptionCount);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (chargeDescHighlighted < chargeFilteredSuggestions.length) {
+        const chosen = chargeFilteredSuggestions[chargeDescHighlighted];
+        if (chosen) selectChargeSuggestion(chosen);
+      } else if (chargeDescShowAddOption) {
+        addChargeDescToCatalog();
+      }
+    } else if (e.key === 'Escape') {
+      setShowChargeSuggestions(false);
+    }
+  }
 
   const { data: clients = [] } = useQuery({
     queryKey: ['clients-select'],
@@ -1022,7 +1098,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
 
   function resetChargeFormAfterAdd() {
     const keepDefault = form.client_id || '';
-    setChargeForm({ charge_catalog_id: '', description: '', charge_type: 'freight', leg: 'freight', amount: '', currency: 'USD', partner_id: keepDefault, billing_unit: 'fixed' });
+    setChargeForm((prev) => ({ charge_catalog_id: '', description: '', charge_type: 'freight', leg: prev.leg, amount: '', currency: 'USD', partner_id: '', billing_unit: 'fixed' }));
     setSellPartnerId(keepDefault);
     setSellBillingUnit('fixed');
     setSellCurrency('USD');
@@ -2064,88 +2140,65 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                           }}
                           onFocus={() => setShowChargeSuggestions(true)}
                           onBlur={() => setTimeout(() => setShowChargeSuggestions(false), 200)}
+                          onKeyDown={handleChargeDescKeyDown}
                           placeholder="THC, BL FEE, OCEAN FREIGHT..."
                           className="h-10"
                           style={{ textTransform: 'uppercase' }}
                         />
-                         {showChargeSuggestions && (() => {
-                          const activeLeg = chargeForm.leg;
-                          const filtered = catalog
-                            .filter((c: any) => {
-                              const legs: string[] = c.legs || [];
-                              if (!legs.includes(activeLeg)) return false;
-                              if (chargeDescSearch.length >= 1) {
-                                return c.name.toLowerCase().includes(chargeDescSearch.toLowerCase());
-                              }
-                              return true;
-                            })
-                            .slice(0, 8);
-                          const exactMatch = catalog.some((c: any) => c.name.toLowerCase() === chargeDescSearch.toLowerCase());
-                           if (!(filtered.length > 0 || (chargeDescSearch.length >= 2 && !exactMatch))) return null;
+                         {showChargeSuggestions && chargeDescOptionCount > 0 && (
                            // Renderizado como filho direto do wrapper relativo (não em portal para o body),
                            // pois o DismissableLayer do Radix Dialog fecha/perde o clique em elementos
                            // portalizados fora da árvore do DialogContent, impedindo a seleção do item.
-                           return (
-                             <div
-                               style={{
-                                 position: 'absolute',
-                                 top: '100%',
-                                 left: 0,
-                                 right: 0,
-                                 marginTop: 4,
-                                 zIndex: 9999,
-                               }}
-                               className="bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto"
-                             >
-                              {filtered.map((s: any) => (
-                                <button
-                                  key={s.id}
-                                  className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex items-center justify-between"
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    setChargeForm({ ...chargeForm, description: s.name, charge_catalog_id: s.id });
-                                    setChargeDescSearch('');
-                                    setShowChargeSuggestions(false);
-                                  }}
-                                >
-                                  <span>{s.name}</span>
-                                  <div className="flex gap-1">
-                                    {((s.legs as string[]) || []).map((l: string) => (
-                                      <span key={l} className="text-[10px] text-muted-foreground border rounded px-1.5 py-0.5">{legLabels[l] || l}</span>
-                                    ))}
-                                  </div>
-                                </button>
-                              ))}
-                              {chargeDescSearch.length >= 2 && !exactMatch && (
-                                <button
-                                  className="w-full text-left px-3 py-2 hover:bg-accent text-sm text-primary font-medium border-t"
-                                  onMouseDown={async (e) => {
-                                    e.preventDefault();
-                                    if (!profile) return;
-                                    try {
-                                      const { data, error } = await supabase.from('charge_catalog' as any).insert({
-                                        company_id: profile.company_id,
-                                        name: chargeDescSearch.trim().toUpperCase(),
-                                        legs: [chargeForm.leg],
-                                      } as any).select('*').single();
-                                      if (error) throw error;
-                                      setChargeForm({ ...chargeForm, description: (data as any).name, charge_catalog_id: (data as any).id });
-                                      setChargeDescSearch('');
-                                      setShowChargeSuggestions(false);
-                                      queryClient.invalidateQueries({ queryKey: ['charge-catalog'] });
-                                      toast.success(t('quotes.add_to_catalog'));
-                                    } catch (err: any) {
-                                      toast.error(err.message);
-                                    }
-                                  }}
-                                >
-                                  <Plus className="w-3.5 h-3.5 inline mr-1" />
-                                  {t('quotes.add_to_catalog')}: "{chargeDescSearch.trim()}"
-                                </button>
-                              )}
-                             </div>
-                           );
-                        })()}
+                           <div
+                             style={{
+                               position: 'absolute',
+                               top: '100%',
+                               left: 0,
+                               right: 0,
+                               marginTop: 4,
+                               zIndex: 9999,
+                             }}
+                             className="bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto"
+                           >
+                            {chargeFilteredSuggestions.map((s: any, idx: number) => (
+                              <button
+                                key={s.id}
+                                className={cn(
+                                  'w-full text-left px-3 py-2 text-sm flex items-center justify-between transition-colors',
+                                  idx === chargeDescHighlighted ? 'bg-accent' : 'hover:bg-accent'
+                                )}
+                                onMouseEnter={() => setChargeDescHighlighted(idx)}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  selectChargeSuggestion(s);
+                                }}
+                              >
+                                <span>{s.name}</span>
+                                <div className="flex gap-1">
+                                  {((s.legs as string[]) || []).map((l: string) => (
+                                    <span key={l} className="text-[10px] text-muted-foreground border rounded px-1.5 py-0.5">{legLabels[l] || l}</span>
+                                  ))}
+                                </div>
+                              </button>
+                            ))}
+                            {chargeDescShowAddOption && (
+                              <button
+                                className={cn(
+                                  'w-full text-left px-3 py-2 text-sm text-primary font-medium border-t transition-colors',
+                                  chargeDescHighlighted === chargeFilteredSuggestions.length ? 'bg-accent' : 'hover:bg-accent'
+                                )}
+                                onMouseEnter={() => setChargeDescHighlighted(chargeFilteredSuggestions.length)}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  addChargeDescToCatalog();
+                                }}
+                              >
+                                <Plus className="w-3.5 h-3.5 inline mr-1" />
+                                {t('quotes.add_to_catalog')}: "{chargeDescSearch.trim()}"
+                              </button>
+                            )}
+                           </div>
+                         )}
                       </div>
                   </div>
                   </div>

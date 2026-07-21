@@ -18,7 +18,7 @@ export interface TimelineKpis {
   isFinished: boolean;
 }
 
-const STATUS_ORDER = ['approved', 'booked', 'in_transit', 'arrived', 'delivered'] as const;
+const STATUS_ORDER = ['approved', 'booked', 'collected_at_origin', 'docs_at_origin', 'in_transit', 'arrived', 'delivered'] as const;
 
 function diffDays(a: Date, b: Date): number {
   const ms = a.getTime() - b.getTime();
@@ -54,6 +54,8 @@ export function buildTimeline(shipment: any): { steps: TimelineStep[]; kpis: Tim
   const rawSteps: Array<Omit<TimelineStep, 'state'> & { statusKey: typeof STATUS_ORDER[number] }> = [
     { key: 'approved', statusKey: 'approved', label: 'Aprovado', date: shipment.created_at },
     { key: 'booked', statusKey: 'booked', label: 'Reservado', hint: shipment.booking_number || undefined },
+    { key: 'collected_at_origin', statusKey: 'collected_at_origin', label: 'Coletado', date: null },
+    { key: 'docs_at_origin', statusKey: 'docs_at_origin', label: 'Docs', date: null },
     { key: 'in_transit', statusKey: 'in_transit', label: 'Embarcado', date: atd?.toISOString() || etd?.toISOString() || null, hint: shipment.vessel_flight || undefined },
     { key: 'arrived', statusKey: 'arrived', label: 'Chegou', date: ata?.toISOString() || eta?.toISOString() || null },
     { key: 'delivered', statusKey: 'delivered', label: 'Entregue', date: null },

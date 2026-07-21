@@ -139,8 +139,7 @@ export default function Clients() {
 
   return (
     <div className="space-y-6 animate-slide-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{t('clients.title')}</h1>
+      <div className="flex items-center justify-end">
         <Button onClick={openCreate}><Plus className="w-4 h-4 mr-2" />{t('clients.new')}</Button>
       </div>
 
@@ -151,15 +150,15 @@ export default function Clients() {
 
       <Card className="glass">
         <CardContent className="p-0">
-          <Table>
+          <Table className="text-sm">
             <TableHeader>
               <TableRow>
-                <TableHead>{t('clients.name')}</TableHead>
-                <TableHead>{t('clients.contact')}</TableHead>
-                <TableHead>{t('clients.email')}</TableHead>
-                <TableHead>{t('clients.phone')}</TableHead>
-                <TableHead>Documento</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                <TableHead className="h-9 px-3 text-xs">{t('clients.name')}</TableHead>
+                <TableHead className="h-9 px-3 text-xs">{t('clients.contact')}</TableHead>
+                <TableHead className="h-9 px-3 text-xs">{t('clients.email')}</TableHead>
+                <TableHead className="h-9 px-3 text-xs">{t('clients.phone')}</TableHead>
+                <TableHead className="h-9 px-3 text-xs">Documento</TableHead>
+                <TableHead className="h-9 px-3 text-xs text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -167,12 +166,12 @@ export default function Clients() {
                 <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">{t('common.no_data')}</TableCell></TableRow>
               ) : (
                 filtered.map((c: any) => (
-                  <TableRow key={c.id} className="hover:bg-secondary/50">
-                    <TableCell className="font-medium">{c.name}</TableCell>
-                    <TableCell>{c.contact_person || '-'}</TableCell>
-                    <TableCell>{c.email || '-'}</TableCell>
-                    <TableCell>{c.phone || '-'}</TableCell>
-                    <TableCell>
+                  <TableRow key={c.id} className="hover:bg-secondary/50 whitespace-nowrap">
+                    <TableCell className="py-2 px-3 font-medium max-w-[180px] truncate">{c.name}</TableCell>
+                    <TableCell className="py-2 px-3">{c.contact_person || '-'}</TableCell>
+                    <TableCell className="py-2 px-3">{c.email || '-'}</TableCell>
+                    <TableCell className="py-2 px-3">{c.phone || '-'}</TableCell>
+                    <TableCell className="py-2 px-3">
                       {c.tax_id ? (
                         <div className="flex items-center gap-2">
                           <span>{formatTaxId(c.tax_id, c.tax_id_type)}</span>
@@ -182,13 +181,13 @@ export default function Clients() {
                         </div>
                       ) : '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="py-1 px-2 text-right">
                       <div className="flex justify-end gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => openEdit(c)} title="Editar">
-                          <Pencil className="w-4 h-4" />
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(c)} title="Editar">
+                          <Pencil className="w-3.5 h-3.5" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => setDeleteId(c.id)} title="Excluir" className="text-red-400 hover:text-red-300">
-                          <Trash2 className="w-4 h-4" />
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-300" onClick={() => setDeleteId(c.id)} title="Excluir">
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </TableCell>

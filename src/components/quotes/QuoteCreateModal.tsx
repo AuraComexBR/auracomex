@@ -10,12 +10,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { PortSelect } from '@/components/shared/PortSelect';
-import { ModeFields, emptyCargoItem, type CargoItem } from './ModeFields';
+import { ModeFields, type CargoItem } from './ModeFields';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Copy, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { addDays, format } from 'date-fns';
+import { quoteNumberExists, findFreeQuoteNumber } from '@/lib/referenceUtils';
 
 const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road'] as const;
 
@@ -50,12 +51,19 @@ interface Props {
 const defaultValidUntil = () => format(addDays(new Date(), 15), 'yyyy-MM-dd');
 
 /* ── Client Autocomplete ── */
+const CLIENT_SEARCH_MIN_CHARS = 2;
+
 function ClientAutocomplete({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const { t } = useLanguage();
+  const { profile } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ id: string; name: string }[]>([]);
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -72,17 +80,39 @@ function ClientAutocomplete({ value, onChange }: { value: string; onChange: (id:
     if (!value) setQuery('');
   }, [value]);
 
-  async function search(term: string) {
-    if (term.length < 3) { setResults([]); setOpen(false); return; }
-    const { data } = await supabase
+  async function runSearch(term: string) {
+    const myRequestId = ++requestIdRef.current;
+    setSearching(true);
+    let queryBuilder = supabase
       .from('clients')
       .select('id, name')
       .eq('type', 'client')
       .ilike('name', `%${term}%`)
       .order('name')
       .limit(10);
+    if (profile?.company_id) {
+      queryBuilder = queryBuilder.eq('company_id', profile.company_id) as any;
+    }
+    const { data, error } = await queryBuilder;
+    // Ignora respostas de buscas antigas (evita "piscar" resultado errado)
+    if (myRequestId !== requestIdRef.current) return;
+    if (error) { setResults([]); setSearching(false); return; }
     setResults(data || []);
+    setHighlighted(0);
     setOpen(true);
+    setSearching(false);
+  }
+
+  function search(term: string) {
+    const clean = term.trim();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (clean.length < CLIENT_SEARCH_MIN_CHARS) {
+      setResults([]);
+      setOpen(false);
+      setSearching(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => runSearch(clean), 250);
   }
 
   function handleSelect(client: { id: string; name: string }) {
@@ -91,22 +121,56 @@ function ClientAutocomplete({ value, onChange }: { value: string; onChange: (id:
     setOpen(false);
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open || results.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlighted((h) => (h + 1) % results.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlighted((h) => (h - 1 + results.length) % results.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const chosen = results[highlighted] || results[0];
+      if (chosen) handleSelect(chosen);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
+  }
+
+  const showHint = query.trim().length > 0 && query.trim().length < CLIENT_SEARCH_MIN_CHARS;
+  const showNoResults = open && !searching && results.length === 0 && query.trim().length >= CLIENT_SEARCH_MIN_CHARS;
+
   return (
     <div ref={containerRef} className="relative">
       <Input
         value={query}
         onChange={(e) => { setQuery(e.target.value); search(e.target.value); if (!e.target.value) onChange(''); }}
+        onFocus={() => { if (results.length > 0) setOpen(true); }}
+        onKeyDown={handleKeyDown}
         placeholder="Digite o nome do cliente..."
         className="text-sm"
       />
+      {showHint && (
+        <p className="text-xs text-muted-foreground mt-1">Digite pelo menos {CLIENT_SEARCH_MIN_CHARS} letras para buscar.</p>
+      )}
+      {showNoResults && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg px-3 py-2 text-sm text-muted-foreground">
+          Nenhum cliente encontrado com esse nome.
+        </div>
+      )}
       {open && results.length > 0 && (
         <div className="absolute z-50 mt-1 w-full max-h-48 overflow-auto rounded-md border bg-popover shadow-lg">
-          {results.map((c) => (
+          {results.map((c, idx) => (
             <button
               key={c.id}
               type="button"
               onClick={() => handleSelect(c)}
-              className="w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
+              onMouseEnter={() => setHighlighted(idx)}
+              className={cn(
+                'w-full px-3 py-2 text-left text-sm transition-colors',
+                idx === highlighted ? 'bg-accent' : 'hover:bg-accent'
+              )}
             >
               {c.name}
             </button>
@@ -120,10 +184,10 @@ function ClientAutocomplete({ value, onChange }: { value: string; onChange: (id:
 export function QuoteCreateModal({ open, onClose, onCreated }: Props) {
   const { t } = useLanguage();
   const { profile } = useAuth();
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [mode, setMode] = useState<string>('ocean_fcl');
   const [loading, setLoading] = useState(false);
-  const [items, setItems] = useState<CargoItem[]>([{ ...emptyCargoItem }]);
+  const [items, setItems] = useState<CargoItem[]>([]);
   const [showTransshipment, setShowTransshipment] = useState(false);
   const [form, setForm] = useState({
     client_id: '',
@@ -154,14 +218,14 @@ export function QuoteCreateModal({ open, onClose, onCreated }: Props) {
     const defaultIncoterm = newMode === 'road' ? 'NONE' : (validIncoterms[0] || 'FOB');
     setForm({ client_id: '', pickup: '', origin: '', transshipment: '', destination: '', delivery: '', incoterm: defaultIncoterm, currency: 'USD', valid_until: defaultValidUntil(), notes: '', manual_reference: '' });
     setShowTransshipment(false);
-    setItems([{ ...emptyCargoItem }]);
+    setItems([]);
     setStep(2);
   }
 
   function handleClose() {
     setStep(1);
     setMode('ocean_fcl');
-    setItems([{ ...emptyCargoItem }]);
+    setItems([]);
     setForm({ client_id: '', pickup: '', origin: '', transshipment: '', destination: '', delivery: '', incoterm: 'FOB', currency: 'USD', valid_until: defaultValidUntil(), notes: '', manual_reference: '' });
     setShowTransshipment(false);
     onClose();
@@ -251,6 +315,12 @@ export function QuoteCreateModal({ open, onClose, onCreated }: Props) {
       let baseRef: string;
       let quoteNum: string;
       if (manualRef) {
+        // Referência digitada manualmente: não pode duplicar uma já existente.
+        if (await quoteNumberExists(profile.company_id, manualRef)) {
+          toast.error(`Já existe uma cotação com a referência "${manualRef}". Escolha outra.`);
+          setLoading(false);
+          return;
+        }
         baseRef = manualRef;
         quoteNum = manualRef;
       } else {
@@ -266,6 +336,8 @@ export function QuoteCreateModal({ open, onClose, onCreated }: Props) {
         const modeLetter = MODE_LETTER[mode] || 'F';
         const dirLetter = DIRECTION_LETTER[direction] || 'I';
         quoteNum = includeMode ? `${baseRef}-${modeLetter}${dirLetter}` : baseRef;
+        // Salvaguarda: mesmo gerada automaticamente, garante que não colide com nada existente.
+        quoteNum = await findFreeQuoteNumber(profile.company_id, quoteNum);
       }
 
       const { data: quote, error: qErr } = await supabase.from('quotes').insert([{
@@ -326,7 +398,7 @@ export function QuoteCreateModal({ open, onClose, onCreated }: Props) {
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {step === 1 ? t('quotes.select_mode') : t('quotes.step_details')}
+            {step === 1 ? t('quotes.select_mode') : step === 2 ? t('quotes.step_details') : t('quotes.cargo_details')}
           </DialogTitle>
         </DialogHeader>
 
@@ -352,7 +424,7 @@ export function QuoteCreateModal({ open, onClose, onCreated }: Props) {
               ))}
             </div>
           </div>
-        ) : (
+        ) : step === 2 ? (
           <div className="space-y-5">
             {/* Mode indicator */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
@@ -492,16 +564,32 @@ export function QuoteCreateModal({ open, onClose, onCreated }: Props) {
               </div>
             </div>
 
+            {/* Actions */}
+            <div className="flex justify-between pt-2">
+              <Button variant="outline" onClick={() => setStep(1)}>
+                <ArrowLeft className="w-4 h-4 mr-1" /> {t('quotes.back')}
+              </Button>
+              <Button onClick={() => setStep(3)}>
+                {t('quotes.continue')}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* Mode indicator */}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+              <ModeIcon mode={mode} />
+              <span className="font-medium">{t(`mode.${mode}`)}</span>
+            </div>
 
             {/* Mode-specific cargo fields */}
-            <div className="border-t pt-4">
-              <h3 className="text-sm font-semibold mb-3">{t('quotes.cargo_details')}</h3>
+            <div>
               <ModeFields mode={mode} items={items} onChange={setItems} />
             </div>
 
             {/* Actions */}
             <div className="flex justify-between pt-2">
-              <Button variant="outline" onClick={() => setStep(1)}>
+              <Button variant="outline" onClick={() => setStep(2)}>
                 <ArrowLeft className="w-4 h-4 mr-1" /> {t('quotes.back')}
               </Button>
               <div className="flex gap-2">

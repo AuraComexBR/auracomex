@@ -219,19 +219,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signOut() {
+    // Estas chamadas ao banco são "best-effort": se qualquer uma delas falhar
+    // (RLS, rede, etc.), o logout em si (auth.signOut) não pode ficar preso —
+    // por isso cada uma tem seu próprio catch, em vez de deixar a exceção
+    // subir e abortar a função antes de chegar no signOut de verdade.
+
     // Restore original company_id before signing out
     if (originalCompanyId && profile) {
       await supabase
         .from('profiles')
         .update({ company_id: originalCompanyId })
-        .eq('user_id', profile.user_id);
+        .eq('user_id', profile.user_id)
+        .then(() => {}, () => {});
     }
     if (user) {
       localStorage.removeItem(sessionMarkerKey(user.id));
-      await supabase.from('profiles').update({ active_session_id: null } as any).eq('user_id', user.id).catch(() => {});
+      await supabase.from('profiles').update({ active_session_id: null } as any).eq('user_id', user.id).then(() => {}, () => {});
     }
     mySessionIdRef.current = null;
-    await supabase.auth.signOut();
+
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Mesmo se a revogação no servidor falhar (ex: sem rede), limpa a sessão local.
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    }
+
+    setUser(null);
+    setSession(null);
     setProfile(null);
     setRole(null);
     setActiveCompanyId(null);

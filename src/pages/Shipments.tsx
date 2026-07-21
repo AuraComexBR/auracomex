@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useSalespersonClients } from '@/hooks/useSalespersonClients';
-import { Search, Filter, FileText, CalendarIcon, Copy } from 'lucide-react';
+import { Search, Filter, FileText, CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,7 +15,6 @@ import { Calendar } from '@/components/ui/calendar';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { ShipmentDetail } from '@/components/shipments/ShipmentDetail';
-import { DuplicateShipmentDialog } from '@/components/shipments/DuplicateShipmentDialog';
 import { Badge } from '@/components/ui/badge';
 import { format, isToday } from 'date-fns';
 import { toast } from 'sonner';
@@ -23,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTableSort } from '@/hooks/useTableSort';
 import { SortableHeader } from '@/components/shared/SortableHeader';
+import { countryCodeToFlag } from '@/lib/countryFlag';
 
 
 export default function Shipments() {
@@ -31,8 +31,6 @@ export default function Shipments() {
   const { isSalesperson, clientIds } = useSalespersonClients();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [duplicateShipment, setDuplicateShipment] = useState<any | null>(null);
-  const queryClient = useQueryClient();
 
   // Fetch custom status options for label mapping
   const { data: statusOptions = [] } = useQuery({
@@ -107,10 +105,6 @@ export default function Shipments() {
 
   return (
     <div className="space-y-6 animate-slide-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{t('shipments.title')}</h1>
-      </div>
-
       <div className="flex gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -128,25 +122,24 @@ export default function Shipments() {
 
       <Card className="glass">
         <CardContent className="p-0">
-          <Table>
+          <Table className="text-sm">
             <TableHeader>
               <TableRow>
-                <SortableHeader label={t('shipments.reference')} sortKey="reference_number" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label={t('shipments.client')} sortKey="client" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label={t('shipments.origin')} sortKey="origin" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label={t('shipments.destination')} sortKey="destination" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label={t('shipments.etd')} sortKey="etd" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label={t('shipments.eta')} sortKey="eta" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label="Next Update" sortKey="next_update" state={sortState} onToggle={toggleSort} />
-                <SortableHeader label="Última Atividade" sortKey="updated_at" state={sortState} onToggle={toggleSort} />
-                <TableHead className="w-10" />
+                <SortableHeader label="REF" sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <SortableHeader label={t('shipments.client')} sortKey="client" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <SortableHeader label={t('shipments.origin')} sortKey="origin" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <SortableHeader label={t('shipments.destination')} sortKey="destination" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <SortableHeader label={t('shipments.etd')} sortKey="etd" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <SortableHeader label={t('shipments.eta')} sortKey="eta" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <SortableHeader label="Next Update" sortKey="next_update" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <SortableHeader label="Atividade" sortKey="updated_at" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {sorted.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                     {t('common.no_data')}
                   </TableCell>
                 </TableRow>
@@ -160,30 +153,42 @@ export default function Shipments() {
                       ? 'bg-yellow-500/10'
                       : 'bg-red-500/5';
                   return (
-                  <TableRow key={s.id} className={`group ${rowBg}`}>
+                  <TableRow key={s.id} className={`group whitespace-nowrap ${rowBg}`}>
                     <TableCell
-                      className="font-mono font-medium cursor-pointer hover:underline"
+                      className="py-2 px-3 font-mono font-medium cursor-pointer hover:underline"
                       onClick={() => setSelectedId(s.id)}
                     >
                       {s.reference_number}
                     </TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => setSelectedId(s.id)}>
+                    <TableCell className="py-2 px-3 cursor-pointer max-w-[160px] truncate" onClick={() => setSelectedId(s.id)}>
                       {(s.clients as any)?.name || '-'}
                     </TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => setSelectedId(s.id)}>
-                      {s.origin_city}{s.origin_country ? `, ${s.origin_country}` : ''}
+                    <TableCell className="py-2 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="leading-none">{countryCodeToFlag(s.origin_country || '')}</span>
+                        <span>{s.origin_city || s.origin_country || '-'}</span>
+                      </span>
                     </TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => setSelectedId(s.id)}>
-                      {s.destination_city}{s.destination_country ? `, ${s.destination_country}` : ''}
+                    <TableCell className="py-2 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="leading-none">{countryCodeToFlag(s.destination_country || '')}</span>
+                        <span>{s.destination_city || s.destination_country || '-'}</span>
+                      </span>
                     </TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => setSelectedId(s.id)}>
-                      {s.etd ? format(new Date(s.etd), 'dd/MM/yy') : '-'}
+                    <TableCell className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                      <InlineDate
+                        value={s.etd}
+                        onChange={(d) => updateShipmentField(s.id, 'etd', d)}
+                      />
                     </TableCell>
-                    <TableCell className="cursor-pointer" onClick={() => setSelectedId(s.id)}>
-                      {s.eta ? format(new Date(s.eta), 'dd/MM/yy') : '-'}
+                    <TableCell className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                      <InlineDate
+                        value={s.eta}
+                        onChange={(d) => updateShipmentField(s.id, 'eta', d)}
+                      />
                     </TableCell>
                     {/* Read-only Status from Logistics */}
-                    <TableCell className="cursor-pointer" onClick={() => setSelectedId(s.id)}>
+                    <TableCell className="py-2 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
                       {statusLabelMap.has(s.status) ? (
                         <StatusBadge status={s.status} label={statusLabelMap.get(s.status)} />
                       ) : (
@@ -191,30 +196,15 @@ export default function Shipments() {
                       )}
                     </TableCell>
                     {/* Inline-editable Next Update */}
-                    <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
                       <InlineNextUpdate
                         value={s.next_update}
                         onChange={(d) => updateShipmentField(s.id, 'next_update', d)}
                       />
                     </TableCell>
                     {/* Activity indicator */}
-                    <TableCell>
+                    <TableCell className="py-2 px-3">
                       <ActivityIndicator updatedAt={s.updated_at} lastAccessedAt={(s as any).last_accessed_at} />
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => setDuplicateShipment(s)}
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>{t('shipments.duplicate')}</TooltipContent>
-                      </Tooltip>
                     </TableCell>
                   </TableRow>
                   );
@@ -225,14 +215,6 @@ export default function Shipments() {
         </CardContent>
       </Card>
 
-      <DuplicateShipmentDialog
-        shipment={duplicateShipment}
-        onClose={() => setDuplicateShipment(null)}
-        onDuplicated={() => {
-          setDuplicateShipment(null);
-          queryClient.invalidateQueries({ queryKey: ['quotes'] });
-        }}
-      />
     </div>
   );
 }
@@ -258,8 +240,8 @@ function ActivityIndicator({ updatedAt, lastAccessedAt }: { updatedAt: string; l
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="flex items-center gap-2">
-          <span className={cn("inline-block w-2.5 h-2.5 rounded-full", color)} />
+        <div className="flex items-center gap-1.5">
+          <span className={cn("inline-block w-2 h-2 rounded-full shrink-0", color)} />
           <span className="text-xs text-muted-foreground">
             {format(new Date(updatedAt), 'dd/MM/yy')}
           </span>
@@ -279,12 +261,42 @@ function InlineNextUpdate({ value, onChange }: { value: string | null; onChange:
         <Button
           variant="ghost"
           className={cn(
-            "h-7 text-xs px-2 font-normal justify-start w-[110px]",
+            "h-7 text-xs px-2 font-normal justify-start w-[100px]",
             !dateValue && "text-muted-foreground"
           )}
         >
-          <CalendarIcon className="mr-1 h-3 w-3" />
+          <CalendarIcon className="mr-1 h-3 w-3 shrink-0" />
           {dateValue ? format(dateValue, 'dd/MM/yy') : 'Definir...'}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={dateValue}
+          onSelect={(d) => onChange(d ? d.toISOString() : null)}
+          initialFocus
+          className="p-3 pointer-events-auto"
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Campo de data editável inline (usado em ETD/ETA), no mesmo padrão do "Next Update".
+function InlineDate({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+  const dateValue = value ? new Date(value) : undefined;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          className={cn(
+            "h-7 text-xs px-2 font-normal justify-start w-[86px]",
+            !dateValue && "text-muted-foreground"
+          )}
+        >
+          {dateValue ? format(dateValue, 'dd/MM/yy') : '-'}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
