@@ -2588,6 +2588,15 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   if (error) throw error;
                   setCommentText('');
                   queryClient.invalidateQueries({ queryKey: ['quote-comments', quoteId] });
+                  // Se essa cotação já virou embarque, um comentário também conta como
+                  // atividade no processo — atualiza o embarque e a lista de Embarques.
+                  if ((quote as any)?.shipment_id) {
+                    await supabase.from('shipments').update({
+                      updated_at: new Date().toISOString(),
+                    } as any).eq('id', (quote as any).shipment_id);
+                    queryClient.invalidateQueries({ queryKey: ['shipments'] });
+                    queryClient.invalidateQueries({ queryKey: ['shipment', (quote as any).shipment_id] });
+                  }
                   toast.success(t('quotes.comment_added'));
                 } catch (err: any) {
                   toast.error(err.message);
