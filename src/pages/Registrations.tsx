@@ -410,87 +410,89 @@ export default function Registrations() {
           <PortsTab />
         </TabsContent>
 
-        <TabsContent value={activeTab} className="mt-4">
-          <Card className="glass">
-            <CardContent className="p-0">
-              <Table className="text-sm">
-                <TableHeader>
-                <TableRow>
-                    <TableHead className="h-9 px-3 text-xs">{t('registrations.name')}</TableHead>
-                    <TableHead className="h-9 px-3 text-xs">
-                      Categoria
-                    </TableHead>
-                    <TableHead className="h-9 px-3 text-xs">{t('registrations.tax_id')}</TableHead>
-                    <TableHead className="h-9 px-3 text-xs">{t('registrations.contact')}</TableHead>
-                    <TableHead className="h-9 px-3 text-xs">{t('registrations.email')}</TableHead>
-                    <TableHead className="h-9 px-3 text-xs">{t('registrations.phone')}</TableHead>
-                    <TableHead className="h-9 px-3 text-xs min-w-[150px] text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
-                        {t('common.no_data')}
-                      </TableCell>
+        {(['client', 'supplier'] as const).map((tabValue) => (
+          <TabsContent key={tabValue} value={tabValue} className="mt-4">
+            <Card className="glass">
+              <CardContent className="p-0">
+                <Table className="text-sm">
+                  <TableHeader>
+                  <TableRow>
+                      <TableHead className="h-9 px-3 text-xs">{t('registrations.name')}</TableHead>
+                      <TableHead className="h-9 px-3 text-xs">
+                        Categoria
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-xs">{t('registrations.tax_id')}</TableHead>
+                      <TableHead className="h-9 px-3 text-xs">{t('registrations.contact')}</TableHead>
+                      <TableHead className="h-9 px-3 text-xs">{t('registrations.email')}</TableHead>
+                      <TableHead className="h-9 px-3 text-xs">{t('registrations.phone')}</TableHead>
+                      <TableHead className="h-9 px-3 text-xs min-w-[150px] text-right">Ações</TableHead>
                     </TableRow>
-                  ) : (
-                    filtered.map((c: any) => (
-                      <TableRow key={c.id} className="hover:bg-secondary/50 whitespace-nowrap">
-                        <TableCell className="py-2 px-3 font-medium max-w-[180px] truncate">{c.name}</TableCell>
-                        <TableCell className="py-2 px-3">
-                          <div className="flex flex-col gap-1">
-                            {activeTab === 'client' ? (
-                              <Badge variant="outline" className={typeColors[c.type as ClientType] || ''}>
-                                {typeLabels[c.type as ClientType] || c.type}
-                              </Badge>
-                            ) : (
-                              c.partner_category ? (
-                                <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                                  {t(`registrations.category_${c.partner_category}`) !== `registrations.category_${c.partner_category}`
-                                    ? t(`registrations.category_${c.partner_category}`)
-                                    : c.partner_category}
-                                </Badge>
-                              ) : (
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                          {t('common.no_data')}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filtered.map((c: any) => (
+                        <TableRow key={c.id} className="hover:bg-secondary/50 whitespace-nowrap">
+                          <TableCell className="py-2 px-3 font-medium max-w-[180px] truncate">{c.name}</TableCell>
+                          <TableCell className="py-2 px-3">
+                            <div className="flex flex-col gap-1">
+                              {activeTab === 'client' ? (
                                 <Badge variant="outline" className={typeColors[c.type as ClientType] || ''}>
                                   {typeLabels[c.type as ClientType] || c.type}
                                 </Badge>
-                              )
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-2 px-3 font-mono text-xs">
-                          {c.tax_id ? formatTaxId(c.tax_id, c.tax_id_type) : '-'}
-                        </TableCell>
-                        <TableCell className="py-2 px-3">{c.contact_person || '-'}</TableCell>
-                        <TableCell className="py-2 px-3">{c.email || '-'}</TableCell>
-                        <TableCell className="py-2 px-3">{c.phone || '-'}</TableCell>
-                        <TableCell className="py-1 px-2 text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => openEdit(c)} title="Editar">
-                              <Pencil className="h-3.5 w-3.5" />
-                              Editar
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1 text-xs px-2 text-destructive hover:text-destructive"
-                              onClick={() => setDeleteId(c.id)}
-                              title="Excluir"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Excluir
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                              ) : (
+                                c.partner_category ? (
+                                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                                    {t(`registrations.category_${c.partner_category}`) !== `registrations.category_${c.partner_category}`
+                                      ? t(`registrations.category_${c.partner_category}`)
+                                      : c.partner_category}
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className={typeColors[c.type as ClientType] || ''}>
+                                    {typeLabels[c.type as ClientType] || c.type}
+                                  </Badge>
+                                )
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2 px-3 font-mono text-xs">
+                            {c.tax_id ? formatTaxId(c.tax_id, c.tax_id_type) : '-'}
+                          </TableCell>
+                          <TableCell className="py-2 px-3">{c.contact_person || '-'}</TableCell>
+                          <TableCell className="py-2 px-3">{c.email || '-'}</TableCell>
+                          <TableCell className="py-2 px-3">{c.phone || '-'}</TableCell>
+                          <TableCell className="py-1 px-2 text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => openEdit(c)} title="Editar">
+                                <Pencil className="h-3.5 w-3.5" />
+                                Editar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 gap-1 text-xs px-2 text-destructive hover:text-destructive"
+                                onClick={() => setDeleteId(c.id)}
+                                title="Excluir"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Excluir
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        ))}
       </Tabs>
 
       {/* Add Dialog */}
