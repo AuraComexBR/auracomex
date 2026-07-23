@@ -365,39 +365,42 @@ export default function Registrations() {
     return matchesSearch;
   });
 
+  const showClientControls = activeTab === 'client' || activeTab === 'supplier';
+
   return (
     <div className="space-y-6 animate-slide-in">
-      <div className="flex items-center justify-end">
-        <Button onClick={() => { resetForm(); setEditingId(null); setShowAdd(true); }}>
-          <Plus className="w-4 h-4 mr-2" />
-          {t('registrations.new')}
-        </Button>
-      </div>
-
-      {/* Tabs + Search */}
+      {/* Tabs + Search + Novo Cadastro (só faz sentido pra Clientes/Fornecedores) */}
       <Tabs value={activeTab} onValueChange={(v) => {
         setActiveTab(v);
         if (!editingId) {
           setForm(prev => ({ ...prev, type: (v === 'client' ? 'client' : 'supplier') as ClientType }));
         }
       }}>
-        <div className="flex items-center gap-4 flex-wrap">
-          <TabsList className="bg-secondary/50">
-            <TabsTrigger value="client">{t('registrations.clients')}</TabsTrigger>
-            <TabsTrigger value="supplier">{t('registrations.suppliers')}</TabsTrigger>
-            <TabsTrigger value="charges">{t('charges.tab')}</TabsTrigger>
-            <TabsTrigger value="ports">Portos</TabsTrigger>
-          </TabsList>
-          {activeTab !== 'charges' && (
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder={t('registrations.search')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
+            <TabsList className="bg-secondary/50">
+              <TabsTrigger value="client">{t('registrations.clients')}</TabsTrigger>
+              <TabsTrigger value="supplier">{t('registrations.suppliers')}</TabsTrigger>
+              <TabsTrigger value="charges">{t('charges.tab')}</TabsTrigger>
+              <TabsTrigger value="ports">Portos</TabsTrigger>
+            </TabsList>
+            {showClientControls && (
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder={t('registrations.search')}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            )}
+          </div>
+          {showClientControls && (
+            <Button onClick={() => { resetForm(); setEditingId(null); setShowAdd(true); }}>
+              <Plus className="w-4 h-4 mr-2" />
+              {t('registrations.new')}
+            </Button>
           )}
         </div>
 

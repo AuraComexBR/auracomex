@@ -20,6 +20,7 @@ export function PortsTab() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [countryFilter, setCountryFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -31,14 +32,45 @@ export function PortsTab() {
     type: 'sea' as string,
   });
 
-  const { data: ports = [], isLoading } = useQuery({
-    queryKey: ['ports-management'],
+  // Lista de países que realmente têm portos/aeroportos cadastrados, pra
+  // popular o filtro (em vez da lista genérica de todos os países do mundo).
+  const { data: countryOptions = [] } = useQuery({
+    queryKey: ['ports-countries'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('ports')
+        .select('country_code, country_name')
+        // Sem isso o PostgREST corta em 1000 linhas por padrão, o que
+        // deixaria países de fora da lista do filtro.
+        .limit(20000);
+      if (error) throw error;
+      const map = new Map<string, string>();
+      for (const row of (data || []) as any[]) {
+        if (row.country_code && !map.has(row.country_code)) {
+          map.set(row.country_code, row.country_name || row.country_code);
+        }
+      }
+      return Array.from(map.entries())
+        .map(([code, name]) => ({ code, name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    },
+  });
+
+  const { data: ports = [], isLoading } = useQuery({
+    queryKey: ['ports-management', countryFilter],
+    queryFn: async () => {
+      let q = supabase
+        .from('ports')
         .select('*')
         .order('code')
-        .limit(500);
+        // Sem filtro de país, mantém um teto pra não carregar a base toda de
+        // uma vez; com um país selecionado, sobe o limite pra cobrir mesmo
+        // os países com mais aeroportos cadastrados (ex: Estados Unidos).
+        .limit(countryFilter ? 1000 : 500);
+      if (countryFilter) {
+        q = q.eq('country_code', countryFilter);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return data || [];
     },
@@ -136,21 +168,40 @@ export function PortsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por código, nome ou cidade..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por código, nome ou cidade..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={countryFilter || '_all'} onValueChange={(v) => setCountryFilter(v === '_all' ? '' : v)}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Filtrar por país..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_all">Todos os países</SelectItem>
+              {countryOptions.map((c) => (
+                <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <Button onClick={() => { resetForm(); setEditingId(null); setShowForm(true); }}>
           <Plus className="w-4 h-4 mr-2" />
           Novo Porto/Aeroporto
         </Button>
       </div>
+
+      {!countryFilter && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          Mostrando os primeiros 500 resultados. Selecione um país no filtro pra ver a lista completa dele.
+        </p>
+      )}
 
       <Card className="glass">
         <CardContent className="p-0">
