@@ -14,7 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PortSelect } from '@/components/shared/PortSelect';
 import { CountrySelect } from '@/components/shared/CountrySelect';
-import { MapPin, Ship, Plane, Truck, ArrowRight, Save, CalendarIcon, Settings, Plus, Trash2, GripVertical } from 'lucide-react';
+import { MapPin, Ship, Plane, Truck, ArrowRight, Save, CalendarIcon, Settings, Plus, Trash2, GripVertical, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -28,6 +28,19 @@ interface Props {
 const modeIcons: Record<string, typeof Ship> = {
   ocean_fcl: Ship, ocean_lcl: Ship, air: Plane, road: Truck, multimodal: Ship,
 };
+
+const COURIER_TRACKING_URLS: Record<string, (n: string) => string> = {
+  DHL: (n) => `https://www.dhl.com/br-pt/home/tracking.html?tracking-id=${encodeURIComponent(n)}`,
+  FEDEX: (n) => `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(n)}`,
+  UPS: (n) => `https://www.ups.com/track?tracknum=${encodeURIComponent(n)}`,
+  TNT: (n) => `https://www.tnt.com/express/pt_br/site/shipping-tools/tracking.html?searchType=con&cons=${encodeURIComponent(n)}`,
+};
+
+function getCourierTrackingUrl(provider: string, trackingNumber: string): string | null {
+  if (!provider || !trackingNumber) return null;
+  const builder = COURIER_TRACKING_URLS[provider];
+  return builder ? builder(trackingNumber.trim()) : null;
+}
 
 const DEFAULT_STATUSES = [
   { label: 'Aprovado', value: 'approved', position: 0 },
@@ -661,32 +674,50 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
             <Label className="text-xs">Vessel/Flight</Label>
             <Input value={form.vessel_flight} onChange={e => updateField('vessel_flight', e.target.value)} />
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Courier</Label>
-            <Select
-              value={form.courier_provider || '_none'}
-              onValueChange={(v) => updateField('courier_provider', v === '_none' ? '' : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecionar..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_none">—</SelectItem>
-                <SelectItem value="DHL">DHL</SelectItem>
-                <SelectItem value="FEDEX">FedEx</SelectItem>
-                <SelectItem value="UPS">UPS</SelectItem>
-                <SelectItem value="TNT">TNT</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1 md:col-span-2">
-            <Label className="text-xs">Nº de Rastreio Courier</Label>
-            <Input
-              value={form.courier_tracking_number}
-              onChange={e => updateField('courier_tracking_number', e.target.value)}
-              placeholder="Ex: 5132057442"
-            />
-          </div>
+          {shipment.transport_mode === 'air' && (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs">Courier</Label>
+                <Select
+                  value={form.courier_provider || '_none'}
+                  onValueChange={(v) => updateField('courier_provider', v === '_none' ? '' : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecionar..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">—</SelectItem>
+                    <SelectItem value="DHL">DHL</SelectItem>
+                    <SelectItem value="FEDEX">FedEx</SelectItem>
+                    <SelectItem value="UPS">UPS</SelectItem>
+                    <SelectItem value="TNT">TNT</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <Label className="text-xs">Nº de Rastreio Courier</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={form.courier_tracking_number}
+                    onChange={e => updateField('courier_tracking_number', e.target.value)}
+                    placeholder="Ex: 5132057442"
+                    className="flex-1"
+                  />
+                  {(() => {
+                    const url = getCourierTrackingUrl(form.courier_provider, form.courier_tracking_number);
+                    return url ? (
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={url} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                          Rastrear
+                        </a>
+                      </Button>
+                    ) : null;
+                  })()}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Save button */}
