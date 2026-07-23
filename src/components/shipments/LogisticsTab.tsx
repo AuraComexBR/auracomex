@@ -30,7 +30,7 @@ const modeIcons: Record<string, typeof Ship> = {
 };
 
 const COURIER_TRACKING_URLS: Record<string, (n: string) => string> = {
-  DHL: (n) => `https://www.dhl.com/br-pt/home/tracking.html?tracking-id=${encodeURIComponent(n)}`,
+  DHL: (n) => `https://www.dhl.com/br-pt/home/tracking.html?tracking-id=${encodeURIComponent(n)}&submit=1`,
   FEDEX: (n) => `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(n)}`,
   UPS: (n) => `https://www.ups.com/track?tracknum=${encodeURIComponent(n)}`,
   TNT: (n) => `https://www.tnt.com/express/pt_br/site/shipping-tools/tracking.html?searchType=con&cons=${encodeURIComponent(n)}`,
