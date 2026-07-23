@@ -4,7 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { useSalespersonClients } from '@/hooks/useSalespersonClients';
-import { Search, Filter, FileText, CalendarIcon } from 'lucide-react';
+import { Search, Filter, FileText, CalendarIcon, Truck } from 'lucide-react';
+import { getCourierTrackingUrl } from '@/lib/courierTracking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -59,7 +60,7 @@ export default function Shipments() {
     queryFn: async () => {
       let query = supabase
         .from('shipments')
-        .select('id, reference_number, status, transport_mode, origin_city, origin_country, destination_city, destination_country, etd, eta, atd, ata, client_id, updated_at, last_accessed_at, next_update, clients(name)')
+        .select('id, reference_number, status, transport_mode, origin_city, origin_country, destination_city, destination_country, etd, eta, atd, ata, client_id, updated_at, last_accessed_at, next_update, courier_provider, courier_tracking_number, clients(name)')
         .order('created_at', { ascending: false });
 
       if (isSalesperson && clientIds && clientIds.length > 0) {
@@ -230,13 +231,32 @@ export default function Shipments() {
                     : accessedToday
                       ? 'bg-yellow-500/10'
                       : 'bg-red-500/5';
+                  const trackingUrl = getCourierTrackingUrl(s.courier_provider, s.courier_tracking_number);
                   return (
                   <TableRow key={s.id} className={`group whitespace-nowrap ${rowBg}`}>
                     <TableCell
                       className="py-2 px-3 font-mono font-medium cursor-pointer hover:underline"
                       onClick={() => setSelectedId(s.id)}
                     >
-                      {s.reference_number}
+                      <span className="inline-flex items-center gap-1.5">
+                        {s.reference_number}
+                        {trackingUrl && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <a
+                                href={trackingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-muted-foreground hover:text-primary"
+                              >
+                                <Truck className="w-3.5 h-3.5" />
+                              </a>
+                            </TooltipTrigger>
+                            <TooltipContent>Rastrear {s.courier_provider}</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="py-2 px-3 cursor-pointer max-w-[160px] truncate" onClick={() => setSelectedId(s.id)}>
                       {(s.clients as any)?.name || '-'}
