@@ -23,6 +23,10 @@ echo ==== Aplicando migrations no Supabase (se houver) ====
 call supabase db push
 
 echo.
+echo ==== Publicando Edge Functions no Supabase ====
+call supabase functions deploy
+
+echo.
 echo ================================
 echo   Deploy concluido!
 echo ================================
