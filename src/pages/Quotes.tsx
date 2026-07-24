@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { format, startOfMonth } from 'date-fns';
@@ -106,26 +107,51 @@ export default function Quotes() {
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const [duplicateQuote, setDuplicateQuote] = useState<any>(null);
   const [rejectQuote, setRejectQuote] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'active' | 'rejected'>('active');
 
-  // All quotes for the list (excluding approved/converted)
+  // All quotes for the list (excluding approved/converted always; rejeitadas
+  // ficam de fora da aba principal pra não "sujar" a lista, e só aparecem
+  // na aba Rejeitadas).
   const { data: quotes = [] } = useQuery({
-    queryKey: ['quotes', isSalesperson, clientIds],
+    queryKey: ['quotes', isSalesperson, clientIds, activeTab],
     queryFn: async () => {
       let query = supabase
         .from('quotes')
         .select('id, quote_number, status, transport_mode, origin, destination, valid_until, created_at, sent_at, client_id, currency, clients(name), quote_charges(id, sell_amount, buy_amount, currency, billing_unit), quote_items(container_type, container_qty, weight_kg, volume_cbm, chargeable_weight, length_cm, width_cm, height_cm, packages, commodity, dangerous_goods, vehicle_type)')
-        .not('status', 'in', '("approved","converted")')
         .order('created_at', { ascending: false });
-      
+
+      if (activeTab === 'rejected') {
+        query = query.eq('status', 'rejected');
+      } else {
+        query = query.not('status', 'in', '("approved","converted","rejected")');
+      }
+
       if (isSalesperson && clientIds && clientIds.length > 0) {
         query = query.in('client_id', clientIds);
       } else if (isSalesperson) {
         return [];
       }
-      
+
       const { data, error } = await query;
       if (error) throw error;
       return data;
+    },
+  });
+
+  // Contagem de rejeitadas pra mostrar na aba, sem precisar trocar de aba pra saber
+  const { data: rejectedCount = 0 } = useQuery({
+    queryKey: ['quotes-rejected-count', isSalesperson, clientIds],
+    queryFn: async () => {
+      let query = supabase
+        .from('quotes')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'rejected');
+      if (isSalesperson && clientIds && clientIds.length > 0) {
+        query = query.in('client_id', clientIds);
+      } else if (isSalesperson) return 0;
+      const { count, error } = await query;
+      if (error) throw error;
+      return count || 0;
     },
   });
 
@@ -286,9 +312,17 @@ export default function Quotes() {
         </Card>
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder={t('common.search')} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="relative max-w-md flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder={t('common.search')} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
+        </div>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'active' | 'rejected')}>
+          <TabsList>
+            <TabsTrigger value="active">Ativas</TabsTrigger>
+            <TabsTrigger value="rejected">Rejeitadas{rejectedCount > 0 ? ` (${rejectedCount})` : ''}</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       <Card className="glass">
@@ -478,6 +512,7 @@ export default function Quotes() {
         onRejected={() => {
           setRejectQuote(null);
           queryClient.invalidateQueries({ queryKey: ['quotes'] });
+          queryClient.invalidateQueries({ queryKey: ['quotes-rejected-count'] });
         }}
       />
     </div>
