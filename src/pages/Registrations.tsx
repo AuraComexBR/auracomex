@@ -509,7 +509,7 @@ export default function Registrations() {
 
       {/* Add Dialog */}
       <Dialog open={showAdd} onOpenChange={handleDialogClose}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingId ? t('registrations.edit') : t('registrations.new')}</DialogTitle>
           </DialogHeader>
