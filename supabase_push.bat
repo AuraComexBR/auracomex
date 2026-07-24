@@ -9,7 +9,7 @@ echo.
 echo (Se aparecer uma pergunta tipo "Apply migrations? [Y/n]", digite Y e Enter)
 echo.
 
-supabase db push
+call supabase db push
 if errorlevel 1 (
     echo.
     echo [FALHOU] supabase db push - revise as mensagens acima

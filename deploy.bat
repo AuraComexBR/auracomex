@@ -33,7 +33,7 @@ if errorlevel 1 (
 echo.
 echo ==== [2/3] Aplicando migrations no Supabase ====
 echo (Se aparecer uma pergunta tipo "Apply migrations? [Y/n]", digite Y e Enter)
-supabase db push
+call supabase db push
 if errorlevel 1 (
     set ERRO_GERAL=1
     set STATUS_DB=FALHOU
@@ -43,7 +43,7 @@ if errorlevel 1 (
 
 echo.
 echo ==== [3/3] Publicando Edge Functions no Supabase ====
-supabase functions deploy
+call supabase functions deploy
 if errorlevel 1 (
     set ERRO_GERAL=1
     set STATUS_FN=FALHOU
