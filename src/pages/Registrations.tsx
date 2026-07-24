@@ -310,9 +310,33 @@ export default function Registrations() {
 
     setLookingUp(true);
     try {
-      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
-      if (!res.ok) throw new Error('not found');
-      const data = await res.json();
+      // A BrasilAPI (proxy pra Receita Federal) às vezes cai ou demora
+      // demais — timeout curto + uma segunda tentativa evita mostrar
+      // "não encontrado" pra falhas passageiras de rede/servidor.
+      let data: any = null;
+      let notFound = false;
+      for (let attempt = 0; attempt < 2 && !data && !notFound; attempt++) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+          const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (res.status === 404) {
+            notFound = true;
+            break;
+          }
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          data = await res.json();
+        } catch (err) {
+          clearTimeout(timeout);
+          if (attempt === 1) throw err; // esgotou as tentativas, propaga
+        }
+      }
+
+      if (notFound) {
+        toast.error(t('registrations.cnpj_not_found'));
+        return;
+      }
 
       const address = [
         data.logradouro,
@@ -334,7 +358,9 @@ export default function Registrations() {
       }));
       toast.success(t('registrations.cnpj_found'));
     } catch {
-      toast.error(t('registrations.cnpj_not_found'));
+      // Falha real de rede/timeout/erro do servidor — diferente de
+      // "não encontrado" (404 genuíno da Receita).
+      toast.error(t('registrations.cnpj_lookup_error'));
     } finally {
       setLookingUp(false);
     }

@@ -233,6 +233,7 @@ const translations: Record<string, Record<Language, string>> = {
   'registrations.cnpj_not_found': { pt: 'CNPJ não encontrado', en: 'Tax ID not found' },
   'registrations.cnpj_already_exists': { pt: 'Este CNPJ já está cadastrado', en: 'This tax ID is already registered' },
   'registrations.cnpj_found': { pt: 'Dados preenchidos automaticamente', en: 'Data auto-filled' },
+  'registrations.cnpj_lookup_error': { pt: 'Erro ao consultar CNPJ, tente novamente', en: 'Error looking up Tax ID, try again' },
   'registrations.type_client': { pt: 'Cliente', en: 'Client' },
   'registrations.type_supplier': { pt: 'Fornecedor', en: 'Supplier' },
   'registrations.type_carrier': { pt: 'Armador', en: 'Carrier' },
