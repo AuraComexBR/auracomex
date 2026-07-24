@@ -56,24 +56,22 @@ export function PortsTab() {
     },
   });
 
+  // Só busca (e mostra) a listagem depois que o usuário escolhe um país —
+  // com milhares de portos/aeroportos cadastrados, não faz sentido carregar
+  // ou exibir tudo de cara.
   const { data: ports = [], isLoading } = useQuery({
     queryKey: ['ports-management', countryFilter],
     queryFn: async () => {
-      let q = supabase
+      const { data, error } = await supabase
         .from('ports')
         .select('*')
+        .eq('country_code', countryFilter)
         .order('code')
-        // Sem filtro de país, mantém um teto pra não carregar a base toda de
-        // uma vez; com um país selecionado, sobe o limite pra cobrir mesmo
-        // os países com mais aeroportos cadastrados (ex: Estados Unidos).
-        .limit(countryFilter ? 1000 : 500);
-      if (countryFilter) {
-        q = q.eq('country_code', countryFilter);
-      }
-      const { data, error } = await q;
+        .limit(1000);
       if (error) throw error;
       return data || [];
     },
+    enabled: !!countryFilter,
   });
 
   const saveMutation = useMutation({
@@ -179,12 +177,11 @@ export function PortsTab() {
               className="pl-10"
             />
           </div>
-          <Select value={countryFilter || '_all'} onValueChange={(v) => setCountryFilter(v === '_all' ? '' : v)}>
+          <Select value={countryFilter} onValueChange={setCountryFilter}>
             <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Filtrar por país..." />
+              <SelectValue placeholder="Selecione um país..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="_all">Todos os países</SelectItem>
               {countryOptions.map((c) => (
                 <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
               ))}
@@ -196,12 +193,6 @@ export function PortsTab() {
           Novo Porto/Aeroporto
         </Button>
       </div>
-
-      {!countryFilter && (
-        <p className="text-xs text-muted-foreground -mt-2">
-          Mostrando os primeiros 500 resultados. Selecione um país no filtro pra ver a lista completa dele.
-        </p>
-      )}
 
       <Card className="glass">
         <CardContent className="p-0">
@@ -217,7 +208,13 @@ export function PortsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
+              {!countryFilter ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                    Selecione um país acima para ver os portos e aeroportos cadastrados.
+                  </TableCell>
+                </TableRow>
+              ) : isLoading ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                     Carregando...
