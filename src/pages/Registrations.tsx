@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { ChargeCatalogTab } from '@/components/registrations/ChargeCatalogTab';
 import { PortsTab } from '@/components/registrations/PortsTab';
+import { ClientDocumentsSection } from '@/components/registrations/ClientDocumentsSection';
 import { formatCpf, isValidCpf, onlyDigits, formatTaxId } from '@/lib/utils';
 
 const CLIENT_TYPES = ['client', 'carrier', 'agent'] as const;
@@ -758,6 +759,11 @@ export default function Registrations() {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
                 </div>
               </div>
+            )}
+
+            {/* Documentos - só depois que o cadastro existe (precisa de um ID pra anexar) */}
+            {editingId && profile?.company_id && (
+              <ClientDocumentsSection clientId={editingId} companyId={profile.company_id} />
             )}
 
             <div className="flex justify-end gap-2 pt-2">

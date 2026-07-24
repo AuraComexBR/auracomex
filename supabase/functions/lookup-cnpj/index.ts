@@ -61,6 +61,36 @@ async function tryReceitaWs(cnpj: string): Promise<LookupResult | "not_found" | 
   };
 }
 
+// API pública da CNPJá (open.cnpja.com) — gratuita, sem cadastro/chave,
+// limitada a 5 consultas/minuto por IP. Usada como terceira tentativa,
+// já que o limite baixo faz mais sentido guardar pra quando as outras
+// duas falharem.
+async function tryCnpja(cnpj: string): Promise<LookupResult | "not_found" | null> {
+  const res = await fetchWithTimeout(`https://open.cnpja.com/office/${cnpj}`, 12000);
+  if (res.status === 404) return "not_found";
+  if (!res.ok) throw new Error(`CNPJa HTTP ${res.status}`);
+  const data = await res.json();
+  const addr = data.address || {};
+  const address = [
+    addr.street,
+    addr.number,
+    addr.details,
+    addr.district,
+    addr.city && addr.state ? `${addr.city}/${addr.state}` : "",
+    addr.zip,
+  ].filter(Boolean).join(", ");
+  const phone = Array.isArray(data.phones) && data.phones[0]
+    ? `(${data.phones[0].area}) ${data.phones[0].number}`
+    : "";
+  const email = Array.isArray(data.emails) && data.emails[0] ? data.emails[0].address : "";
+  return {
+    name: data.company?.name || data.alias || "",
+    email,
+    phone,
+    address,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -73,7 +103,7 @@ Deno.serve(async (req) => {
       return json({ error: "CNPJ inválido" }, 400);
     }
 
-    const providers = [tryBrasilApi, tryReceitaWs];
+    const providers = [tryBrasilApi, tryReceitaWs, tryCnpja];
     let lastError: unknown = null;
     for (const provider of providers) {
       for (let attempt = 0; attempt < 2; attempt++) {

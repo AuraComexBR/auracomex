@@ -56,6 +56,7 @@ export default function SettingsPage() {
     quoteIncludeMode: true,
     brandPrimary: '#1a1a2e',
     brandSecondary: '#1e40af',
+    documentAlertEmail: '',
   });
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
@@ -111,6 +112,7 @@ export default function SettingsPage() {
         quoteIncludeMode: c.quote_include_mode !== false,
         brandPrimary: c.brand_primary_color || '#1a1a2e',
         brandSecondary: c.brand_secondary_color || '#1e40af',
+        documentAlertEmail: c.document_alert_email || '',
       });
     }
   }, [company]);
@@ -168,6 +170,7 @@ export default function SettingsPage() {
           quote_include_mode: form.quoteIncludeMode,
           brand_primary_color: form.brandPrimary,
           brand_secondary_color: form.brandSecondary,
+          document_alert_email: form.documentAlertEmail.trim() || null,
         } as any)
         .eq('id', profile.company_id);
       if (error) throw error;
@@ -485,6 +488,20 @@ export default function SettingsPage() {
                   onChange={(e) => setForm({ ...form, address: e.target.value })}
                   maxLength={500}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>E-mail para alertas de documentos</Label>
+                <Input
+                  type="email"
+                  placeholder="financeiro@suaempresa.com"
+                  value={form.documentAlertEmail}
+                  onChange={(e) => setForm({ ...form, documentAlertEmail: e.target.value })}
+                  maxLength={255}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Recebe um aviso quando um documento cadastrado num cliente/fornecedor estiver a 7 dias do vencimento.
+                </p>
               </div>
 
               <Button onClick={handleSave} disabled={saving || !form.name.trim()}>
