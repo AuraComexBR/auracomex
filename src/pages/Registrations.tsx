@@ -36,6 +36,88 @@ function cleanCnpj(value: string) {
   return value.replace(/\D/g, '');
 }
 
+type CnpjLookupResult = { name: string; email: string; phone: string; address: string };
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function tryBrasilApi(cnpj: string): Promise<CnpjLookupResult | 'not_found' | null> {
+  const res = await fetchWithTimeout(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, 15000);
+  if (res.status === 404) return 'not_found';
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const address = [
+    data.logradouro,
+    data.numero,
+    data.complemento,
+    data.bairro,
+    data.municipio ? `${data.municipio}/${data.uf}` : '',
+    data.cep,
+  ].filter(Boolean).join(', ');
+  return {
+    name: data.razao_social || data.nome_fantasia || '',
+    email: data.email || '',
+    phone: data.ddd_telefone_1
+      ? `(${data.ddd_telefone_1.slice(0, 2)}) ${data.ddd_telefone_1.slice(2)}`
+      : '',
+    address,
+  };
+}
+
+async function tryReceitaWs(cnpj: string): Promise<CnpjLookupResult | 'not_found' | null> {
+  const res = await fetchWithTimeout(`https://receitaws.com.br/v1/cnpj/${cnpj}`, 15000);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (data.status === 'ERROR') {
+    // ReceitaWS usa status "ERROR" tanto pra CNPJ inválido quanto inexistente
+    return 'not_found';
+  }
+  const address = [
+    data.logradouro,
+    data.numero,
+    data.complemento,
+    data.bairro,
+    data.municipio ? `${data.municipio}/${data.uf}` : '',
+    data.cep,
+  ].filter(Boolean).join(', ');
+  return {
+    name: data.nome || data.fantasia || '',
+    email: data.email || '',
+    phone: data.telefone || '',
+    address,
+  };
+}
+
+// Consulta CNPJ com retry + dois provedores gratuitos (BrasilAPI primeiro,
+// ReceitaWS como reserva). Isso evita mostrar "não encontrado" quando na
+// verdade foi só uma instabilidade passageira de um dos dois serviços —
+// só retorna 'not_found' quando um provedor confirma que o CNPJ não existe.
+async function fetchCnpjWithFallback(cnpj: string): Promise<CnpjLookupResult | 'not_found'> {
+  const providers = [tryBrasilApi, tryReceitaWs];
+  let lastError: unknown = null;
+  for (const provider of providers) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await provider(cnpj);
+        if (result) return result;
+      } catch (err) {
+        lastError = err;
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 800)); // pequena pausa antes de tentar de novo
+        }
+      }
+    }
+  }
+  throw lastError || new Error('CNPJ lookup failed');
+}
+
 export default function Registrations() {
   const { t } = useLanguage();
   const { profile } = useAuth();
@@ -310,56 +392,23 @@ export default function Registrations() {
 
     setLookingUp(true);
     try {
-      // A BrasilAPI (proxy pra Receita Federal) às vezes cai ou demora
-      // demais — timeout curto + uma segunda tentativa evita mostrar
-      // "não encontrado" pra falhas passageiras de rede/servidor.
-      let data: any = null;
-      let notFound = false;
-      for (let attempt = 0; attempt < 2 && !data && !notFound; attempt++) {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        try {
-          const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { signal: controller.signal });
-          clearTimeout(timeout);
-          if (res.status === 404) {
-            notFound = true;
-            break;
-          }
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          data = await res.json();
-        } catch (err) {
-          clearTimeout(timeout);
-          if (attempt === 1) throw err; // esgotou as tentativas, propaga
-        }
-      }
-
-      if (notFound) {
+      const result = await fetchCnpjWithFallback(cnpj);
+      if (result === 'not_found') {
         toast.error(t('registrations.cnpj_not_found'));
         return;
       }
 
-      const address = [
-        data.logradouro,
-        data.numero,
-        data.complemento,
-        data.bairro,
-        data.municipio ? `${data.municipio}/${data.uf}` : '',
-        data.cep,
-      ].filter(Boolean).join(', ');
-
       setForm((prev) => ({
         ...prev,
-        name: data.razao_social || data.nome_fantasia || prev.name,
-        email: data.email || prev.email,
-        phone: data.ddd_telefone_1
-          ? `(${data.ddd_telefone_1.slice(0, 2)}) ${data.ddd_telefone_1.slice(2)}`
-          : prev.phone,
-        address,
+        name: result.name || prev.name,
+        email: result.email || prev.email,
+        phone: result.phone || prev.phone,
+        address: result.address || prev.address,
       }));
       toast.success(t('registrations.cnpj_found'));
     } catch {
-      // Falha real de rede/timeout/erro do servidor — diferente de
-      // "não encontrado" (404 genuíno da Receita).
+      // Falha real de rede/timeout/erro dos dois provedores — diferente de
+      // "não encontrado" (404/erro genuíno de CNPJ inexistente).
       toast.error(t('registrations.cnpj_lookup_error'));
     } finally {
       setLookingUp(false);
