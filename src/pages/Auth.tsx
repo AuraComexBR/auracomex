@@ -170,6 +170,11 @@ export default function Auth() {
             </Link>
           </p>
         </div>
+
+        {/* Footer */}
+        <div className="mt-8 text-center">
+          <p className="text-xs text-muted-foreground opacity-70">CNPJ: 51.845.506/0001-32</p>
+        </div>
       </div>
     </div>
   );

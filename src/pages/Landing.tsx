@@ -608,6 +608,7 @@ function Landing() {
             </div>
             <p>© {new Date().getFullYear()} Aura Comex. Todos os direitos reservados.</p>
             <p className="text-xs opacity-70">contato@brasadigital.com.br</p>
+            <p className="text-xs opacity-70">CNPJ: 51.845.506/0001-32</p>
           </div>
         </div>
       </footer>
