@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,6 +37,15 @@ export default function Shipments() {
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [modeFilter, setModeFilter] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
+
+  // Clicar em "Embarques" no menu enquanto já se está em /shipments não muda
+  // de rota (mesmo path), então sem isso o processo aberto ficava preso na
+  // tela. O React Router cria uma location.key nova a cada clique no link,
+  // mesmo pro mesmo path — usamos isso pra voltar sempre pra lista.
+  const location = useLocation();
+  useEffect(() => {
+    setSelectedId(null);
+  }, [location.key]);
 
   // Fetch custom status options for label mapping
   const { data: statusOptions = [] } = useQuery({

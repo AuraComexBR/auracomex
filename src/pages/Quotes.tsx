@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -108,6 +109,14 @@ export default function Quotes() {
   const [duplicateQuote, setDuplicateQuote] = useState<any>(null);
   const [rejectQuote, setRejectQuote] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'active' | 'rejected'>('active');
+
+  // Mesmo ajuste do Shipments.tsx: clicar em "Cotações" no menu enquanto já
+  // se está em /quotes não muda de rota, então sem isso a cotação aberta
+  // ficava presa na tela.
+  const location = useLocation();
+  useEffect(() => {
+    setSelectedQuoteId(null);
+  }, [location.key]);
 
   // All quotes for the list (excluding approved/converted always; rejeitadas
   // ficam de fora da aba principal pra não "sujar" a lista, e só aparecem
