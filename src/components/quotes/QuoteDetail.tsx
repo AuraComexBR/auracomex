@@ -931,6 +931,41 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
+  // Cotações já convertidas em embarque ficam travadas para edição geral
+  // (botão "Editar Cotação" só existe fora do modo embarque). Isso cria um
+  // beco sem saída quando a cotação foi convertida sem cliente selecionado:
+  // não dá mais pra corrigir. Esse atalho libera SÓ o campo cliente, e SÓ
+  // enquanto ele estiver vazio, sem depender do modo de edição completo.
+  async function handleSetMissingClient(newClientId: string) {
+    if (!profile) return;
+    try {
+      const { error: qErr } = await supabase.from('quotes').update({ client_id: newClientId } as any).eq('id', quoteId);
+      if (qErr) throw qErr;
+      if (shipmentId) {
+        const { error: sErr } = await supabase
+          .from('shipments')
+          .update({ client_id: newClientId, updated_at: new Date().toISOString() } as any)
+          .eq('id', shipmentId);
+        if (sErr) throw sErr;
+      }
+      await logAuditChanges({
+        quoteId,
+        shipmentId: isShipmentMode ? shipmentId : null,
+        companyId: profile.company_id,
+        userId: profile.user_id,
+        changes: [{ field_name: 'client_id', old_value: null, new_value: newClientId }],
+      });
+      setForm((f) => ({ ...f, client_id: newClientId }));
+      queryClient.invalidateQueries({ queryKey: ['quote-detail', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['shipments'] });
+      if (shipmentId) queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] });
+      toast.success('Cliente definido com sucesso');
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
+
   async function handleApprove() {
     if (!profile) return;
     // Guard: prevent double-conversion
@@ -1672,18 +1707,32 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.client')}</Label>
-                  <Select 
-                    value={form.client_id} 
-                    onValueChange={(v) => setForm({ ...form, client_id: v })}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger><SelectValue placeholder={t('quotes.select_client')} /></SelectTrigger>
-                    <SelectContent>
-                      {clients.map((c: any) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {(() => {
+                    // Se a cotação já virou embarque e ficou sem cliente, o botão "Editar
+                    // Cotação" não existe mais nesse modo — libera só este campo, só
+                    // enquanto estiver vazio, pra não travar o processo pra sempre.
+                    const canFixMissingClient = isShipmentMode && !form.client_id && canEditCargo;
+                    return (
+                      <Select
+                        value={form.client_id}
+                        onValueChange={(v) => {
+                          if (canFixMissingClient) {
+                            handleSetMissingClient(v);
+                          } else {
+                            setForm({ ...form, client_id: v });
+                          }
+                        }}
+                        disabled={!isEditing && !canFixMissingClient}
+                      >
+                        <SelectTrigger><SelectValue placeholder={t('quotes.select_client')} /></SelectTrigger>
+                        <SelectContent>
+                          {clients.map((c: any) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                  })()}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.mode')}</Label>
