@@ -11,7 +11,7 @@ import { PortSelect } from '@/components/shared/PortSelect';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { findFreeQuoteNumber } from '@/lib/referenceUtils';
+import { findFreeQuoteNumber, quoteNumberExists } from '@/lib/referenceUtils';
 
 const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road'] as const;
 
@@ -49,6 +49,7 @@ export function DuplicateQuoteDialog({ quote, onClose, onDuplicated }: Props) {
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [incoterm, setIncoterm] = useState('FOB');
+  const [manualReference, setManualReference] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Auto-detect direction based on origin country code (same rule as create)
@@ -69,6 +70,7 @@ export function DuplicateQuoteDialog({ quote, onClose, onDuplicated }: Props) {
       setOrigin(quote.origin || '');
       setDestination(quote.destination || '');
       setIncoterm('FOB');
+      setManualReference('');
     }
   }, [quote]);
 
@@ -92,13 +94,27 @@ export function DuplicateQuoteDialog({ quote, onClose, onDuplicated }: Props) {
     if (!profile || !quote) return;
     setLoading(true);
     try {
-      // Derive base_reference from original quote
-      const baseRef = quote.base_reference || quote.quote_number.replace(/-[AFLRM][IE]$/, '');
-      const modeLetter = MODE_LETTER[mode] || 'F';
-      const dirLetter = DIRECTION_LETTER[direction] || 'I';
-      // Garante que a referência gerada não colide com uma já existente
-      // (ex: duplicar o mesmo modo/direção mais de uma vez).
-      const quoteNum = await findFreeQuoteNumber(profile.company_id, `${baseRef}-${modeLetter}${dirLetter}`);
+      let baseRef: string;
+      let quoteNum: string;
+      const manualRef = manualReference.trim();
+      if (manualRef) {
+        // Referência digitada manualmente: não pode duplicar uma já existente.
+        if (await quoteNumberExists(profile.company_id, manualRef)) {
+          toast.error(`Já existe uma cotação com a referência "${manualRef}". Escolha outra.`);
+          setLoading(false);
+          return;
+        }
+        baseRef = manualRef;
+        quoteNum = manualRef;
+      } else {
+        // Derive base_reference from original quote
+        baseRef = quote.base_reference || quote.quote_number.replace(/-[AFLRM][IE]$/, '');
+        const modeLetter = MODE_LETTER[mode] || 'F';
+        const dirLetter = DIRECTION_LETTER[direction] || 'I';
+        // Garante que a referência gerada não colide com uma já existente
+        // (ex: duplicar o mesmo modo/direção mais de uma vez).
+        quoteNum = await findFreeQuoteNumber(profile.company_id, `${baseRef}-${modeLetter}${dirLetter}`);
+      }
 
       // Insert new quote
       const { data: newQuote, error: qErr } = await supabase.from('quotes').insert([{
@@ -232,6 +248,17 @@ export function DuplicateQuoteDialog({ quote, onClose, onDuplicated }: Props) {
           </div>
 
           {/* Direction is auto-derived from origin/destination — no manual selector */}
+
+          {/* Manual reference (optional) */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Referência manual (opcional)</Label>
+            <Input
+              placeholder="Deixe em branco para gerar automaticamente"
+              value={manualReference}
+              onChange={(e) => setManualReference(e.target.value)}
+            />
+            <p className="text-[10px] text-muted-foreground">Use para dar um número específico a esta cópia, em vez do sufixo automático.</p>
+          </div>
 
           {/* Incoterm */}
           <div className="space-y-1.5">

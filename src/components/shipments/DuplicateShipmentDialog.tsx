@@ -11,7 +11,7 @@ import { PortSelect } from '@/components/shared/PortSelect';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { findFreeQuoteNumber } from '@/lib/referenceUtils';
+import { findFreeQuoteNumber, quoteNumberExists } from '@/lib/referenceUtils';
 
 const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road'] as const;
 
@@ -41,6 +41,7 @@ export function DuplicateShipmentDialog({ shipment, onClose, onDuplicated }: Pro
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [incoterm, setIncoterm] = useState('FOB');
+  const [manualReference, setManualReference] = useState('');
   const [loading, setLoading] = useState(false);
 
   const direction = useMemo<'IMP' | 'EXP'>(() => {
@@ -61,6 +62,7 @@ export function DuplicateShipmentDialog({ shipment, onClose, onDuplicated }: Pro
       setDestination(destStr || '');
       const valid = INCOTERMS_BY_MODE[shipment.transport_mode || 'ocean_fcl'] || [];
       setIncoterm(shipment.incoterm && valid.includes(shipment.incoterm) ? shipment.incoterm : (valid[0] || 'FOB'));
+      setManualReference('');
     }
   }, [shipment]);
 
@@ -77,13 +79,27 @@ export function DuplicateShipmentDialog({ shipment, onClose, onDuplicated }: Pro
     if (!profile || !shipment) return;
     setLoading(true);
     try {
-      // Derive base_reference from shipment reference (strip trailing -XY sufix if present)
-      const baseRef = (shipment.reference_number || '').replace(/-[AFLRM][IE]$/, '') || shipment.reference_number;
-      const modeLetter = MODE_LETTER[mode] || 'F';
-      const dirLetter = DIRECTION_LETTER[direction] || 'I';
-      // Garante que a referência gerada não colide com uma já existente
-      // (ex: duplicar o mesmo embarque mais de uma vez no mesmo modo/direção).
-      const quoteNum = await findFreeQuoteNumber(profile.company_id, `${baseRef}-${modeLetter}${dirLetter}`);
+      let baseRef: string;
+      let quoteNum: string;
+      const manualRef = manualReference.trim();
+      if (manualRef) {
+        // Referência digitada manualmente: não pode duplicar uma já existente.
+        if (await quoteNumberExists(profile.company_id, manualRef)) {
+          toast.error(`Já existe uma cotação com a referência "${manualRef}". Escolha outra.`);
+          setLoading(false);
+          return;
+        }
+        baseRef = manualRef;
+        quoteNum = manualRef;
+      } else {
+        // Derive base_reference from shipment reference (strip trailing -XY sufix if present)
+        baseRef = (shipment.reference_number || '').replace(/-[AFLRM][IE]$/, '') || shipment.reference_number;
+        const modeLetter = MODE_LETTER[mode] || 'F';
+        const dirLetter = DIRECTION_LETTER[direction] || 'I';
+        // Garante que a referência gerada não colide com uma já existente
+        // (ex: duplicar o mesmo embarque mais de uma vez no mesmo modo/direção).
+        quoteNum = await findFreeQuoteNumber(profile.company_id, `${baseRef}-${modeLetter}${dirLetter}`);
+      }
 
       const { data: newQuote, error: qErr } = await supabase.from('quotes').insert([{
         company_id: profile.company_id,
@@ -218,6 +234,17 @@ export function DuplicateShipmentDialog({ shipment, onClose, onDuplicated }: Pro
                 {incoterms.map((i) => <SelectItem key={i} value={i}>{i}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Manual reference (optional) */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Referência manual (opcional)</Label>
+            <Input
+              placeholder="Deixe em branco para gerar automaticamente"
+              value={manualReference}
+              onChange={(e) => setManualReference(e.target.value)}
+            />
+            <p className="text-[10px] text-muted-foreground">Use para dar um número específico a esta cópia, em vez do sufixo automático.</p>
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
