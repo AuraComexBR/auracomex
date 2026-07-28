@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const action = body.action as "list_status" | "toggle_active";
+    const action = body.action as "list_status" | "toggle_active" | "set_temp_password";
 
     // Ensure target users belong to caller's company (for admins)
     async function assertSameCompany(userIds: string[]) {
@@ -107,6 +107,57 @@ Deno.serve(async (req) => {
         });
       }
       return new Response(JSON.stringify({ ok: true, active }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "set_temp_password") {
+      const userId: string = body.user_id;
+      if (!userId) {
+        return new Response(JSON.stringify({ error: "user_id é obrigatório" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!(await assertSameCompany([userId]))) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: targetRole } = await adminClient
+        .from("user_roles").select("role").eq("user_id", userId).single();
+      if (targetRole?.role === "superadmin") {
+        return new Response(JSON.stringify({ error: "Não é permitido alterar superadmin" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Gera uma senha temporária aleatória (letras + números, sem caracteres ambíguos)
+      const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+      let tempPassword = "";
+      const randomBytes = new Uint8Array(10);
+      crypto.getRandomValues(randomBytes);
+      for (let i = 0; i < 10; i++) tempPassword += chars[randomBytes[i] % chars.length];
+
+      const { error: pwError } = await adminClient.auth.admin.updateUserById(userId, {
+        password: tempPassword,
+      });
+      if (pwError) {
+        return new Response(JSON.stringify({ error: pwError.message }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error: profError } = await adminClient
+        .from("profiles")
+        .update({ must_change_password: true } as any)
+        .eq("user_id", userId);
+      if (profError) {
+        return new Response(JSON.stringify({ error: profError.message }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ ok: true, temp_password: tempPassword }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
