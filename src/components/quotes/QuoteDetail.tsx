@@ -844,7 +844,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       description: `Rebate de armazenagem (${rebatePercent}% de ${form.storage_fee_currency || 'BRL'} ${amount.toFixed(2)}) - ${(quote as any)?.quote_number || ''}`,
       currency: form.storage_fee_currency || 'BRL',
       amount: rebateAmount,
-      due_date: format(new Date(), 'yyyy-MM-dd'),
+      // Armazenagem não tem data de vencimento fixa (é cobrada quando o co-loader repassa o rebate).
+      due_date: null,
       created_by: profile.user_id,
     };
 
