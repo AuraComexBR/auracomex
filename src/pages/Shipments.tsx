@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -37,6 +37,31 @@ export default function Shipments() {
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [modeFilter, setModeFilter] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
+  const filtersLoadedRef = useRef(false);
+
+  // Filtros persistidos por usuário (localStorage), pra não zerar toda vez
+  // que ele sai da tela de Embarques e volta.
+  const filtersStorageKey = profile?.user_id ? `aura:filters:${profile.user_id}:shipments` : null;
+
+  useEffect(() => {
+    if (!filtersStorageKey || filtersLoadedRef.current) return;
+    filtersLoadedRef.current = true;
+    try {
+      const raw = localStorage.getItem(filtersStorageKey);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (Array.isArray(saved.statusFilter)) setStatusFilter(saved.statusFilter);
+        if (Array.isArray(saved.modeFilter)) setModeFilter(saved.modeFilter);
+      }
+    } catch {
+      // ignora localStorage corrompido
+    }
+  }, [filtersStorageKey]);
+
+  useEffect(() => {
+    if (!filtersStorageKey || !filtersLoadedRef.current) return;
+    localStorage.setItem(filtersStorageKey, JSON.stringify({ statusFilter, modeFilter }));
+  }, [filtersStorageKey, statusFilter, modeFilter]);
 
   // Clicar em "Embarques" no menu enquanto já se está em /shipments não muda
   // de rota (mesmo path), então sem isso o processo aberto ficava preso na
