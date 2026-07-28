@@ -126,6 +126,21 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
   });
 
+  // Fetch client name (used to suggest the client as partner on Venda charges)
+  const { data: clientInfo } = useQuery({
+    queryKey: ['shipment-client', clientId],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name, type')
+        .eq('id', clientId as string)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
+
   // Fetch shipment partners (related companies)
   const { data: shipmentPartners = [] } = useQuery({
     queryKey: ['shipment-partners', shipmentId],
@@ -344,7 +359,9 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
   const allCurrencies = [...new Set([...Object.keys(payableTotals), ...Object.keys(receivableTotals)])];
 
   const openAdd = (direction: Direction) => {
-    setForm({ ...EMPTY_FORM, direction });
+    // Na Venda, já sugere o cliente do embarque como parceiro padrão da taxa.
+    const defaultPartnerId = direction === 'receivable' && clientId ? clientId : '';
+    setForm({ ...EMPTY_FORM, direction, partner_id: defaultPartnerId });
     setDescSearch('');
     setShowAdd(true);
   };
@@ -434,12 +451,20 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
 
   const showVerificationCols = canVerifyCharges || isFullAccess;
 
-  // Partners for the charge form - only shipment partners
-  const chargePartners = shipmentPartners.map((sp: any) => ({
-    id: sp.clients?.id || sp.client_id,
-    name: sp.clients?.name || 'Unknown',
-    type: sp.clients?.type || 'client',
-  }));
+  // Partners for the charge form: parceiros do processo + o cliente do embarque
+  // (o cliente sempre pode ser escolhido, mesmo que ainda não tenha sido
+  // adicionado explicitamente em "Parceiros do Processo").
+  const chargePartners = (() => {
+    const fromShipmentPartners = shipmentPartners.map((sp: any) => ({
+      id: sp.clients?.id || sp.client_id,
+      name: sp.clients?.name || 'Unknown',
+      type: sp.clients?.type || 'client',
+    }));
+    if (clientInfo && !fromShipmentPartners.some((p: any) => p.id === clientInfo.id)) {
+      return [{ id: clientInfo.id, name: clientInfo.name, type: clientInfo.type || 'client' }, ...fromShipmentPartners];
+    }
+    return fromShipmentPartners;
+  })();
 
   const clientTypeLabel = (type: string) => {
     switch (type) {
