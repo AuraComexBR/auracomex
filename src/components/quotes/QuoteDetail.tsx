@@ -2012,7 +2012,13 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   <Button
                     type="button"
                     size="sm"
-                    onClick={() => setAddChargeOpen(true)}
+                    onClick={() => {
+                      // Sugere o cliente da cotação/embarque como parceiro padrão da Venda
+                      const def = form.client_id || '';
+                      setChargeForm((cf) => ({ ...cf, partner_id: cf.partner_id || def }));
+                      setSellPartnerId((sp) => sp || def);
+                      setAddChargeOpen(true);
+                    }}
                     className="gap-2"
                   >
                     <Plus className="w-4 h-4" />
