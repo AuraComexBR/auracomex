@@ -14,7 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PortSelect } from '@/components/shared/PortSelect';
 import { CountrySelect } from '@/components/shared/CountrySelect';
-import { MapPin, Ship, Plane, Truck, ArrowRight, Save, CalendarIcon, Settings, Plus, Trash2, GripVertical, ExternalLink } from 'lucide-react';
+import { MapPin, Ship, Plane, Truck, ArrowRight, Save, CalendarIcon, Settings, Plus, Trash2, GripVertical, ExternalLink, ArrowDownAZ } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -32,15 +32,18 @@ const modeIcons: Record<string, typeof Ship> = {
 
 import { getCourierTrackingUrl } from '@/lib/courierTracking';
 
+// Ordem alfabética por padrão (pedido do usuário) — o usuário ainda pode
+// reordenar arrastando na tela de Gerenciar Status, ou clicar em "Ordenar
+// A-Z" pra voltar pra essa ordem a qualquer momento.
 const DEFAULT_STATUSES = [
   { label: 'Aprovado', value: 'approved', position: 0 },
-  { label: 'Reservado', value: 'booked', position: 1 },
-  { label: 'Coletado', value: 'collected_at_origin', position: 2 },
-  { label: 'Docs', value: 'docs_at_origin', position: 3 },
-  { label: 'Trânsito', value: 'in_transit', position: 4 },
-  { label: 'Atracou', value: 'arrived', position: 5 },
-  { label: 'Entregue', value: 'delivered', position: 6 },
-  { label: 'Cancelado', value: 'cancelled', position: 7 },
+  { label: 'Atracou', value: 'arrived', position: 1 },
+  { label: 'Cancelado', value: 'cancelled', position: 2 },
+  { label: 'Coletado', value: 'collected_at_origin', position: 3 },
+  { label: 'Docs', value: 'docs_at_origin', position: 4 },
+  { label: 'Entregue', value: 'delivered', position: 5 },
+  { label: 'Reservado', value: 'booked', position: 6 },
+  { label: 'Trânsito', value: 'in_transit', position: 7 },
 ];
 
 export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
@@ -154,6 +157,20 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     try {
       await Promise.all(updates);
       queryClient.invalidateQueries({ queryKey: ['shipment-status-options'] });
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
+
+  async function handleSortAlphabetically() {
+    if (dbStatusOptions.length === 0) return;
+    const sorted = [...dbStatusOptions].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+    try {
+      await Promise.all(sorted.map((s, i) =>
+        (supabase.from('shipment_status_options') as any).update({ position: i }).eq('id', s.id)
+      ));
+      queryClient.invalidateQueries({ queryKey: ['shipment-status-options'] });
+      toast.success('Status ordenados de A a Z');
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -486,6 +503,11 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
               <DialogTitle>Gerenciar Status de Embarque</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={handleSortAlphabetically} disabled={dbStatusOptions.length === 0}>
+                  <ArrowDownAZ className="w-3.5 h-3.5 mr-1.5" /> Ordenar A-Z
+                </Button>
+              </div>
               <div className="space-y-1">
                 {statusOptions.map((s, idx) => (
                   <div
