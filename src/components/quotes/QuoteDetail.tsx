@@ -795,6 +795,58 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     setIsEditing(false);
   }, [quote, items]);
 
+  // Regra de negócio: todo embarque LCL com armazenagem lançada deve gerar
+  // (ou atualizar) uma conta a receber automática, tendo como pagador o
+  // Co-loader cadastrado no processo (aba Empresas). Se o valor for zerado
+  // e a conta ainda não tiver sido recebida, ela é removida.
+  async function syncStorageFeeReceivable() {
+    if (!isShipmentMode || !shipmentId || !profile) return;
+    if (form.transport_mode !== 'ocean_lcl') return;
+
+    const amount = form.storage_fee_amount ? parseFloat(form.storage_fee_amount) : 0;
+
+    const { data: existing } = await supabase
+      .from('accounts_receivable' as any)
+      .select('id, status')
+      .eq('quote_id', quoteId)
+      .eq('source', 'storage_fee')
+      .maybeSingle();
+
+    if (!amount || amount <= 0) {
+      if (existing && (existing as any).status === 'aberto') {
+        await supabase.from('accounts_receivable' as any).delete().eq('id', (existing as any).id);
+        queryClient.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      }
+      return;
+    }
+
+    const coLoader = (quotePartners as any[]).find((qp) => qp.clients?.partner_category === 'co_loader');
+    if (!coLoader) {
+      toast.warning('Armazenagem lançada, mas nenhum Co-loader cadastrado neste processo — a conta a receber não foi gerada. Cadastre o Co-loader na aba Empresas.');
+      return;
+    }
+
+    const payload = {
+      company_id: profile.company_id,
+      source: 'storage_fee' as any,
+      quote_id: quoteId,
+      shipment_id: shipmentId,
+      client_id: coLoader.clients.id,
+      description: `Armazenagem no destino - ${(quote as any)?.quote_number || ''}`,
+      currency: form.storage_fee_currency || 'BRL',
+      amount,
+      due_date: format(new Date(), 'yyyy-MM-dd'),
+      created_by: profile.user_id,
+    };
+
+    if (existing) {
+      await supabase.from('accounts_receivable' as any).update(payload).eq('id', (existing as any).id);
+    } else {
+      await supabase.from('accounts_receivable' as any).insert(payload);
+    }
+    queryClient.invalidateQueries({ queryKey: ['accounts_receivable'] });
+  }
+
   async function handleSave() {
     if (!profile) return;
     setSaving(true);
@@ -841,6 +893,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         storage_fee_note: form.storage_fee_note || null,
       } as any).eq('id', quoteId);
       if (error) throw error;
+
+      await syncStorageFeeReceivable();
 
       const seenItemIds = new Set<string>();
       const itemPayload = (item: CargoItem) => ({
@@ -1949,15 +2003,20 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 </div>
               </div>
 
-              {form.transport_mode === 'ocean_lcl' && (
+              {form.transport_mode === 'ocean_lcl' && (() => {
+                // Embarques (isShipmentMode) não têm o botão "Editar Cotação", então essa
+                // seção usa a mesma trava de permissão da aba Carga (canEditCargo), pra não
+                // ficar travada pra sempre depois da conversão em embarque.
+                const canEditStorageFee = isEditing || (isShipmentMode && canEditCargo);
+                return (
                 <div className="rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wide text-primary">
-                      Armazenagem no destino (informativo)
+                      Armazenagem no destino
                     </span>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Este valor <strong>não</strong> compõe o total da cotação — aparece na proposta apenas para informação ao cliente (geralmente pago diretamente ao armazém).
+                    Este valor não compõe o total da cotação, mas em embarques LCL gera automaticamente uma conta a receber, tendo o Co-loader cadastrado no processo como pagador.
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-[140px_100px_1fr] gap-2">
                     <div className="space-y-1">
@@ -1969,7 +2028,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                         onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value })}
                         placeholder="0,00"
                         className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        disabled={!isEditing}
+                        disabled={!canEditStorageFee}
                       />
                     </div>
                     <div className="space-y-1">
@@ -1977,7 +2036,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                       <Select
                         value={form.storage_fee_currency}
                         onValueChange={(v) => setForm({ ...form, storage_fee_currency: v })}
-                        disabled={!isEditing}
+                        disabled={!canEditStorageFee}
                       >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -1997,11 +2056,13 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                             ? 'Pago diretamente ao armazém em Santos'
                             : 'Pago diretamente ao armazém no destino'
                         }
-                        disabled={!isEditing}
+                        disabled={!canEditStorageFee}
                       />
                     </div>
                   </div>
                 </div>
+                );
+              })()}
               )}
             </CardContent>
           </Card>
@@ -2603,7 +2664,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           onSave={handleSave}
         />
       )}
-      {isShipmentMode && activeTab === 'cargo' && canEditCargo && (
+      {isShipmentMode && (activeTab === 'cargo' || activeTab === 'general') && canEditCargo && (
         <FloatingSaveButton
           visible={hasChanges}
           dirtyCount={dirtyCount}
