@@ -9,7 +9,8 @@ import { formatAuditSentence } from '@/lib/auditLog';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  quoteId: string;
+  /** Ausente em embarques criados sem cotação vinculada (fluxo de criação rápida). */
+  quoteId?: string | null;
   shipmentId?: string | null;
 }
 
@@ -19,9 +20,11 @@ export function HistoryPanel({ open, onOpenChange, quoteId, shipmentId }: Props)
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['reference-history', quoteId, shipmentId],
     queryFn: async () => {
-      const orFilter = shipmentId
+      const orFilter = quoteId && shipmentId
         ? `quote_id.eq.${quoteId},shipment_id.eq.${shipmentId}`
-        : `quote_id.eq.${quoteId}`;
+        : quoteId
+          ? `quote_id.eq.${quoteId}`
+          : `shipment_id.eq.${shipmentId}`;
       // shipment_audit_log.user_id não tem FK declarada para profiles, então o embed
       // `profiles:user_id(...)` falha com 400 no PostgREST. Busca os nomes à parte.
       const { data, error } = await (supabase
@@ -43,7 +46,7 @@ export function HistoryPanel({ open, onOpenChange, quoteId, shipmentId }: Props)
       }
       return rows.map((r: any) => ({ ...r, profiles: { full_name: nameMap.get(r.user_id) || null } }));
     },
-    enabled: open && !!quoteId,
+    enabled: open && !!(quoteId || shipmentId),
   });
 
   return (
