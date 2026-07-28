@@ -3,14 +3,15 @@ import { useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSalespersonClients } from '@/hooks/useSalespersonClients';
-import { Search, Filter, FileText, CalendarIcon, Truck } from 'lucide-react';
+import { Search, Filter, FileText, CalendarIcon, Truck, Copy } from 'lucide-react';
 import { getCourierTrackingUrl } from '@/lib/courierTracking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DuplicateShipmentDialog } from '@/components/shipments/DuplicateShipmentDialog';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -31,12 +32,14 @@ import { countryCodeToFlag } from '@/lib/countryFlag';
 export default function Shipments() {
   const { t } = useLanguage();
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const { isSalesperson, clientIds } = useSalespersonClients();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [modeFilter, setModeFilter] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [duplicateShipment, setDuplicateShipment] = useState<any>(null);
   const filtersLoadedRef = useRef(false);
 
   // Filtros persistidos por usuário (localStorage), pra não zerar toda vez
@@ -100,7 +103,7 @@ export default function Shipments() {
     queryFn: async () => {
       let query = supabase
         .from('shipments')
-        .select('id, reference_number, status, transport_mode, origin_city, origin_country, destination_city, destination_country, etd, eta, atd, ata, client_id, updated_at, last_accessed_at, next_update, courier_provider, courier_tracking_number, clients(name)')
+        .select('id, reference_number, status, transport_mode, origin_city, origin_country, origin_port, destination_city, destination_country, destination_port, incoterm, notes, weight_kg, volume_cbm, packages, cargo_description, etd, eta, atd, ata, client_id, updated_at, last_accessed_at, next_update, courier_provider, courier_tracking_number, clients(name)')
         .order('created_at', { ascending: false });
 
       if (isSalesperson && clientIds && clientIds.length > 0) {
@@ -253,12 +256,13 @@ export default function Shipments() {
                 <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
                 <SortableHeader label="Next Update" sortKey="next_update" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
                 <SortableHeader label="Atividade" sortKey="updated_at" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <TableHead className="h-9 px-3 text-xs text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sorted.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                     {t('common.no_data')}
                   </TableCell>
                 </TableRow>
@@ -346,6 +350,22 @@ export default function Shipments() {
                     <TableCell className="py-2 px-3">
                       <ActivityIndicator updatedAt={s.updated_at} lastAccessedAt={(s as any).last_accessed_at} />
                     </TableCell>
+                    {/* Actions */}
+                    <TableCell className="py-1 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setDuplicateShipment(s)}
+                          >
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t('shipments.duplicate')}</TooltipContent>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                   );
                 })
@@ -355,6 +375,14 @@ export default function Shipments() {
         </CardContent>
       </Card>
 
+      <DuplicateShipmentDialog
+        shipment={duplicateShipment}
+        onClose={() => setDuplicateShipment(null)}
+        onDuplicated={() => {
+          setDuplicateShipment(null);
+          queryClient.invalidateQueries({ queryKey: ['quotes'] });
+        }}
+      />
     </div>
   );
 }
