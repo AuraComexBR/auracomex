@@ -85,6 +85,19 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
   const [partnerSearch, setPartnerSearch] = useState('');
   const [showPartnerPicker, setShowPartnerPicker] = useState(false);
 
+  // Diferente da aba Logística, as ações financeiras (add/excluir/verificar
+  // taxa etc.) não tocavam o updated_at do embarque — por isso a lista de
+  // Embarques não refletia essas mudanças como "atividade". Chamado no
+  // onSuccess de cada mutation financeira relevante.
+  async function touchShipmentActivity() {
+    await supabase.from('shipments').update({
+      updated_at: new Date().toISOString(),
+      next_update: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    } as any).eq('id', shipmentId);
+    queryClient.invalidateQueries({ queryKey: ['shipments'] });
+    queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] });
+  }
+
   // Fetch shipment flags
   const { data: shipment } = useQuery({
     queryKey: ['shipment-flags', shipmentId],
@@ -219,6 +232,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['charge-lines', shipmentId] });
+      touchShipmentActivity();
       setShowAdd(false);
       setForm(EMPTY_FORM);
       setDescSearch('');
@@ -234,6 +248,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['charge-lines', shipmentId] });
+      touchShipmentActivity();
       toast.success(t('common.delete'));
     },
   });
@@ -249,6 +264,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['charge-lines', shipmentId] });
+      touchShipmentActivity();
       toast.success(t('financial.charge_verified'));
     },
   });
@@ -275,7 +291,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shipment-flags', shipmentId] });
-      queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] });
+      touchShipmentActivity();
       toast.success(t('financial.released_success'));
     },
   });
@@ -289,6 +305,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['charge-lines', shipmentId] });
+      touchShipmentActivity();
       toast.success(t('financial.status_updated'));
     },
   });

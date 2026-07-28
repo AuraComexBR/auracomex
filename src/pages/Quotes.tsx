@@ -116,6 +116,11 @@ export default function Quotes() {
   const location = useLocation();
   useEffect(() => {
     setSelectedQuoteId(null);
+    // A query da lista continua "montada" o tempo todo (só fica escondida
+    // enquanto uma cotação está aberta), então só resetar o id não busca
+    // dados novos — precisa invalidar/forçar refetch aqui.
+    queryClient.invalidateQueries({ queryKey: ['quotes'] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   // All quotes for the list (excluding approved/converted always; rejeitadas

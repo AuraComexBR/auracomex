@@ -45,6 +45,11 @@ export default function Shipments() {
   const location = useLocation();
   useEffect(() => {
     setSelectedId(null);
+    // A query da lista continua "montada" o tempo todo (só fica escondida
+    // enquanto um processo está aberto), então só resetar o selectedId não
+    // busca dados novos — precisa forçar o refetch aqui.
+    refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   // Fetch custom status options for label mapping
