@@ -2063,7 +2063,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 </div>
                 );
               })()}
-              )}
             </CardContent>
           </Card>
         </TabsContent>
