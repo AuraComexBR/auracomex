@@ -2013,9 +2013,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     type="button"
                     size="sm"
                     onClick={() => {
-                      // Sugere o cliente da cotação/embarque como parceiro padrão da Venda
+                      // Sugere o cliente da cotação/embarque como parceiro padrão apenas na Venda
                       const def = form.client_id || '';
-                      setChargeForm((cf) => ({ ...cf, partner_id: cf.partner_id || def }));
                       setSellPartnerId((sp) => sp || def);
                       setAddChargeOpen(true);
                     }}
@@ -2077,9 +2076,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               <Dialog open={addChargeOpen} onOpenChange={(o) => {
                 setAddChargeOpen(o);
                 if (o) {
-                  // Ao abrir: pré-preenche compra e venda com o cliente da cotação
+                  // Ao abrir: pré-preenche apenas a Venda com o cliente da cotação
                   const def = form.client_id || '';
-                  setChargeForm((cf) => ({ ...cf, partner_id: cf.partner_id || def }));
                   setSellPartnerId((sp) => sp || def);
                 } else {
                   setChargeForm({ charge_catalog_id: '', description: '', charge_type: 'freight', leg: 'freight', amount: '', currency: 'USD', partner_id: '', billing_unit: 'fixed' });
