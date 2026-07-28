@@ -380,7 +380,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('quote_partners' as any)
-        .select('*, clients:client_id(id, name, type, partner_category)')
+        .select('*, clients:client_id(id, name, type, partner_category, storage_rebate_percent)')
         .eq('quote_id', quoteId)
         .order('created_at');
       if (error) throw error;
@@ -826,15 +826,24 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       return;
     }
 
+    // A conta a receber não é o valor cheio da armazenagem: é o rebate negociado
+    // com esse Co-loader, um percentual cadastrado no fornecedor (aba Cadastros).
+    const rebatePercent = coLoader.clients?.storage_rebate_percent;
+    if (rebatePercent == null) {
+      toast.warning(`Armazenagem lançada, mas o Co-loader "${coLoader.clients?.name}" não tem o percentual de rebate cadastrado — a conta a receber não foi gerada. Cadastre o rebate na aba Cadastros.`);
+      return;
+    }
+    const rebateAmount = Math.round(amount * (Number(rebatePercent) / 100) * 100) / 100;
+
     const payload = {
       company_id: profile.company_id,
       source: 'storage_fee' as any,
       quote_id: quoteId,
       shipment_id: shipmentId,
       client_id: coLoader.clients.id,
-      description: `Armazenagem no destino - ${(quote as any)?.quote_number || ''}`,
+      description: `Rebate de armazenagem (${rebatePercent}% de ${form.storage_fee_currency || 'BRL'} ${amount.toFixed(2)}) - ${(quote as any)?.quote_number || ''}`,
       currency: form.storage_fee_currency || 'BRL',
-      amount,
+      amount: rebateAmount,
       due_date: format(new Date(), 'yyyy-MM-dd'),
       created_by: profile.user_id,
     };
@@ -2016,7 +2025,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     </span>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Este valor não compõe o total da cotação, mas em embarques LCL gera automaticamente uma conta a receber, tendo o Co-loader cadastrado no processo como pagador.
+                    Este valor não compõe o total da cotação. Em embarques LCL, gera automaticamente uma conta a receber com o rebate negociado (% cadastrado no fornecedor Co-loader do processo).
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-[140px_100px_1fr] gap-2">
                     <div className="space-y-1">
