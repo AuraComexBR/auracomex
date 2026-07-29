@@ -776,6 +776,7 @@ export type Database = {
       }
       company_subscriptions: {
         Row: {
+          bonus_shipments: number
           company_id: string
           created_at: string
           current_period_end: string | null
@@ -791,6 +792,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bonus_shipments?: number
           company_id: string
           created_at?: string
           current_period_end?: string | null
@@ -806,6 +808,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bonus_shipments?: number
           company_id?: string
           created_at?: string
           current_period_end?: string | null
