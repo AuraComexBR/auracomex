@@ -201,6 +201,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const estimateRef = useRef<CostEstimateTabHandle>(null);
   const [backConfirmOpen, setBackConfirmOpen] = useState(false);
+  const [pendingClientChange, setPendingClientChange] = useState<string | null>(null);
+  const [clientChangeWarnings, setClientChangeWarnings] = useState<string[]>([]);
 
   // Handler para o botão voltar: se houver alterações não salvas, confirma antes.
   const handleBackClick = () => {
@@ -997,11 +999,12 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
 
   // Cotações já convertidas em embarque ficam travadas para edição geral
   // (botão "Editar Cotação" só existe fora do modo embarque). Isso cria um
-  // beco sem saída quando a cotação foi convertida sem cliente selecionado:
-  // não dá mais pra corrigir. Esse atalho libera SÓ o campo cliente, e SÓ
-  // enquanto ele estiver vazio, sem depender do modo de edição completo.
-  async function handleSetMissingClient(newClientId: string) {
+  // beco sem saída quando o cliente do embarque precisa ser corrigido: esse
+  // atalho libera o campo cliente seguindo a mesma regra de acesso da aba
+  // Carga (canEditCargo), em vez de depender do modo de edição completo.
+  async function handleChangeClient(newClientId: string) {
     if (!profile) return;
+    const oldClientId = form.client_id || null;
     try {
       const { error: qErr } = await supabase.from('quotes').update({ client_id: newClientId } as any).eq('id', quoteId);
       if (qErr) throw qErr;
@@ -1017,16 +1020,52 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         shipmentId: isShipmentMode ? shipmentId : null,
         companyId: profile.company_id,
         userId: profile.user_id,
-        changes: [{ field_name: 'client_id', old_value: null, new_value: newClientId }],
+        changes: [{ field_name: 'client_id', old_value: oldClientId, new_value: newClientId }],
       });
       setForm((f) => ({ ...f, client_id: newClientId }));
       queryClient.invalidateQueries({ queryKey: ['quote-detail', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['shipments'] });
       if (shipmentId) queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] });
-      toast.success('Cliente definido com sucesso');
+      toast.success('Cliente atualizado com sucesso');
     } catch (err: any) {
       toast.error(err.message);
+    }
+  }
+
+  // Antes de trocar o cliente de um embarque que JÁ tinha um cliente definido,
+  // verifica se existem lançamentos financeiros (taxas, DN, contas a receber,
+  // parceiros da cotação) feitos no nome do cliente atual. Trocar o cliente não
+  // atualiza esses lançamentos em cascata, então avisamos o usuário antes.
+  async function requestClientChange(newClientId: string) {
+    const oldClientId = form.client_id;
+    if (!oldClientId || oldClientId === newClientId) {
+      handleChangeClient(newClientId);
+      return;
+    }
+    try {
+      const [chargesRes, dnRes, arRes, qpRes] = await Promise.all([
+        supabase.from('quote_charges' as any).select('id', { count: 'exact', head: true }).eq('quote_id', quoteId).eq('partner_id', oldClientId),
+        supabase.from('debit_notes' as any).select('id', { count: 'exact', head: true }).eq('quote_id', quoteId).eq('client_id', oldClientId),
+        supabase.from('accounts_receivable' as any).select('id', { count: 'exact', head: true }).eq('quote_id', quoteId).eq('client_id', oldClientId),
+        supabase.from('quote_partners' as any).select('id', { count: 'exact', head: true }).eq('quote_id', quoteId).eq('client_id', oldClientId),
+      ]);
+      const warnings: string[] = [];
+      if ((chargesRes.count || 0) > 0) warnings.push(`${chargesRes.count} taxa(s) lançada(s)`);
+      if ((dnRes.count || 0) > 0) warnings.push(`${dnRes.count} nota(s) de débito`);
+      if ((arRes.count || 0) > 0) warnings.push(`${arRes.count} conta(s) a receber`);
+      if ((qpRes.count || 0) > 0) warnings.push(`${qpRes.count} vínculo(s) de parceiro`);
+
+      if (warnings.length > 0) {
+        setClientChangeWarnings(warnings);
+        setPendingClientChange(newClientId);
+      } else {
+        handleChangeClient(newClientId);
+      }
+    } catch (err: any) {
+      // Se a verificação falhar por algum motivo, não bloqueia a troca —
+      // apenas segue sem o aviso extra.
+      handleChangeClient(newClientId);
     }
   }
 
@@ -1777,21 +1816,22 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.client')}</Label>
                   {(() => {
-                    // Se a cotação já virou embarque e ficou sem cliente, o botão "Editar
-                    // Cotação" não existe mais nesse modo — libera só este campo, só
-                    // enquanto estiver vazio, pra não travar o processo pra sempre.
-                    const canFixMissingClient = isShipmentMode && !form.client_id && canEditCargo;
+                    // No modo embarque não existe botão "Editar Cotação" — o campo Cliente
+                    // segue a mesma regra de acesso da aba Carga (canEditCargo). Se o
+                    // cliente já estiver definido e houver taxas/DN/AR/parceiros lançados
+                    // no nome dele, avisamos antes de trocar (requestClientChange).
+                    const canChangeClientInShipment = isShipmentMode && canEditCargo;
                     return (
                       <Select
                         value={form.client_id}
                         onValueChange={(v) => {
-                          if (canFixMissingClient) {
-                            handleSetMissingClient(v);
+                          if (canChangeClientInShipment) {
+                            requestClientChange(v);
                           } else {
                             setForm({ ...form, client_id: v });
                           }
                         }}
-                        disabled={!isEditing && !canFixMissingClient}
+                        disabled={!isEditing && !canChangeClientInShipment}
                       >
                         <SelectTrigger><SelectValue placeholder={t('quotes.select_client')} /></SelectTrigger>
                         <SelectContent>
@@ -2796,6 +2836,28 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 setShowUnsavedConfirm(false);
               }
             }}>Descartar e mudar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingClientChange} onOpenChange={(o) => { if (!o) { setPendingClientChange(null); setClientChangeWarnings([]); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Trocar o cliente deste processo?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>Este processo já tem lançamentos no nome do cliente atual: {clientChangeWarnings.join(', ')}.</p>
+                <p>Trocar o cliente <strong>não atualiza</strong> esses lançamentos automaticamente — eles continuarão vinculados ao cliente antigo. Deseja continuar mesmo assim?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setPendingClientChange(null); setClientChangeWarnings([]); }}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (pendingClientChange) handleChangeClient(pendingClientChange);
+              setPendingClientChange(null);
+              setClientChangeWarnings([]);
+            }}>Trocar mesmo assim</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
