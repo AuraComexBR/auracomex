@@ -16,13 +16,10 @@ export default function Financial() {
   return (
     <div className="space-y-6 animate-slide-in">
       <Tabs value={active} onValueChange={(v) => setParams({ tab: v }, { replace: true })} className="space-y-4">
-        <TabsList className="h-auto flex-wrap gap-x-1 gap-y-2 py-1.5">
+        <TabsList>
           <TabsTrigger value="geral">Visão Geral</TabsTrigger>
-          <span className="mx-1.5 hidden sm:flex items-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Por Processo</span>
           <TabsTrigger value="receber">Valores a Receber</TabsTrigger>
           <TabsTrigger value="pagar">Valores a Pagar</TabsTrigger>
-          <span className="mx-1.5 hidden sm:block h-4 w-px bg-border" />
-          <span className="mx-1.5 hidden sm:flex items-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Despesas Gerais</span>
           <TabsTrigger value="fixas">Despesas Gerais da Empresa</TabsTrigger>
         </TabsList>
         <TabsContent value="geral"><OverviewTab /></TabsContent>
