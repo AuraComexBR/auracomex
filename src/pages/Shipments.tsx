@@ -48,7 +48,11 @@ export default function Shipments() {
 
   // Filtros persistidos por usuário (localStorage), pra não zerar toda vez
   // que ele sai da tela de Embarques e volta.
-  const filtersStorageKey = profile?.user_id ? `aura:filters:${profile.user_id}:shipments` : null;
+  // Versão "v2" da chave: reseta de uma vez só as preferências salvas antes
+  // da mudança de comportamento (agora tudo vem marcado por padrão), pra
+  // quem já tinha filtro salvo também passar a ver o novo padrão. Dali em
+  // diante volta a lembrar normalmente a última escolha de cada um.
+  const filtersStorageKey = profile?.user_id ? `aura:filters:v2:${profile.user_id}:shipments` : null;
 
   useEffect(() => {
     if (!filtersStorageKey || filtersLoadedRef.current) return;
