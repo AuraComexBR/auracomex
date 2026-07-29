@@ -142,7 +142,7 @@ export default function AccountsReceivableTab() {
 
       <Card className="glass">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Contas a Receber</CardTitle>
+          <CardTitle className="text-base">Valores a Receber</CardTitle>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
             <SelectContent>

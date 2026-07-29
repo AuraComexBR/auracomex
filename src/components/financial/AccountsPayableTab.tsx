@@ -150,7 +150,7 @@ export default function AccountsPayableTab() {
 
       <Card className="glass">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Contas a Pagar</CardTitle>
+          <CardTitle className="text-base">Valores a Pagar</CardTitle>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
