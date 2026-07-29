@@ -29,6 +29,8 @@ import { SortableHeader } from '@/components/shared/SortableHeader';
 import { countryCodeToFlag } from '@/lib/countryFlag';
 
 
+const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road', 'multimodal'];
+
 export default function Shipments() {
   const { t } = useLanguage();
   const { profile } = useAuth();
@@ -41,6 +43,8 @@ export default function Shipments() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [duplicateShipment, setDuplicateShipment] = useState<any>(null);
   const filtersLoadedRef = useRef(false);
+  // null = ainda não sabemos: já existe preferência salva desse usuário para essa lista?
+  const [hasSavedPrefs, setHasSavedPrefs] = useState<boolean | null>(null);
 
   // Filtros persistidos por usuário (localStorage), pra não zerar toda vez
   // que ele sai da tela de Embarques e volta.
@@ -55,16 +59,20 @@ export default function Shipments() {
         const saved = JSON.parse(raw);
         if (Array.isArray(saved.statusFilter)) setStatusFilter(saved.statusFilter);
         if (Array.isArray(saved.modeFilter)) setModeFilter(saved.modeFilter);
+        setHasSavedPrefs(true);
+      } else {
+        // Sem preferência salva ainda: os filtros vêm todos marcados por
+        // padrão (mostrando tudo, igual antes) e o usuário desmarca o que
+        // não fizer sentido. O modal já sabemos de antemão; o status
+        // depende dos status customizados da empresa (preenchido no efeito
+        // abaixo assim que carregarem).
+        setHasSavedPrefs(false);
+        setModeFilter(MODES);
       }
     } catch {
-      // ignora localStorage corrompido
+      setHasSavedPrefs(false);
     }
   }, [filtersStorageKey]);
-
-  useEffect(() => {
-    if (!filtersStorageKey || !filtersLoadedRef.current) return;
-    localStorage.setItem(filtersStorageKey, JSON.stringify({ statusFilter, modeFilter }));
-  }, [filtersStorageKey, statusFilter, modeFilter]);
 
   // Clicar em "Embarques" no menu enquanto já se está em /shipments não muda
   // de rota (mesmo path), então sem isso o processo aberto ficava preso na
@@ -98,6 +106,25 @@ export default function Shipments() {
     statusOptions.map((o: any) => [o.value, o.label])
   );
 
+  // Preenche o Status com "tudo selecionado" assim que os status customizados
+  // da empresa chegarem — só quando não havia preferência salva pra esse
+  // usuário (senão sobrescreveria a última escolha dele).
+  useEffect(() => {
+    if (hasSavedPrefs === false && statusOptions.length > 0 && statusFilter.length === 0) {
+      setStatusFilter(statusOptions.map((o: any) => o.value));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSavedPrefs, statusOptions]);
+
+  useEffect(() => {
+    if (!filtersStorageKey || !filtersLoadedRef.current || hasSavedPrefs === null) return;
+    // Se ainda não havia preferência salva, espera os status customizados
+    // carregarem antes de persistir — senão gravaria um Status vazio antes
+    // da hora.
+    if (hasSavedPrefs === false && statusOptions.length === 0) return;
+    localStorage.setItem(filtersStorageKey, JSON.stringify({ statusFilter, modeFilter }));
+  }, [filtersStorageKey, statusFilter, modeFilter, hasSavedPrefs, statusOptions]);
+
   const { data: shipments = [], refetch } = useQuery({
     queryKey: ['shipments', isSalesperson, clientIds],
     queryFn: async () => {
@@ -117,8 +144,6 @@ export default function Shipments() {
       return data;
     },
   });
-
-  const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road', 'multimodal'];
 
   const filtered = shipments.filter((s: any) => {
     const matchesSearch = s.reference_number?.toLowerCase().includes(search.toLowerCase()) ||
