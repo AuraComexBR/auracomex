@@ -1875,12 +1875,20 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                         {t(`quote_status.${form.status}`)}
                       </div>
                     ) : (
-                      <Select 
-                        value={form.status} 
+                      <Select
+                        value={form.status}
                         onValueChange={(v) => {
-                          setForm({ ...form, status: v });
                           if (v === 'approved') {
+                            // Não marca localmente como "approved" antes da hora: esse status só
+                            // deve existir de fato se a conversão em embarque realmente for
+                            // concluída (handleApprove já ajusta form.status pra 'converted' no
+                            // sucesso). Se ficasse marcado aqui e a conversão fosse bloqueada
+                            // (ex: limite do plano) ou falhasse, um save qualquer depois deixaria
+                            // a cotação travada em "approved" sem embarque nenhum — sumindo tanto
+                            // da lista de Cotações quanto da de Embarques.
                             handleApprove();
+                          } else {
+                            setForm({ ...form, status: v });
                           }
                         }}
                         disabled={!isEditing}
