@@ -222,7 +222,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
     
     // Se estiver editando a cotação (campos gerais, carga, etc) e houver alterações não salvas
-    const editingCargoInShipment = isShipmentMode && activeTab === 'cargo' && canEditCargo;
+    const editingCargoInShipment = isShipmentMode && (activeTab === 'cargo' || activeTab === 'general') && canEditCargo;
     if ((isEditing || editingCargoInShipment) && hasChanges && next !== activeTab) {
       setPendingTab(next);
       setShowUnsavedConfirm(true);
@@ -1409,6 +1409,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // Mesma regra da Taxas, mas preservando o trava adicional de "cotação já convertida"
   // (fora do modo embarque) que existia antes só para usuários sem acesso total.
   const canEditCargo = (!isShipmentMode && form.status !== 'converted') || isFullAccess || isProcessOwner;
+  // A aba Geral não tem o botão "Editar Cotação" no modo embarque, então (fora o campo
+  // Cliente, que tem sua própria trava dedicada) ela usa a mesma regra da aba Carga —
+  // caso contrário fica travada pra sempre depois da conversão (ex: não dava pra corrigir
+  // uma rota errada num embarque já em andamento).
+  const canEditGeneral = isEditing || (isShipmentMode && canEditCargo);
 
   const showPort = form.transport_mode !== 'road';
 
@@ -1800,10 +1805,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.mode')}</Label>
-                  <Select 
-                    value={form.transport_mode} 
+                  <Select
+                    value={form.transport_mode}
                     onValueChange={(v) => setForm({ ...form, transport_mode: v })}
-                    disabled={!isEditing}
+                    disabled={!canEditGeneral}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1851,15 +1856,15 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     <PortSelect
                       value={form.origin}
                       onChange={(v) => setForm({ ...form, origin: v })}
-                      disabled={!isEditing}
+                      disabled={!canEditGeneral}
                       placeholder={t('quotes.search_port')}
                     />
                   ) : (
-                    <Input 
-                      value={form.origin} 
-                      onChange={(e) => setForm({ ...form, origin: e.target.value })} 
-                      placeholder="São Paulo, BR" 
-                      disabled={!isEditing}
+                    <Input
+                      value={form.origin}
+                      onChange={(e) => setForm({ ...form, origin: e.target.value })}
+                      placeholder="São Paulo, BR"
+                      disabled={!canEditGeneral}
                     />
                   )}
                 </div>
@@ -1870,15 +1875,15 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                       value={form.destination}
                       onChange={(v) => setForm({ ...form, destination: v })}
                       transportMode={form.transport_mode}
-                      disabled={!isEditing}
+                      disabled={!canEditGeneral}
                       placeholder={t('quotes.search_port')}
                     />
                   ) : (
-                    <Input 
-                      value={form.destination} 
-                      onChange={(e) => setForm({ ...form, destination: e.target.value })} 
-                      placeholder="Curitiba, BR" 
-                      disabled={!isEditing}
+                    <Input
+                      value={form.destination}
+                      onChange={(e) => setForm({ ...form, destination: e.target.value })}
+                      placeholder="Curitiba, BR"
+                      disabled={!canEditGeneral}
                     />
                   )}
                 </div>
@@ -1893,7 +1898,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                       value={form.transshipment}
                       onChange={(v) => setForm({ ...form, transshipment: v })}
                       transportMode={form.transport_mode}
-                      disabled={!isEditing}
+                      disabled={!canEditGeneral}
                       placeholder="Porto de transbordo (opcional)"
                     />
                   </div>
@@ -1930,10 +1935,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('quotes.incoterm')}</Label>
-                  <Select 
-                    value={form.incoterm} 
+                  <Select
+                    value={form.incoterm}
                     onValueChange={(v) => setForm({ ...form, incoterm: v })}
-                    disabled={!isEditing}
+                    disabled={!canEditGeneral}
                   >
                     <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
                     <SelectContent>
@@ -1946,34 +1951,34 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('quotes.valid_until')}</Label>
-                  <Input 
-                    type="date" 
-                    value={form.valid_until} 
-                    onChange={(e) => setForm({ ...form, valid_until: e.target.value })} 
-                    disabled={!isEditing}
+                  <Input
+                    type="date"
+                    value={form.valid_until}
+                    onChange={(e) => setForm({ ...form, valid_until: e.target.value })}
+                    disabled={!canEditGeneral}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('quotes.transit_time')}</Label>
-                  <Input 
-                    type="number" 
-                    value={form.transit_time} 
-                    onChange={(e) => setForm({ ...form, transit_time: e.target.value })} 
-                    placeholder="0" 
-                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                    disabled={!isEditing}
+                  <Input
+                    type="number"
+                    value={form.transit_time}
+                    onChange={(e) => setForm({ ...form, transit_time: e.target.value })}
+                    placeholder="0"
+                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    disabled={!canEditGeneral}
                   />
                 </div>
                 {form.transport_mode?.startsWith('ocean') && (
                   <div className="space-y-1.5">
                     <Label className="text-xs">{t('quotes.free_time')}</Label>
-                    <Input 
-                      type="number" 
-                      value={form.free_time} 
-                      onChange={(e) => setForm({ ...form, free_time: e.target.value })} 
-                      placeholder="0" 
-                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                      disabled={!isEditing}
+                    <Input
+                      type="number"
+                      value={form.free_time}
+                      onChange={(e) => setForm({ ...form, free_time: e.target.value })}
+                      placeholder="0"
+                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      disabled={!canEditGeneral}
                     />
                   </div>
                 )}
@@ -1986,7 +1991,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   placeholder={t('quotes.notes_placeholder')}
                   rows={3}
-                  disabled={!isEditing}
+                  disabled={!canEditGeneral}
                 />
               </div>
 
@@ -1998,7 +2003,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     onChange={(e) => setForm({ ...form, payment_terms: e.target.value })}
                     placeholder="Ex: 50% na chegada, saldo em 30 dias"
                     rows={3}
-                    disabled={!isEditing}
+                    disabled={!canEditGeneral}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -2008,7 +2013,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     onChange={(e) => setForm({ ...form, proposal_notes: e.target.value })}
                     placeholder="Texto que aparecerá na proposta em PDF"
                     rows={3}
-                    disabled={!isEditing}
+                    disabled={!canEditGeneral}
                   />
                 </div>
               </div>
