@@ -232,7 +232,7 @@ export default function Shipments() {
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-72 p-4" align="end">
+          <PopoverContent className="w-[min(90vw,560px)] p-4" align="end">
             <div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -246,22 +246,22 @@ export default function Shipments() {
               </div>
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
-                <div className="space-y-1.5 max-h-40 overflow-auto">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
                   {statusOptions.map((o: any) => (
                     <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
                       <Checkbox checked={statusFilter.includes(o.value)} onCheckedChange={() => toggleStatusFilter(o.value)} />
-                      {o.label}
+                      <span className="truncate">{o.label}</span>
                     </label>
                   ))}
                 </div>
               </div>
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Modal</p>
-                <div className="space-y-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5">
                   {MODES.map((m) => (
                     <label key={m} className="flex items-center gap-2 text-sm cursor-pointer">
                       <Checkbox checked={modeFilter.includes(m)} onCheckedChange={() => toggleModeFilter(m)} />
-                      {t(`mode.${m}`)}
+                      <span className="truncate">{t(`mode.${m}`)}</span>
                     </label>
                   ))}
                 </div>
