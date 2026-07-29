@@ -13,6 +13,10 @@ export interface SubscriptionData {
   currentPeriodEnd: string | null;
   seatsLimit: number | null;
   shipmentsLimit: number | null;
+  bonusShipments: number;
+  // shipmentsLimit já somado ao bônus de cortesia dado pelo superadmin (bonusShipments).
+  // null continua significando "sem limite".
+  effectiveShipmentsLimit: number | null;
   addons: Set<AddonKey>;
 }
 
@@ -61,6 +65,7 @@ export function useSubscription() {
         addons.add('tracking_portal');
         addons.add('ai_import');
       }
+      const bonusShipments = sub.bonus_shipments || 0;
       return {
         plan: sub.plan,
         status: sub.status,
@@ -68,6 +73,8 @@ export function useSubscription() {
         currentPeriodEnd: sub.current_period_end,
         seatsLimit: sub.seats_limit,
         shipmentsLimit: sub.shipments_limit,
+        bonusShipments,
+        effectiveShipmentsLimit: sub.shipments_limit != null ? sub.shipments_limit + bonusShipments : null,
         addons,
       };
     },

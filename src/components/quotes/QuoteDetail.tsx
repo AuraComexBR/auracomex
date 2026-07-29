@@ -1077,14 +1077,22 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       return;
     }
 
-    // Bloqueio real de limite de embarques/mês do plano.
+    // Salva a cotação ANTES de checar o limite do plano — se a conversão for
+    // bloqueada logo abaixo, o que foi digitado não se perde (fica salvo como
+    // cotação normal, só a conversão em embarque que fica pendente).
+    await handleSave();
+
+    // Bloqueio real de limite de embarques/mês do plano. O superadmin pode
+    // conceder embarques bônus de cortesia (bonus_shipments), somados ao
+    // limite do plano.
     if (profile.company_id) {
       const { data: companySub } = await supabase
         .from('company_subscriptions')
-        .select('shipments_limit')
+        .select('shipments_limit, bonus_shipments')
         .eq('company_id', profile.company_id)
         .maybeSingle();
       if (companySub?.shipments_limit != null) {
+        const effectiveLimit = companySub.shipments_limit + (companySub.bonus_shipments || 0);
         const monthStart = new Date();
         monthStart.setDate(1);
         monthStart.setHours(0, 0, 0, 0);
@@ -1093,8 +1101,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           .select('id', { count: 'exact', head: true })
           .eq('company_id', profile.company_id)
           .gte('created_at', monthStart.toISOString());
-        if ((count ?? 0) >= companySub.shipments_limit) {
-          toast.error(`Limite de ${companySub.shipments_limit} embarques/mês do plano atingido. Faça upgrade para continuar convertendo cotações.`);
+        if ((count ?? 0) >= effectiveLimit) {
+          toast.error(`Limite de ${effectiveLimit} embarques/mês do plano atingido. Sua cotação foi salva normalmente — faça upgrade (ou peça um embarque bônus ao suporte) para converter em embarque.`);
           return;
         }
       }
