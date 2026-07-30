@@ -8,12 +8,30 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Ship, AlertTriangle, CheckCircle,
   Plus, TrendingUp, Clock, ArrowRight, DollarSign,
-  CalendarClock, Wallet, PackageSearch,
+  CalendarClock, Wallet, PackageSearch, PackageCheck, FolderOpen, Route,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Link } from 'react-router-dom';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend } from 'recharts';
+import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
+
+const MODE_LABELS: Record<string, string> = {
+  ocean_fcl: 'Marítimo FCL',
+  ocean_lcl: 'Marítimo LCL',
+  air: 'Aéreo',
+  road: 'Rodoviário',
+  multimodal: 'Multimodal',
+};
+
+const MODE_COLORS: Record<string, string> = {
+  ocean_fcl: '#2563eb',
+  ocean_lcl: '#60a5fa',
+  air: '#f59e0b',
+  road: '#16a34a',
+  multimodal: '#a855f7',
+};
 
 export default function Index() {
   const { t } = useLanguage();
@@ -61,9 +79,82 @@ export default function Index() {
       const { data } = await query;
       const pending = (data || []).filter((q: any) => q.status === 'sent').length;
       const drafts = (data || []).filter((q: any) => q.status === 'draft').length;
-      return { pending, drafts, total: (data || []).length };
+      // Cotações que ainda não viraram embarque nem foram rejeitadas — a "referência"
+      // ainda está aberta nesse estágio (depois de convertida, ela passa a ser contada
+      // pelo lado dos embarques, pra não duplicar a mesma referência nos dois lados).
+      const openCount = (data || []).filter((q: any) => !['converted', 'rejected'].includes(q.status)).length;
+      return { pending, drafts, total: (data || []).length, openCount };
     },
   });
+
+  // Opções de status de embarque da empresa (posição define a ordem do pipeline).
+  // Usamos isso pra descobrir dinamicamente onde fica "Aprovado" e qual é o status
+  // final/terminal (o de maior posição), já que cada empresa pode customizar os nomes.
+  const { data: statusOptions = [] } = useQuery({
+    queryKey: ['dashboard-status-options', profile?.company_id],
+    enabled: canAccessShipments && !!profile?.company_id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('shipment_status_options')
+        .select('value, position')
+        .eq('company_id', profile!.company_id)
+        .order('position', { ascending: true });
+      return (data || []) as { value: string; position: number }[];
+    },
+  });
+
+  const positionByStatus = new Map(statusOptions.map((o) => [o.value, o.position]));
+  const finalStatusValue = statusOptions.length > 0 ? statusOptions[statusOptions.length - 1].value : null;
+  const approvedPosition = positionByStatus.get('approved') ?? null;
+  const finalPosition = statusOptions.length > 0 ? statusOptions[statusOptions.length - 1].position : null;
+
+  const { data: pipelineShipments = [] } = useQuery({
+    queryKey: ['dashboard-pipeline-shipments', scopeFilter],
+    enabled: canAccessShipments,
+    queryFn: async () => {
+      let query = supabase
+        .from('shipments')
+        .select('id, status, transport_mode, updated_at');
+      if (scopeFilter && scopeFilter.length > 0) {
+        query = query.in('client_id', scopeFilter);
+      } else if (scopeFilter && scopeFilter.length === 0) {
+        return [];
+      }
+      const { data } = await query;
+      return (data || []) as { id: string; status: string; transport_mode: string; updated_at: string }[];
+    },
+  });
+
+  const now = new Date();
+  const firstOfMonthIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  const closedThisMonth = finalStatusValue
+    ? pipelineShipments.filter((s) => s.status === finalStatusValue && s.updated_at >= firstOfMonthIso).length
+    : 0;
+
+  const openShipments = finalStatusValue
+    ? pipelineShipments.filter((s) => s.status !== finalStatusValue)
+    : pipelineShipments;
+
+  const openReferences = (quoteStats?.openCount ?? 0) + openShipments.length;
+
+  const shipmentsInProgress = pipelineShipments.filter((s) => {
+    const pos = positionByStatus.get(s.status);
+    if (pos == null || approvedPosition == null || finalPosition == null) return false;
+    return pos > approvedPosition && pos < finalPosition;
+  }).length;
+
+  const modeDistribution = Object.entries(
+    openShipments.reduce((acc: Record<string, number>, s) => {
+      const mode = s.transport_mode || 'multimodal';
+      acc[mode] = (acc[mode] || 0) + 1;
+      return acc;
+    }, {})
+  ).map(([mode, count]) => ({ mode, label: MODE_LABELS[mode] || mode, count, fill: MODE_COLORS[mode] || '#94a3b8' }));
+
+  const modeChartConfig = Object.fromEntries(
+    Object.entries(MODE_LABELS).map(([mode, label]) => [mode, { label, color: MODE_COLORS[mode] }])
+  );
 
   const { data: financialStats } = useQuery({
     queryKey: ['dashboard-financial', scopeFilter],
@@ -460,6 +551,98 @@ export default function Index() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Visão do mês: fechados, referências abertas e embarques em andamento */}
+      {canAccessShipments && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card className="glass hover:shadow-lg transition-shadow">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Processos fechados no mês
+                  </p>
+                  <p className="text-3xl font-bold mt-1">{closedThisMonth}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-secondary text-status-completed">
+                  <PackageCheck className="w-5 h-5" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass hover:shadow-lg transition-shadow">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Referências abertas
+                  </p>
+                  <p className="text-3xl font-bold mt-1">{openReferences}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-secondary text-status-attention">
+                  <FolderOpen className="w-5 h-5" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass hover:shadow-lg transition-shadow">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Embarques em andamento
+                  </p>
+                  <p className="text-3xl font-bold mt-1">{shipmentsInProgress}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-secondary text-status-transit">
+                  <Route className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-xs mt-2 font-medium text-muted-foreground">
+                Entre aprovado e finalizado
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Gráfico de pizza: distribuição dos embarques em aberto por modal */}
+      {canAccessShipments && (
+        <Card className="glass">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Embarques em aberto por modal</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {modeDistribution.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('common.no_data')}</p>
+            ) : (
+              <ChartContainer config={modeChartConfig} className="max-h-64 w-full">
+                <PieChart>
+                  <RechartsTooltip content={<ChartTooltipContent nameKey="label" />} />
+                  <Legend
+                    verticalAlign="bottom"
+                    formatter={(_value, entry: any) => entry?.payload?.label ?? _value}
+                  />
+                  <Pie
+                    data={modeDistribution}
+                    dataKey="count"
+                    nameKey="label"
+                    innerRadius={50}
+                    outerRadius={90}
+                    paddingAngle={2}
+                  >
+                    {modeDistribution.map((d) => (
+                      <Cell key={d.mode} fill={d.fill} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Requer atenção */}
