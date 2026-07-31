@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bell, Globe, Sparkles, LogOut, CheckCheck, Trash2, X, UserCircle } from 'lucide-react';
+import { Bell, Globe, Sparkles, LogOut, CheckCheck, Trash2, X, UserCircle, CreditCard } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ReleaseNotesDialog } from '@/components/releases/ReleaseNotesDialog';
 import { useReleases } from '@/hooks/useReleases';
-import { PlanBadge } from '@/components/billing/PlanBadge';
+import { useSubscription, PLAN_LABEL } from '@/hooks/useSubscription';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -27,6 +27,7 @@ export function TopBar() {
   const { unread } = useReleases();
   const [notesOpen, setNotesOpen] = useState(false);
   const { items: notifications, unreadCount, markRead, markAllRead, remove, clearAll } = useNotifications();
+  const { data: subscription } = useSubscription();
   const navigate = useNavigate();
 
   const initials = profile?.full_name
@@ -40,26 +41,7 @@ export function TopBar() {
     <header className="h-16 border-b border-border bg-card/50 backdrop-blur-lg flex items-center justify-end px-6">
       {/* Right side */}
       <div className="flex items-center gap-3">
-        <div data-tour="plan-badge"><PlanBadge /></div>
-        {/* What's new */}
-        <Button variant="ghost" size="sm" onClick={() => setNotesOpen(true)} className="gap-1.5 text-xs">
-          <Sparkles className="w-4 h-4 text-primary" />
-          {unread.length > 0 && <span className="w-2 h-2 bg-primary rounded-full" />}
-        </Button>
         <ReleaseNotesDialog mode="manual" open={notesOpen} onOpenChange={setNotesOpen} />
-
-        {/* Language toggle */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setLanguage(language === 'pt' ? 'en' : 'pt')}
-          className="relative"
-        >
-          <Globe className="w-4 h-4" />
-          <span className="absolute -bottom-0.5 -right-0.5 text-[9px] font-bold bg-primary text-primary-foreground rounded px-0.5">
-            {language.toUpperCase()}
-          </span>
-        </Button>
 
         {/* Notifications */}
         <DropdownMenu>
@@ -141,7 +123,7 @@ export function TopBar() {
         {/* User */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2 px-2">
+            <Button variant="ghost" className="gap-2 px-2" data-tour="plan-badge">
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                   {initials}
@@ -161,6 +143,23 @@ export function TopBar() {
             <DropdownMenuItem onClick={() => navigate('/account')} className="cursor-pointer">
               <UserCircle className="w-4 h-4 mr-2" />
               {language === 'pt' ? 'Minha Conta' : 'My Account'}
+            </DropdownMenuItem>
+            {subscription && (
+              <DropdownMenuItem onClick={() => navigate('/settings#assinatura')} className="cursor-pointer">
+                <CreditCard className="w-4 h-4 mr-2" />
+                {PLAN_LABEL[subscription.plan]}
+                {subscription.status === 'trial' && <span className="ml-1 text-xs text-amber-500">· trial</span>}
+                {subscription.status === 'past_due' && <span className="ml-1 text-xs text-red-500">· em atraso</span>}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => setNotesOpen(true)} className="cursor-pointer">
+              <Sparkles className="w-4 h-4 mr-2" />
+              {language === 'pt' ? 'Novidades' : "What's new"}
+              {unread.length > 0 && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLanguage(language === 'pt' ? 'en' : 'pt')} className="cursor-pointer">
+              <Globe className="w-4 h-4 mr-2" />
+              {language === 'pt' ? 'Idioma: Português' : 'Language: English'}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={signOut} className="cursor-pointer">

@@ -16,7 +16,7 @@ const STEPS = [
     element: '[data-tour="plan-badge"]',
     popover: {
       title: 'Seu plano',
-      description: 'Consulte seu plano ativo e os dias restantes. Faça upgrade quando precisar de mais recursos.',
+      description: 'Clique no seu nome para ver seu plano ativo, novidades e mais opções. Faça upgrade quando precisar de mais recursos.',
     },
   },
   {
