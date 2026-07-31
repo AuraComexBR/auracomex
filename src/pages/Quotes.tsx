@@ -279,36 +279,42 @@ export default function Quotes() {
     <div className="space-y-6 animate-slide-in">
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="glass">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-lg bg-primary/10 p-2.5">
-              <FileText className="w-5 h-5 text-primary" />
+        <Card className="glass hover:shadow-lg transition-shadow">
+          <CardContent className="p-5 relative">
+            <div className="absolute top-5 left-5 p-3.5 rounded-xl bg-secondary text-primary">
+              <FileText className="w-7 h-7" />
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">{t('quotes.month_total')}</p>
-              <p className="text-2xl font-bold">{monthTotal}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="glass">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-lg bg-orange-500/10 p-2.5">
-              <Clock className="w-5 h-5 text-orange-500" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">{t('quotes.pending_response')}</p>
-              <p className="text-2xl font-bold">{pendingCount}</p>
+            <div className="text-center">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                {t('quotes.month_total')}
+              </p>
+              <p className="text-3xl font-bold mt-1">{monthTotal}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="glass">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-lg bg-status-completed/10 p-2.5">
-              <Ship className="w-5 h-5 text-status-completed" />
+        <Card className="glass hover:shadow-lg transition-shadow">
+          <CardContent className="p-5 relative">
+            <div className="absolute top-5 left-5 p-3.5 rounded-xl bg-secondary text-status-attention">
+              <Clock className="w-7 h-7" />
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">{t('quotes.converted_count')}</p>
-              <p className="text-2xl font-bold">{convertedCount}</p>
+            <div className="text-center">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                {t('quotes.pending_response')}
+              </p>
+              <p className="text-3xl font-bold mt-1">{pendingCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="glass hover:shadow-lg transition-shadow">
+          <CardContent className="p-5 relative">
+            <div className="absolute top-5 left-5 p-3.5 rounded-xl bg-secondary text-status-completed">
+              <Ship className="w-7 h-7" />
+            </div>
+            <div className="text-center">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                {t('quotes.converted_count')}
+              </p>
+              <p className="text-3xl font-bold mt-1">{convertedCount}</p>
             </div>
           </CardContent>
         </Card>
