@@ -241,7 +241,6 @@ export default function Index() {
                 Fechamentos
               </p>
               <p className="text-3xl font-bold mt-1">{closedThisMonth}</p>
-              <p className="text-xs mt-2 font-medium text-muted-foreground">Neste mês</p>
             </div>
           </CardContent>
         </Card>
@@ -256,7 +255,6 @@ export default function Index() {
                 Referências
               </p>
               <p className="text-3xl font-bold mt-1">{quoteStats?.createdThisMonth ?? 0}</p>
-              <p className="text-xs mt-2 font-medium text-muted-foreground">Neste mês</p>
             </div>
           </CardContent>
         </Card>
@@ -271,7 +269,6 @@ export default function Index() {
                 Embarques em andamento
               </p>
               <p className="text-3xl font-bold mt-1">{shipmentsInProgress.length}</p>
-              <p className="text-xs mt-2 font-medium text-muted-foreground">Exceto canceladas e finalizadas</p>
             </div>
           </CardContent>
         </Card>
