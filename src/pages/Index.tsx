@@ -233,8 +233,8 @@ export default function Index() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card className="glass hover:shadow-lg transition-shadow">
           <CardContent className="p-5 relative">
-            <div className="absolute top-5 right-5 p-3 rounded-xl bg-secondary text-status-completed">
-              <PackageCheck className="w-5 h-5" />
+            <div className="absolute top-5 left-5 p-3.5 rounded-xl bg-secondary text-status-completed">
+              <PackageCheck className="w-7 h-7" />
             </div>
             <div className="text-center">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -248,8 +248,8 @@ export default function Index() {
 
         <Card className="glass hover:shadow-lg transition-shadow">
           <CardContent className="p-5 relative">
-            <div className="absolute top-5 right-5 p-3 rounded-xl bg-secondary text-status-attention">
-              <FolderOpen className="w-5 h-5" />
+            <div className="absolute top-5 left-5 p-3.5 rounded-xl bg-secondary text-status-attention">
+              <FolderOpen className="w-7 h-7" />
             </div>
             <div className="text-center">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -263,8 +263,8 @@ export default function Index() {
 
         <Card className="glass hover:shadow-lg transition-shadow">
           <CardContent className="p-5 relative">
-            <div className="absolute top-5 right-5 p-3 rounded-xl bg-secondary text-status-transit">
-              <Route className="w-5 h-5" />
+            <div className="absolute top-5 left-5 p-3.5 rounded-xl bg-secondary text-status-transit">
+              <Route className="w-7 h-7" />
             </div>
             <div className="text-center">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
