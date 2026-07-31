@@ -232,53 +232,47 @@ export default function Index() {
       {/* Fechamentos, Referências e Embarques em andamento */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card className="glass hover:shadow-lg transition-shadow">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Fechamentos
-                </p>
-                <p className="text-3xl font-bold mt-1">{closedThisMonth}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-secondary text-status-completed">
-                <PackageCheck className="w-5 h-5" />
-              </div>
+          <CardContent className="p-5 relative">
+            <div className="absolute top-5 right-5 p-3 rounded-xl bg-secondary text-status-completed">
+              <PackageCheck className="w-5 h-5" />
             </div>
-            <p className="text-xs mt-2 font-medium text-muted-foreground">Neste mês</p>
+            <div className="text-center">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Fechamentos
+              </p>
+              <p className="text-3xl font-bold mt-1">{closedThisMonth}</p>
+              <p className="text-xs mt-2 font-medium text-muted-foreground">Neste mês</p>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="glass hover:shadow-lg transition-shadow">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Referências
-                </p>
-                <p className="text-3xl font-bold mt-1">{quoteStats?.createdThisMonth ?? 0}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-secondary text-status-attention">
-                <FolderOpen className="w-5 h-5" />
-              </div>
+          <CardContent className="p-5 relative">
+            <div className="absolute top-5 right-5 p-3 rounded-xl bg-secondary text-status-attention">
+              <FolderOpen className="w-5 h-5" />
             </div>
-            <p className="text-xs mt-2 font-medium text-muted-foreground">Neste mês</p>
+            <div className="text-center">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Referências
+              </p>
+              <p className="text-3xl font-bold mt-1">{quoteStats?.createdThisMonth ?? 0}</p>
+              <p className="text-xs mt-2 font-medium text-muted-foreground">Neste mês</p>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="glass hover:shadow-lg transition-shadow">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Embarques em andamento
-                </p>
-                <p className="text-3xl font-bold mt-1">{shipmentsInProgress.length}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-secondary text-status-transit">
-                <Route className="w-5 h-5" />
-              </div>
+          <CardContent className="p-5 relative">
+            <div className="absolute top-5 right-5 p-3 rounded-xl bg-secondary text-status-transit">
+              <Route className="w-5 h-5" />
             </div>
-            <p className="text-xs mt-2 font-medium text-muted-foreground">Exceto canceladas e finalizadas</p>
+            <div className="text-center">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Embarques em andamento
+              </p>
+              <p className="text-3xl font-bold mt-1">{shipmentsInProgress.length}</p>
+              <p className="text-xs mt-2 font-medium text-muted-foreground">Exceto canceladas e finalizadas</p>
+            </div>
           </CardContent>
         </Card>
       </div>
