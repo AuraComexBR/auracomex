@@ -7,13 +7,12 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useHasAddon } from '@/hooks/useSubscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, DollarSign, Package, Info, Users, ShoppingCart, Undo2, Calculator, Pencil, X, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, Package, Info, Users, ShoppingCart, Undo2, Calculator, Pencil, X, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History } from 'lucide-react';
 import { CostEstimateTab, type CostEstimateTabHandle } from './estimate/CostEstimateTab';
 import { FloatingSaveButton } from './estimate/FloatingSaveButton';
 import { QuotePdfPreviewDialog } from './QuotePdfPreviewDialog';
-import { DebitNotesTab } from './DebitNotesTab';
-import { ClientDebitNotesTab } from './ClientDebitNotesTab';
-import { Receipt } from 'lucide-react';
+import { SendSupplierDnDialog } from './DebitNotesTab';
+import { GenerateClientNdDialog } from './ClientDebitNotesTab';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,7 +22,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { PortSelect } from '@/components/shared/PortSelect';
@@ -40,6 +38,7 @@ import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { collectPercentUpdates, computePercentCharge, isCollectFeeName, isPercentCharge, type PercentChargeLike, type CollectFxRates } from '@/lib/collectFee';
 import { PercentBaseDialog } from '@/components/quotes/PercentBaseDialog';
 
@@ -158,7 +157,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   });
   const [cargoItems, setCargoItems] = useState<CargoItem[]>([{ ...emptyCargoItem }]);
   const [saving, setSaving] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [chargeForm, setChargeForm] = useState({
     charge_catalog_id: '',
@@ -196,11 +194,16 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const [estimateState, setEstimateState] = useState({ editMode: false, dirtyCount: 0, hasEstimate: false });
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [leaveTabOpen, setLeaveTabOpen] = useState(false);
-  const [dnView, setDnView] = useState<'partner' | 'client'>('partner');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const estimateRef = useRef<CostEstimateTabHandle>(null);
   const [backConfirmOpen, setBackConfirmOpen] = useState(false);
+  const [pendingClientChange, setPendingClientChange] = useState<string | null>(null);
+  const [clientChangeWarnings, setClientChangeWarnings] = useState<string[]>([]);
+  // Botão "Enviar DN" no cabeçalho de cada fornecedor na aba Taxas (Compra).
+  const [sendDnPartner, setSendDnPartner] = useState<{ id: string; name: string; amount: number; currency: string; chargeIds: string[] } | null>(null);
+  // Botão "Gerar ND" no cabeçalho de cada empresa na aba Taxas (Venda).
+  const [generateNdPartner, setGenerateNdPartner] = useState<{ id: string; name: string; charges: any[] } | null>(null);
 
   // Handler para o botão voltar: se houver alterações não salvas, confirma antes.
   const handleBackClick = () => {
@@ -221,9 +224,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       return;
     }
     
-    // Se estiver editando a cotação (campos gerais, carga, etc) e houver alterações não salvas
-    const editingCargoInShipment = isShipmentMode && activeTab === 'cargo' && canEditCargo;
-    if ((isEditing || editingCargoInShipment) && hasChanges && next !== activeTab) {
+    // Geral e Carga salvam sozinhas (auto-save) uma pausa curta depois da
+    // digitação — se o usuário trocar de aba antes disso, o timer é cancelado
+    // e a mudança se perderia sem avisar. Esse confirm cobre essa janela.
+    const autoSavingTab = activeTab === 'cargo' || activeTab === 'general';
+    if (autoSavingTab && hasChanges && next !== activeTab) {
       setPendingTab(next);
       setShowUnsavedConfirm(true);
       return;
@@ -369,7 +374,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const { data: partners = [] } = useQuery({
     queryKey: ['partners-select'],
     queryFn: async () => {
-      const { data } = await supabase.from('clients').select('id, name, type, partner_category').order('name');
+      const { data } = await supabase.from('clients').select('id, name, type, partner_category, tax_id').order('name');
       return data || [];
     },
   });
@@ -380,13 +385,24 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('quote_partners' as any)
-        .select('*, clients:client_id(id, name, type, partner_category)')
+        .select('*, clients:client_id(id, name, type, partner_category, storage_rebate_percent)')
         .eq('quote_id', quoteId)
         .order('created_at');
       if (error) throw error;
       return data as any[];
     },
   });
+
+  // Empresas (fornecedores) vinculadas ao processo — usadas para a DN
+  // Fornecedor anexada na aba Documentos.
+  const linkedPartnersForDn = (() => {
+    const allowedIds = new Set(
+      (quotePartners as any[]).map((qp) => qp.client_id).filter(Boolean)
+    );
+    return (partners as any[])
+      .filter((p) => allowedIds.has(p.id))
+      .map((p) => ({ id: p.id, name: p.name, partner_category: p.partner_category }));
+  })();
 
   // Shipment data (only when in shipment mode)
   const { data: shipment } = useQuery({
@@ -563,6 +579,25 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   }, [form, cargoItems, quote, items]);
 
   const dirtyCount = hasChanges ? 1 : 0;
+
+  // Auto-save das abas Geral e Resumo da Carga: nenhuma das duas tem mais
+  // botão "Salvar" próprio — qualquer alteração em `form` ou `cargoItems` já
+  // grava no banco sozinha depois de uma pausa curta de digitação.
+  // OBS: precisa ficar antes do "if (isLoading || !quote) return" lá embaixo,
+  // senão o número de hooks muda entre o primeiro render (carregando) e os
+  // seguintes, e o React quebra com "Rendered more hooks than during the
+  // previous render" — por isso a checagem de permissão aqui é feita de
+  // forma independente (com optional chaining), sem usar `canEditCargo`.
+  const canEditCargoForAutoSave =
+    (!isShipmentMode && form.status !== 'converted') || isFullAccess || (profile?.user_id === quote?.created_by);
+  useEffect(() => {
+    if (!quote || (activeTab !== 'cargo' && activeTab !== 'general') || !canEditCargoForAutoSave || !hasChanges || saving) return;
+    const timer = setTimeout(() => {
+      handleSave();
+    }, 900);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, cargoItems, activeTab, canEditCargoForAutoSave, hasChanges, saving, quote]);
 
   // Se a aba Estimativa estiver desabilitada para a empresa, volta para 'general'.
   useEffect(() => {
@@ -746,54 +781,67 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
-  const handleCancelEdition = useCallback(() => {
-    if (quote) {
-      setForm({
-        client_id: quote.client_id || '',
-        origin: quote.origin || '',
-        transshipment: (quote as any).transshipment || '',
-        destination: quote.destination || '',
-        transport_mode: quote.transport_mode || 'ocean_fcl',
-        currency: quote.currency || 'USD',
-        valid_until: quote.valid_until ? format(new Date(quote.valid_until), 'yyyy-MM-dd') : '',
-        notes: quote.notes || '',
-        status: quote.status || 'draft',
-        incoterm: (quote as any).incoterm || '',
-        transit_time: (quote as any).transit_time?.toString() || '',
-        free_time: (quote as any).free_time?.toString() || '',
-        payment_terms: (quote as any).payment_terms || '',
-        proposal_notes: (quote as any).proposal_notes || '',
-        storage_fee_amount: (quote as any).storage_fee_amount != null ? String((quote as any).storage_fee_amount) : '',
-        storage_fee_currency: (quote as any).storage_fee_currency || 'BRL',
-        storage_fee_note: (quote as any).storage_fee_note || '',
-      });
+  // Regra de negócio: todo embarque LCL com armazenagem lançada deve gerar
+  // (ou atualizar) uma conta a receber automática, tendo como pagador o
+  // Co-loader cadastrado no processo (aba Empresas). Se o valor for zerado
+  // e a conta ainda não tiver sido recebida, ela é removida.
+  async function syncStorageFeeReceivable() {
+    if (!isShipmentMode || !shipmentId || !profile) return;
+    if (form.transport_mode !== 'ocean_lcl') return;
+
+    const amount = form.storage_fee_amount ? parseFloat(form.storage_fee_amount) : 0;
+
+    const { data: existing } = await supabase
+      .from('accounts_receivable' as any)
+      .select('id, status')
+      .eq('quote_id', quoteId)
+      .eq('source', 'storage_fee')
+      .maybeSingle();
+
+    if (!amount || amount <= 0) {
+      if (existing && (existing as any).status === 'aberto') {
+        await supabase.from('accounts_receivable' as any).delete().eq('id', (existing as any).id);
+        queryClient.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      }
+      return;
     }
-    if (items.length > 0) {
-      setCargoItems(items.map((item: any) => ({
-        id: item.id,
-        container_type: item.container_type || '20GP',
-        container_qty: item.container_qty || 1,
-        container_number: item.container_number || '',
-        weight_kg: item.weight_kg?.toString() || '',
-        volume_cbm: item.volume_cbm?.toString() || '',
-        chargeable_weight: item.chargeable_weight?.toString() || '',
-        length_cm: item.length_cm?.toString() || '',
-        width_cm: item.width_cm?.toString() || '',
-        height_cm: item.height_cm?.toString() || '',
-        packages: item.packages?.toString() || '',
-        ncm_code: item.ncm_code || '',
-        commodity: item.commodity || '',
-        dangerous_goods: item.dangerous_goods || false,
-        vehicle_type: item.vehicle_type || '',
-        cargo_value: item.cargo_value?.toString() || '',
-        cargo_value_currency: item.cargo_value_currency || 'USD',
-        notes: item.notes || '',
-      })));
+
+    const coLoader = (quotePartners as any[]).find((qp) => qp.clients?.partner_category === 'co_loader');
+    if (!coLoader) {
+      toast.warning('Armazenagem lançada, mas nenhum Co-loader cadastrado neste processo — a conta a receber não foi gerada. Cadastre o Co-loader na aba Empresas.');
+      return;
+    }
+
+    // A conta a receber não é o valor cheio da armazenagem: é o rebate negociado
+    // com esse Co-loader, um percentual cadastrado no fornecedor (aba Cadastros).
+    const rebatePercent = coLoader.clients?.storage_rebate_percent;
+    if (rebatePercent == null) {
+      toast.warning(`Armazenagem lançada, mas o Co-loader "${coLoader.clients?.name}" não tem o percentual de rebate cadastrado — a conta a receber não foi gerada. Cadastre o rebate na aba Cadastros.`);
+      return;
+    }
+    const rebateAmount = Math.round(amount * (Number(rebatePercent) / 100) * 100) / 100;
+
+    const payload = {
+      company_id: profile.company_id,
+      source: 'storage_fee' as any,
+      quote_id: quoteId,
+      shipment_id: shipmentId,
+      client_id: coLoader.clients.id,
+      description: `Rebate de armazenagem (${rebatePercent}% de ${form.storage_fee_currency || 'BRL'} ${amount.toFixed(2)}) - ${(quote as any)?.quote_number || ''}`,
+      currency: form.storage_fee_currency || 'BRL',
+      amount: rebateAmount,
+      // Armazenagem não tem data de vencimento fixa (é cobrada quando o co-loader repassa o rebate).
+      due_date: null,
+      created_by: profile.user_id,
+    };
+
+    if (existing) {
+      await supabase.from('accounts_receivable' as any).update(payload).eq('id', (existing as any).id);
     } else {
-      setCargoItems([{ ...emptyCargoItem }]);
+      await supabase.from('accounts_receivable' as any).insert(payload);
     }
-    setIsEditing(false);
-  }, [quote, items]);
+    queryClient.invalidateQueries({ queryKey: ['accounts_receivable'] });
+  }
 
   async function handleSave() {
     if (!profile) return;
@@ -841,6 +889,18 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         storage_fee_note: form.storage_fee_note || null,
       } as any).eq('id', quoteId);
       if (error) throw error;
+
+      // Modal e Incoterm são espelhados com a aba Logística (tabela shipments) —
+      // editar aqui também atualiza o embarque vinculado, pra nunca ficarem divergentes.
+      if (isShipmentMode && shipmentId) {
+        await (supabase.from('shipments') as any).update({
+          transport_mode: form.transport_mode,
+          incoterm: (form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : null,
+        }).eq('id', shipmentId);
+        queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] });
+      }
+
+      await syncStorageFeeReceivable();
 
       const seenItemIds = new Set<string>();
       const itemPayload = (item: CargoItem) => ({
@@ -922,12 +982,83 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       toast.success(t('quotes.changes_saved'));
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 2000);
-      setIsEditing(false);
     } catch (err: any) {
       toast.error(err.message);
       setSaveState('idle');
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Cotações já convertidas em embarque ficam travadas para edição geral
+  // (botão "Editar Cotação" só existe fora do modo embarque). Isso cria um
+  // beco sem saída quando o cliente do embarque precisa ser corrigido: esse
+  // atalho libera o campo cliente seguindo a mesma regra de acesso da aba
+  // Carga (canEditCargo), em vez de depender do modo de edição completo.
+  async function handleChangeClient(newClientId: string) {
+    if (!profile) return;
+    const oldClientId = form.client_id || null;
+    try {
+      const { error: qErr } = await supabase.from('quotes').update({ client_id: newClientId } as any).eq('id', quoteId);
+      if (qErr) throw qErr;
+      if (shipmentId) {
+        const { error: sErr } = await supabase
+          .from('shipments')
+          .update({ client_id: newClientId, updated_at: new Date().toISOString() } as any)
+          .eq('id', shipmentId);
+        if (sErr) throw sErr;
+      }
+      await logAuditChanges({
+        quoteId,
+        shipmentId: isShipmentMode ? shipmentId : null,
+        companyId: profile.company_id,
+        userId: profile.user_id,
+        changes: [{ field_name: 'client_id', old_value: oldClientId, new_value: newClientId }],
+      });
+      setForm((f) => ({ ...f, client_id: newClientId }));
+      queryClient.invalidateQueries({ queryKey: ['quote-detail', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['shipments'] });
+      if (shipmentId) queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] });
+      toast.success('Cliente atualizado com sucesso');
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
+
+  // Antes de trocar o cliente de um embarque que JÁ tinha um cliente definido,
+  // verifica se existem lançamentos financeiros (taxas, DN, contas a receber,
+  // parceiros da cotação) feitos no nome do cliente atual. Trocar o cliente não
+  // atualiza esses lançamentos em cascata, então avisamos o usuário antes.
+  async function requestClientChange(newClientId: string) {
+    const oldClientId = form.client_id;
+    if (!oldClientId || oldClientId === newClientId) {
+      handleChangeClient(newClientId);
+      return;
+    }
+    try {
+      const [chargesRes, dnRes, arRes, qpRes] = await Promise.all([
+        supabase.from('quote_charges' as any).select('id', { count: 'exact', head: true }).eq('quote_id', quoteId).eq('partner_id', oldClientId),
+        supabase.from('debit_notes' as any).select('id', { count: 'exact', head: true }).eq('quote_id', quoteId).eq('client_id', oldClientId),
+        supabase.from('accounts_receivable' as any).select('id', { count: 'exact', head: true }).eq('quote_id', quoteId).eq('client_id', oldClientId),
+        supabase.from('quote_partners' as any).select('id', { count: 'exact', head: true }).eq('quote_id', quoteId).eq('client_id', oldClientId),
+      ]);
+      const warnings: string[] = [];
+      if ((chargesRes.count || 0) > 0) warnings.push(`${chargesRes.count} taxa(s) lançada(s)`);
+      if ((dnRes.count || 0) > 0) warnings.push(`${dnRes.count} nota(s) de débito`);
+      if ((arRes.count || 0) > 0) warnings.push(`${arRes.count} conta(s) a receber`);
+      if ((qpRes.count || 0) > 0) warnings.push(`${qpRes.count} vínculo(s) de parceiro`);
+
+      if (warnings.length > 0) {
+        setClientChangeWarnings(warnings);
+        setPendingClientChange(newClientId);
+      } else {
+        handleChangeClient(newClientId);
+      }
+    } catch (err: any) {
+      // Se a verificação falhar por algum motivo, não bloqueia a troca —
+      // apenas segue sem o aviso extra.
+      handleChangeClient(newClientId);
     }
   }
 
@@ -939,14 +1070,22 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       return;
     }
 
-    // Bloqueio real de limite de embarques/mês do plano.
+    // Salva a cotação ANTES de checar o limite do plano — se a conversão for
+    // bloqueada logo abaixo, o que foi digitado não se perde (fica salvo como
+    // cotação normal, só a conversão em embarque que fica pendente).
+    await handleSave();
+
+    // Bloqueio real de limite de embarques/mês do plano. O superadmin pode
+    // conceder embarques bônus de cortesia (bonus_shipments), somados ao
+    // limite do plano.
     if (profile.company_id) {
       const { data: companySub } = await supabase
         .from('company_subscriptions')
-        .select('shipments_limit')
+        .select('shipments_limit, bonus_shipments')
         .eq('company_id', profile.company_id)
         .maybeSingle();
       if (companySub?.shipments_limit != null) {
+        const effectiveLimit = companySub.shipments_limit + (companySub.bonus_shipments || 0);
         const monthStart = new Date();
         monthStart.setDate(1);
         monthStart.setHours(0, 0, 0, 0);
@@ -955,8 +1094,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           .select('id', { count: 'exact', head: true })
           .eq('company_id', profile.company_id)
           .gte('created_at', monthStart.toISOString());
-        if ((count ?? 0) >= companySub.shipments_limit) {
-          toast.error(`Limite de ${companySub.shipments_limit} embarques/mês do plano atingido. Faça upgrade para continuar convertendo cotações.`);
+        if ((count ?? 0) >= effectiveLimit) {
+          toast.error(`Limite de ${effectiveLimit} embarques/mês do plano atingido. Sua cotação foi salva normalmente — faça upgrade (ou peça um embarque bônus ao suporte) para converter em embarque.`);
           return;
         }
       }
@@ -1215,6 +1354,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   async function handleDeleteCharge(chargeId: string) {
     try {
       const charge = (charges as any[]).find((c: any) => c.id === chargeId);
+      if (charge?.sent_in_debit_note_id) {
+        toast.error('Esta taxa já foi enviada em uma DN e não pode ser excluída.');
+        return;
+      }
       const { error } = await supabase.from('quote_charges').delete().eq('id', chargeId);
       if (error) throw error;
       if (charge && profile) {
@@ -1310,6 +1453,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // Mesma regra da Taxas, mas preservando o trava adicional de "cotação já convertida"
   // (fora do modo embarque) que existia antes só para usuários sem acesso total.
   const canEditCargo = (!isShipmentMode && form.status !== 'converted') || isFullAccess || isProcessOwner;
+  // A aba Geral não tem mais botão "Editar"/"Salvar" (fora o campo Cliente, que
+  // tem sua própria trava dedicada) — ela sempre segue a mesma regra da aba
+  // Carga e salva sozinha (auto-save), tanto em cotação quanto em embarque.
+  const canEditGeneral = canEditCargo;
 
   const showPort = form.transport_mode !== 'road';
 
@@ -1337,7 +1484,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   ];
 
   return (
-    <div className="space-y-6 animate-slide-in">
+    <div className="space-y-1.5 animate-slide-in -mt-2 sm:-mt-3">
       {/* Onboarding da aba Taxas */}
       <Dialog
         open={showChargesOnboarding}
@@ -1452,18 +1599,45 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <div className="flex items-center gap-2.5 flex-wrap min-w-0 flex-1">
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight font-mono shrink-0">{quote.quote_number}</h1>
-          {isShipmentMode && shipment && <StatusBadge status={shipment.status} />}
-          {!isShipmentMode && <StatusBadge status={form.status} />}
-          <ModeIcon mode={form.transport_mode} showLabel />
-          <span className="text-muted-foreground/40 shrink-0">·</span>
-          <span className="text-sm text-muted-foreground truncate min-w-0">
-            {clients.find((c: any) => c.id === form.client_id)?.name || '-'}
-            {' · '}
+          <h1
+            className="text-lg sm:text-xl font-bold tracking-tight font-mono shrink-0 cursor-pointer hover:underline"
+            title="Clique para copiar a referência"
+            onClick={() => {
+              navigator.clipboard.writeText(quote.quote_number || '');
+              toast.success('Referência copiada');
+            }}
+          >
+            {quote.quote_number}
+          </h1>
+          <span className="text-muted-foreground/40 shrink-0">-</span>
+          <ModeIcon mode={form.transport_mode} />
+          <span className="text-muted-foreground/40 shrink-0">-</span>
+          <span
+            className="text-sm text-muted-foreground truncate min-w-0 cursor-pointer hover:underline"
+            title="Clique para copiar como texto (assunto de e-mail)"
+            onClick={() => {
+              const modeShortLabels: Record<string, string> = {
+                ocean_fcl: 'FCL',
+                ocean_lcl: 'LCL',
+                air: 'AÉREO',
+                road: 'RODOVIÁRIO',
+                multimodal: 'MULTIMODAL',
+              };
+              const modeLabel = modeShortLabels[form.transport_mode] || form.transport_mode;
+              const clientFirstName = (clients.find((c: any) => c.id === form.client_id)?.name || '-').split(' ')[0];
+              const routeText = `${form.origin || '?'}/${form.destination || '?'}`;
+              const descText = [quote.quote_number, modeLabel, clientFirstName, routeText, form.incoterm || null].filter(Boolean).join(' - ');
+              navigator.clipboard.writeText(descText);
+              toast.success('Texto copiado');
+            }}
+          >
+            {(clients.find((c: any) => c.id === form.client_id)?.name || '-').split(' ')[0]}
+            {' - '}
             {originFlag && <span className="text-base mr-0.5">{originFlag}</span>}
-            {form.origin || '?'} →{' '}
+            {form.origin || '?'}/
             {destFlag && <span className="text-base mr-0.5">{destFlag}</span>}
             {form.destination || '?'}
+            {form.incoterm ? ` - ${form.incoterm}` : ''}
           </span>
         </div>
         {!isShipmentMode && form.status === 'converted' && (
@@ -1483,28 +1657,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           <History className="w-4 h-4" />
         </Button>
 
-        {!isShipmentMode &&
-         form.status !== 'converted' &&
-         activeTab !== 'estimate' &&
-         activeTab !== 'documents' && activeTab !== 'charges' && (
-          <Button
-            variant={isEditing ? "outline" : "default"}
-            onClick={() => {
-              if (isEditing) {
-                handleCancelEdition();
-              } else {
-                setIsEditing(true);
-              }
-            }}
-            className="gap-1.5"
-          >
-            {isEditing ? (
-              <><X className="w-4 h-4" /> Cancelar Edição</>
-            ) : (
-              <><Pencil className="w-4 h-4" /> Editar Cotação</>
-            )}
-          </Button>
-        )}
         {activeTab === 'estimate' ? (
           estimateState.editMode ? (
             <Button variant="outline" onClick={() => estimateRef.current?.requestCancel()}>
@@ -1526,102 +1678,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           )
         ) : null}
       </div>
-
-      {/* KPI Cards - hidden for non-owner in shipment mode */}
-      {canSeeFinancials && (
-      <div className="space-y-2">
-        {(!ratesLoading && !ratesAvailable) || (unsupportedCurrencies.length > 0 && ratesAvailable) ? (
-          <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-            {!ratesLoading && !ratesAvailable && (
-              <span className="text-amber-500">Câmbio indisponível — exibindo por moeda (atualize no menu lateral)</span>
-            )}
-            {unsupportedCurrencies.length > 0 && ratesAvailable && (
-              <span className="text-amber-500">
-                {unsupportedCurrencies.length} moeda(s) não convertida(s): {unsupportedCurrencies.join(', ')}
-              </span>
-            )}
-          </div>
-        ) : null}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="glass">
-            <CardContent className="p-3 sm:p-4 flex flex-col justify-center min-h-[76px]">
-              <p className="text-xs text-muted-foreground">{t('quotes.total_buy')}</p>
-              {ratesAvailable ? (
-                <>
-                  <div className="text-base sm:text-lg font-bold font-mono truncate">{fmtBRL(buyBRL.total)}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono mt-1 break-words" title={detailLine(buyByCurrency)}>
-                    {detailLine(buyByCurrency)}
-                  </div>
-                </>
-              ) : (
-                <div className="text-base sm:text-lg font-bold font-mono break-words">{formatCurrencyMap(buyByCurrency)}</div>
-              )}
-            </CardContent>
-          </Card>
-          <Card className="glass">
-            <CardContent className="p-3 sm:p-4 flex flex-col justify-center min-h-[76px]">
-              <p className="text-xs text-muted-foreground">{t('quotes.total_sell')}</p>
-              {ratesAvailable ? (
-                <>
-                  <div className="text-base sm:text-lg font-bold font-mono truncate">{fmtBRL(sellBRL.total)}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono mt-1 break-words" title={detailLine(sellByCurrency)}>
-                    {detailLine(sellByCurrency)}
-                  </div>
-                </>
-              ) : (
-                <div className="text-base sm:text-lg font-bold font-mono break-words">{formatCurrencyMap(sellByCurrency)}</div>
-              )}
-            </CardContent>
-          </Card>
-          <Card className="glass">
-            <CardContent className="p-3 sm:p-4 flex flex-col justify-center min-h-[76px]">
-              <p className="text-xs text-muted-foreground">{t('financial.profit')}</p>
-              {ratesAvailable ? (
-                <>
-                  <div className={`text-base sm:text-lg font-bold font-mono truncate ${profitBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
-                    {fmtBRL(profitBRLValue)}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground font-mono mt-1 break-words">
-                    {Object.keys(profitByCurrency).length === 0 ? '—' : Object.entries(profitByCurrency).map(([cur, v]) => fmtMoney(cur, v)).join(' + ')}
-                  </div>
-                </>
-              ) : (
-                <div className="text-base sm:text-lg font-bold font-mono">
-                  {Object.entries(profitByCurrency).map(([cur, val]) => (
-                    <span key={cur} className={`block ${val >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
-                      {cur} {val.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  ))}
-                  {Object.keys(profitByCurrency).length === 0 && '-'}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          <Card className="glass">
-            <CardContent className="p-3 sm:p-4 flex flex-col justify-center min-h-[76px]">
-              <p className="text-xs text-muted-foreground">{t('financial.margin')}</p>
-              {ratesAvailable ? (
-                <>
-                  <div className={`text-base sm:text-lg font-bold font-mono truncate ${marginBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
-                    {sellBRL.total > 0 ? `${marginBRLValue.toFixed(1)}%` : '—'}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground font-mono mt-1">
-                    sobre venda em BRL
-                  </div>
-                </>
-              ) : (
-                <div className="text-base sm:text-lg font-bold font-mono">
-                  {Object.entries(marginByCurrency).map(([cur, val]) => (
-                    <span key={cur} className="block">{cur} {val.toFixed(1)}%</span>
-                  ))}
-                  {Object.keys(marginByCurrency).length === 0 && '-'}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
@@ -1648,9 +1704,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     <Calculator className={iconCls} /> Estimativa
                   </TabsTrigger>
                 )}
-                <TabsTrigger value="dn" className={triggerCls}>
-                  <Receipt className={iconCls} /> DN
-                </TabsTrigger>
                 {/* Documents tab available in both modes */}
                 <TabsTrigger value="documents" className={triggerCls}>
                   <FileText className={iconCls} /> {t('shipments.documents')}
@@ -1665,37 +1718,165 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           })()}
         </TabsList>
 
+        {/* Resumo financeiro do processo — abaixo do menu de abas (que assim nunca
+            muda de altura/posição), só faz sentido na aba Taxas. */}
+        {canSeeFinancials && activeTab === 'charges' && (
+        <div className="space-y-2">
+          {(!ratesLoading && !ratesAvailable) || (unsupportedCurrencies.length > 0 && ratesAvailable) ? (
+            <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+              {!ratesLoading && !ratesAvailable && (
+                <span className="text-amber-500">Câmbio indisponível — exibindo por moeda (atualize no menu lateral)</span>
+              )}
+              {unsupportedCurrencies.length > 0 && ratesAvailable && (
+                <span className="text-amber-500">
+                  {unsupportedCurrencies.length} moeda(s) não convertida(s): {unsupportedCurrencies.join(', ')}
+                </span>
+              )}
+            </div>
+          ) : null}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <Card className="glass">
+              <CardContent className="p-1 sm:p-1.5 flex flex-col items-center justify-center text-center min-h-[34px]">
+                {ratesAvailable ? (
+                  <p className="flex items-baseline justify-center gap-1 flex-wrap" title={detailLine(buyByCurrency)}>
+                    <span className="text-[10px] text-muted-foreground shrink-0">Compra -</span>
+                    <span className="text-base font-bold font-mono truncate">{fmtBRL(buyBRL.total)}</span>
+                  </p>
+                ) : (
+                  <p className="flex items-baseline justify-center gap-1 flex-wrap">
+                    <span className="text-[10px] text-muted-foreground shrink-0">Compra -</span>
+                    <span className="text-base font-bold font-mono break-words">{formatCurrencyMap(buyByCurrency)}</span>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="glass">
+              <CardContent className="p-1 sm:p-1.5 flex flex-col items-center justify-center text-center min-h-[34px]">
+                {ratesAvailable ? (
+                  <p className="flex items-baseline justify-center gap-1 flex-wrap" title={detailLine(sellByCurrency)}>
+                    <span className="text-[10px] text-muted-foreground shrink-0">Venda -</span>
+                    <span className="text-base font-bold font-mono truncate">{fmtBRL(sellBRL.total)}</span>
+                  </p>
+                ) : (
+                  <p className="flex items-baseline justify-center gap-1 flex-wrap">
+                    <span className="text-[10px] text-muted-foreground shrink-0">Venda -</span>
+                    <span className="text-base font-bold font-mono break-words">{formatCurrencyMap(sellByCurrency)}</span>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="glass">
+              <CardContent className="p-1 sm:p-1.5 flex flex-col items-center justify-center text-center min-h-[34px]">
+                {ratesAvailable ? (
+                  <p
+                    className="flex items-baseline justify-center gap-1 flex-wrap"
+                    title={Object.keys(profitByCurrency).length === 0 ? '—' : Object.entries(profitByCurrency).map(([cur, v]) => fmtMoney(cur, v)).join(' + ')}
+                  >
+                    <span className="text-[10px] text-muted-foreground shrink-0">Lucro -</span>
+                    <span className={`text-base font-bold font-mono truncate ${profitBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
+                      {fmtBRL(profitBRLValue)}
+                    </span>
+                  </p>
+                ) : (
+                  <div>
+                    <span className="text-[10px] text-muted-foreground">Lucro</span>
+                    {Object.entries(profitByCurrency).map(([cur, val]) => (
+                      <span key={cur} className={`block text-base font-bold font-mono ${val >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
+                        {cur} {val.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    ))}
+                    {Object.keys(profitByCurrency).length === 0 && <span className="text-base font-bold font-mono">-</span>}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="glass">
+              <CardContent className="p-1 sm:p-1.5 flex flex-col items-center justify-center text-center min-h-[34px]">
+                {ratesAvailable ? (
+                  <p className="flex items-baseline justify-center gap-1 flex-wrap" title="sobre venda em BRL">
+                    <span className="text-[10px] text-muted-foreground shrink-0">Margem -</span>
+                    <span className={`text-base font-bold font-mono truncate ${marginBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
+                      {sellBRL.total > 0 ? `${marginBRLValue.toFixed(1)}%` : '—'}
+                    </span>
+                  </p>
+                ) : (
+                  <div>
+                    <span className="text-[10px] text-muted-foreground">Margem</span>
+                    {Object.entries(marginByCurrency).map(([cur, val]) => (
+                      <span key={cur} className="block text-base font-bold font-mono">{cur} {val.toFixed(1)}%</span>
+                    ))}
+                    {Object.keys(marginByCurrency).length === 0 && <span className="text-base font-bold font-mono">-</span>}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+        )}
+
         {/* General Tab */}
         <TabsContent value="general">
           <Card className="glass">
             <CardContent className="pt-6 space-y-4">
+              {/* Linha 1: Cliente - Modal - Incoterm (+ Status/Validade em cotações) */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.client')}</Label>
-                  <Select 
-                    value={form.client_id} 
-                    onValueChange={(v) => setForm({ ...form, client_id: v })}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger><SelectValue placeholder={t('quotes.select_client')} /></SelectTrigger>
-                    <SelectContent>
-                      {clients.map((c: any) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {(() => {
+                    // No modo embarque não existe botão "Editar Cotação" — o campo Cliente
+                    // segue a mesma regra de acesso da aba Carga (canEditCargo). Se o
+                    // cliente já estiver definido e houver taxas/DN/AR/parceiros lançados
+                    // no nome dele, avisamos antes de trocar (requestClientChange).
+                    const canChangeClientInShipment = isShipmentMode && canEditCargo;
+                    return (
+                      <Select
+                        value={form.client_id}
+                        onValueChange={(v) => {
+                          if (canChangeClientInShipment) {
+                            requestClientChange(v);
+                          } else {
+                            setForm({ ...form, client_id: v });
+                          }
+                        }}
+                        disabled={!canEditGeneral && !canChangeClientInShipment}
+                      >
+                        <SelectTrigger><SelectValue placeholder={t('quotes.select_client')} /></SelectTrigger>
+                        <SelectContent>
+                          {clients.map((c: any) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                  })()}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.mode')}</Label>
-                  <Select 
-                    value={form.transport_mode} 
+                  <Select
+                    value={form.transport_mode}
                     onValueChange={(v) => setForm({ ...form, transport_mode: v })}
-                    disabled={!isEditing}
+                    disabled={!canEditGeneral}
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {['ocean_fcl', 'ocean_lcl', 'air', 'road', 'multimodal'].map((m) => (
                         <SelectItem key={m} value={m}>{t(`mode.${m}`)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('quotes.incoterm')}</Label>
+                  <Select
+                    value={form.incoterm}
+                    onValueChange={(v) => setForm({ ...form, incoterm: v })}
+                    disabled={!canEditGeneral}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                    <SelectContent>
+                      {form.transport_mode === 'road' && <SelectItem value="NONE">— Sem incoterm —</SelectItem>}
+                      {incoterms.map((ic) => (
+                        <SelectItem key={ic} value={ic}>{ic}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1709,15 +1890,23 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                         {t(`quote_status.${form.status}`)}
                       </div>
                     ) : (
-                      <Select 
-                        value={form.status} 
+                      <Select
+                        value={form.status}
                         onValueChange={(v) => {
-                          setForm({ ...form, status: v });
                           if (v === 'approved') {
+                            // Não marca localmente como "approved" antes da hora: esse status só
+                            // deve existir de fato se a conversão em embarque realmente for
+                            // concluída (handleApprove já ajusta form.status pra 'converted' no
+                            // sucesso). Se ficasse marcado aqui e a conversão fosse bloqueada
+                            // (ex: limite do plano) ou falhasse, um save qualquer depois deixaria
+                            // a cotação travada em "approved" sem embarque nenhum — sumindo tanto
+                            // da lista de Cotações quanto da de Embarques.
                             handleApprove();
+                          } else {
+                            setForm({ ...form, status: v });
                           }
                         }}
-                        disabled={!isEditing}
+                        disabled={!canEditGeneral}
                       >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -1729,27 +1918,51 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     )}
                   </div>
                 )}
+                {!isShipmentMode && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t('quotes.valid_until')}</Label>
+                    <Input
+                      type="date"
+                      value={form.valid_until}
+                      onChange={(e) => setForm({ ...form, valid_until: e.target.value })}
+                      disabled={!canEditGeneral}
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* Linha 2: Origem - Transbordo - Destino */}
+              <div className={`grid grid-cols-2 ${showPort ? 'md:grid-cols-3' : ''} gap-4`}>
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.origin')}</Label>
                   {showPort ? (
                     <PortSelect
                       value={form.origin}
                       onChange={(v) => setForm({ ...form, origin: v })}
-                      disabled={!isEditing}
+                      disabled={!canEditGeneral}
                       placeholder={t('quotes.search_port')}
                     />
                   ) : (
-                    <Input 
-                      value={form.origin} 
-                      onChange={(e) => setForm({ ...form, origin: e.target.value })} 
-                      placeholder="São Paulo, BR" 
-                      disabled={!isEditing}
+                    <Input
+                      value={form.origin}
+                      onChange={(e) => setForm({ ...form, origin: e.target.value })}
+                      placeholder="São Paulo, BR"
+                      disabled={!canEditGeneral}
                     />
                   )}
                 </div>
+                {showPort && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Transbordo</Label>
+                    <PortSelect
+                      value={form.transshipment}
+                      onChange={(v) => setForm({ ...form, transshipment: v })}
+                      transportMode={form.transport_mode}
+                      disabled={!canEditGeneral}
+                      placeholder="Porto de transbordo (opcional)"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.destination')}</Label>
                   {showPort ? (
@@ -1757,203 +1970,98 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                       value={form.destination}
                       onChange={(v) => setForm({ ...form, destination: v })}
                       transportMode={form.transport_mode}
-                      disabled={!isEditing}
+                      disabled={!canEditGeneral}
                       placeholder={t('quotes.search_port')}
                     />
                   ) : (
-                    <Input 
-                      value={form.destination} 
-                      onChange={(e) => setForm({ ...form, destination: e.target.value })} 
-                      placeholder="Curitiba, BR" 
-                      disabled={!isEditing}
+                    <Input
+                      value={form.destination}
+                      onChange={(e) => setForm({ ...form, destination: e.target.value })}
+                      placeholder="Curitiba, BR"
+                      disabled={!canEditGeneral}
                     />
                   )}
                 </div>
               </div>
 
-              {/* Transshipment */}
-              {showPort && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Transbordo</Label>
-                    <PortSelect
-                      value={form.transshipment}
-                      onChange={(v) => setForm({ ...form, transshipment: v })}
-                      transportMode={form.transport_mode}
-                      disabled={!isEditing}
-                      placeholder="Porto de transbordo (opcional)"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Route visual display */}
-              {(form.origin || form.destination) && (
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border flex-wrap">
-                  <MapPin className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">
-                    {originFlag && <span className="mr-1">{originFlag}</span>}
-                    {form.origin || '?'}
-                  </span>
-                  {form.transshipment && (
-                    <>
-                      <span className="text-muted-foreground">→</span>
-                      <span className="text-sm font-medium text-amber-600">
-                        {countryCodeToFlag(extractCountryFromPort(form.transshipment)) && (
-                          <span className="mr-1">{countryCodeToFlag(extractCountryFromPort(form.transshipment))}</span>
-                        )}
-                        {form.transshipment}
-                      </span>
-                    </>
-                  )}
-                  <span className="text-muted-foreground">→</span>
-                  <span className="text-sm font-medium">
-                    {destFlag && <span className="mr-1">{destFlag}</span>}
-                    {form.destination || '?'}
-                  </span>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">{t('quotes.incoterm')}</Label>
-                  <Select 
-                    value={form.incoterm} 
-                    onValueChange={(v) => setForm({ ...form, incoterm: v })}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                    <SelectContent>
-                      {form.transport_mode === 'road' && <SelectItem value="NONE">— Sem incoterm —</SelectItem>}
-                      {incoterms.map((ic) => (
-                        <SelectItem key={ic} value={ic}>{ic}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">{t('quotes.valid_until')}</Label>
-                  <Input 
-                    type="date" 
-                    value={form.valid_until} 
-                    onChange={(e) => setForm({ ...form, valid_until: e.target.value })} 
-                    disabled={!isEditing}
-                  />
-                </div>
+              {/* Linha 3: Transit Time - Free Time - Armazenagem (LCL e FCL — regra do FCL a definir) */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-start">
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('quotes.transit_time')}</Label>
-                  <Input 
-                    type="number" 
-                    value={form.transit_time} 
-                    onChange={(e) => setForm({ ...form, transit_time: e.target.value })} 
-                    placeholder="0" 
-                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                    disabled={!isEditing}
+                  <Input
+                    type="number"
+                    value={form.transit_time}
+                    onChange={(e) => setForm({ ...form, transit_time: e.target.value })}
+                    placeholder="0"
+                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    disabled={!canEditGeneral}
                   />
                 </div>
                 {form.transport_mode?.startsWith('ocean') && (
                   <div className="space-y-1.5">
                     <Label className="text-xs">{t('quotes.free_time')}</Label>
-                    <Input 
-                      type="number" 
-                      value={form.free_time} 
-                      onChange={(e) => setForm({ ...form, free_time: e.target.value })} 
-                      placeholder="0" 
-                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                      disabled={!isEditing}
+                    <Input
+                      type="number"
+                      value={form.free_time}
+                      onChange={(e) => setForm({ ...form, free_time: e.target.value })}
+                      placeholder="0"
+                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      disabled={!canEditGeneral}
                     />
                   </div>
                 )}
+                {(form.transport_mode === 'ocean_lcl' || form.transport_mode === 'ocean_fcl') && (() => {
+                  const canEditStorageFee = canEditGeneral;
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1">
+                        <Label className="text-xs">Armazenagem no destino (R$)</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-64 text-xs">
+                            Não compõe o total da cotação. Em LCL, gera automaticamente uma conta a receber com o rebate negociado (% cadastrado no fornecedor Co-loader do processo).
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={form.storage_fee_amount}
+                        onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value, storage_fee_currency: 'BRL' })}
+                        placeholder="0,00"
+                        className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        disabled={!canEditStorageFee}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs">{t('quotes.notes')}</Label>
-                <Textarea
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  placeholder={t('quotes.notes_placeholder')}
-                  rows={3}
-                  disabled={!isEditing}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Linha 4: Observações - Condições de pagamento */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('quotes.notes')}</Label>
+                  <Textarea
+                    value={form.notes}
+                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                    placeholder={t('quotes.notes_placeholder')}
+                    rows={4}
+                    disabled={!canEditGeneral}
+                  />
+                </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Condições de pagamento</Label>
                   <Textarea
                     value={form.payment_terms}
                     onChange={(e) => setForm({ ...form, payment_terms: e.target.value })}
                     placeholder="Ex: 50% na chegada, saldo em 30 dias"
-                    rows={3}
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Observações comerciais (proposta)</Label>
-                  <Textarea
-                    value={form.proposal_notes}
-                    onChange={(e) => setForm({ ...form, proposal_notes: e.target.value })}
-                    placeholder="Texto que aparecerá na proposta em PDF"
-                    rows={3}
-                    disabled={!isEditing}
+                    rows={4}
+                    disabled={!canEditGeneral}
                   />
                 </div>
               </div>
-
-              {form.transport_mode === 'ocean_lcl' && (
-                <div className="rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-primary">
-                      Armazenagem no destino (informativo)
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Este valor <strong>não</strong> compõe o total da cotação — aparece na proposta apenas para informação ao cliente (geralmente pago diretamente ao armazém).
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-[140px_100px_1fr] gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Valor</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={form.storage_fee_amount}
-                        onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value })}
-                        placeholder="0,00"
-                        className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        disabled={!isEditing}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Moeda</Label>
-                      <Select
-                        value={form.storage_fee_currency}
-                        onValueChange={(v) => setForm({ ...form, storage_fee_currency: v })}
-                        disabled={!isEditing}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="BRL">BRL</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
-                          <SelectItem value="EUR">EUR</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Observação</Label>
-                      <Input
-                        value={form.storage_fee_note}
-                        onChange={(e) => setForm({ ...form, storage_fee_note: e.target.value })}
-                        placeholder={
-                          form.destination?.toLowerCase().includes('santos')
-                            ? 'Pago diretamente ao armazém em Santos'
-                            : 'Pago diretamente ao armazém no destino'
-                        }
-                        disabled={!isEditing}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1970,19 +2078,12 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   </span>
                 </div>
               )}
-              {hasChanges && (isShipmentMode ? canEditCargo : form.status !== 'converted') && (
-                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-200 px-3 py-2 text-xs flex items-center gap-2">
-                  <Bell className="w-4 h-4 shrink-0" />
-                  <span>
-                    Você tem alterações não salvas nos containers/carga. Clique em <strong>Salvar</strong> antes de sair, ou serão perdidas ao recarregar a página.
-                  </span>
-                </div>
-              )}
               <ModeFields
                 mode={form.transport_mode}
                 items={cargoItems}
                 onChange={setCargoItems}
                 readOnly={!canEditCargo}
+                saving={activeTab === 'cargo' && saveState === 'saving'}
               />
             </CardContent>
           </Card>
@@ -2012,7 +2113,12 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   <Button
                     type="button"
                     size="sm"
-                    onClick={() => setAddChargeOpen(true)}
+                    onClick={() => {
+                      // Sugere o cliente da cotação/embarque como parceiro padrão apenas na Venda
+                      const def = form.client_id || '';
+                      setSellPartnerId((sp) => sp || def);
+                      setAddChargeOpen(true);
+                    }}
                     className="gap-2"
                   >
                     <Plus className="w-4 h-4" />
@@ -2071,9 +2177,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               <Dialog open={addChargeOpen} onOpenChange={(o) => {
                 setAddChargeOpen(o);
                 if (o) {
-                  // Ao abrir: pré-preenche compra e venda com o cliente da cotação
+                  // Ao abrir: pré-preenche apenas a Venda com o cliente da cotação
                   const def = form.client_id || '';
-                  setChargeForm((cf) => ({ ...cf, partner_id: cf.partner_id || def }));
                   setSellPartnerId((sp) => sp || def);
                 } else {
                   setChargeForm({ charge_catalog_id: '', description: '', charge_type: 'freight', leg: 'freight', amount: '', currency: 'USD', partner_id: '', billing_unit: 'fixed' });
@@ -2416,6 +2521,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     showReconciliation={isShipmentMode && canSeeFinancials}
                     currentUserId={profile?.user_id}
                     onPercentClick={(id) => setPercentDialogChargeId(id)}
+                    onSendDn={(id, name, amount, currency, chargeIds) => setSendDnPartner({ id, name, amount, currency, chargeIds })}
                   />
                   <ChargeColumn
                     title={t('quotes.total_sell')}
@@ -2435,6 +2541,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     cargoMetrics={cargoMetrics}
                     readOnly={!canEditCharges}
                     onPercentClick={(id) => setPercentDialogChargeId(id)}
+                    onGenerateNd={(id, name, groupCharges) => setGenerateNdPartner({ id, name, charges: groupCharges })}
                   />
                 </div>
               );
@@ -2461,67 +2568,27 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           </TabsContent>
         )}
 
-        {/* DN Tab — Fornecedor e Cliente reunidos com seletor interno */}
-        <TabsContent value="dn">
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-muted/50">
-              <Button
-                type="button"
-                size="sm"
-                variant={dnView === 'partner' ? 'default' : 'ghost'}
-                className="gap-1.5 h-8"
-                onClick={() => setDnView('partner')}
-              >
-                <Receipt className="w-3.5 h-3.5" /> Fornecedor
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={dnView === 'client' ? 'default' : 'ghost'}
-                className="gap-1.5 h-8"
-                onClick={() => setDnView('client')}
-              >
-                <DollarSign className="w-3.5 h-3.5" /> Cliente
-              </Button>
-            </div>
-            {dnView === 'partner' ? (
-              <DebitNotesTab
-                quoteId={quoteId}
-                companyId={profile?.company_id || ''}
-                partners={(() => {
-                  const allowedIds = new Set(
-                    (quotePartners as any[]).map((qp) => qp.client_id).filter(Boolean)
-                  );
-                  return (partners as any[])
-                    .filter((p) => allowedIds.has(p.id))
-                    .map((p) => ({ id: p.id, name: p.name, partner_category: p.partner_category }));
-                })()}
-              />
-            ) : (
-              <ClientDebitNotesTab
-                quoteId={quoteId}
-                companyId={profile?.company_id || ''}
-                clientId={(quote as any)?.client_id || null}
-              />
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Documents tab - available in both modes */}
+        {/* Documents tab - available in both modes. A DN de Fornecedor é criada
+            anexando um arquivo com a categoria "DN Fornecedor" aqui mesmo (sem
+            aba separada); a DN de Cliente é emitida por um botão nesta aba. */}
         <TabsContent value="documents">
           {isShipmentMode && shipment ? (
-            <DocumentsTab 
-              shipmentId={shipmentId!} 
-              companyId={shipment.company_id} 
-              quoteId={quoteId} 
+            <DocumentsTab
+              shipmentId={shipmentId!}
+              companyId={shipment.company_id}
+              quoteId={quoteId}
               onGeneratePdf={() => setPdfPreviewOpen(true)}
+              dnPartners={linkedPartnersForDn}
+              dnClientId={(quote as any)?.client_id || null}
             />
           ) : profile ? (
-            <DocumentsTab 
-              shipmentId={quoteId} 
-              companyId={profile.company_id} 
-              isQuoteMode 
+            <DocumentsTab
+              shipmentId={quoteId}
+              companyId={profile.company_id}
+              isQuoteMode
               onGeneratePdf={() => setPdfPreviewOpen(true)}
+              dnPartners={linkedPartnersForDn}
+              dnClientId={(quote as any)?.client_id || null}
             />
           ) : null}
         </TabsContent>
@@ -2538,21 +2605,12 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         )}
       </Tabs>
 
-      {/* Fora do modo embarque: salvar Geral/Carga normalmente.
-          No modo embarque: só a aba Resumo da Carga pode ser editada (canEditCargo),
-          então o botão de salvar aparece só ali — sem isso, alterações de carga feitas
-          num embarque ficavam só no estado local e nunca eram gravadas. */}
-      {!isShipmentMode && activeTab !== 'estimate' && activeTab !== 'documents' && (
+      {/* Geral e Resumo da Carga não usam mais esse botão — salvam sozinhas
+          (auto-save) a cada alteração. Fica só como fallback pras demais abas
+          de cotação (Taxas, Empresas etc.) que ainda dependem de salvar aqui. */}
+      {!isShipmentMode && activeTab !== 'estimate' && activeTab !== 'documents' && activeTab !== 'cargo' && activeTab !== 'general' && (
         <FloatingSaveButton
-          visible={(isEditing || activeTab === 'cargo') && hasChanges && form.status !== 'converted'}
-          dirtyCount={dirtyCount}
-          state={saveState}
-          onSave={handleSave}
-        />
-      )}
-      {isShipmentMode && activeTab === 'cargo' && canEditCargo && (
-        <FloatingSaveButton
-          visible={hasChanges}
+          visible={hasChanges && form.status !== 'converted'}
           dirtyCount={dirtyCount}
           state={saveState}
           onSave={handleSave}
@@ -2620,6 +2678,33 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         onClose={() => setPdfPreviewOpen(false)}
       />
 
+      {sendDnPartner && (
+        <SendSupplierDnDialog
+          open={!!sendDnPartner}
+          onOpenChange={(o) => { if (!o) setSendDnPartner(null); }}
+          quoteId={quoteId}
+          companyId={profile?.company_id || ''}
+          partnerId={sendDnPartner.id}
+          partnerName={sendDnPartner.name}
+          suggestedAmount={sendDnPartner.amount}
+          suggestedCurrency={sendDnPartner.currency}
+          chargeIds={sendDnPartner.chargeIds}
+          onSent={() => setSendDnPartner(null)}
+        />
+      )}
+
+      {generateNdPartner && (
+        <GenerateClientNdDialog
+          open={!!generateNdPartner}
+          onClose={() => setGenerateNdPartner(null)}
+          quoteId={quoteId}
+          companyId={profile?.company_id || ''}
+          clientId={generateNdPartner.id}
+          charges={generateNdPartner.charges}
+          onCreated={() => setGenerateNdPartner(null)}
+        />
+      )}
+
       <HistoryPanel
         open={historyOpen}
         onOpenChange={setHistoryOpen}
@@ -2662,12 +2747,33 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             }}>Continuar editando</AlertDialogCancel>
             <AlertDialogAction onClick={() => {
               if (pendingTab) {
-                setIsEditing(false);
                 setActiveTab(pendingTab);
                 setPendingTab(null);
                 setShowUnsavedConfirm(false);
               }
             }}>Descartar e mudar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingClientChange} onOpenChange={(o) => { if (!o) { setPendingClientChange(null); setClientChangeWarnings([]); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Trocar o cliente deste processo?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>Este processo já tem lançamentos no nome do cliente atual: {clientChangeWarnings.join(', ')}.</p>
+                <p>Trocar o cliente <strong>não atualiza</strong> esses lançamentos automaticamente — eles continuarão vinculados ao cliente antigo. Deseja continuar mesmo assim?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setPendingClientChange(null); setClientChangeWarnings([]); }}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (pendingClientChange) handleChangeClient(pendingClientChange);
+              setPendingClientChange(null);
+              setClientChangeWarnings([]);
+            }}>Trocar mesmo assim</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -2738,9 +2844,17 @@ interface ChargeColumnProps {
   showReconciliation?: boolean;
   currentUserId?: string;
   onPercentClick?: (chargeId: string) => void;
+  /** Botão "Enviar DN" no cabeçalho de cada fornecedor (só faz sentido do
+   *  lado Compra) — habilitado só quando todas as taxas do grupo já foram
+   *  conferidas (buy_actual_confirmed_at preenchido). */
+  onSendDn?: (partnerId: string, partnerName: string, suggestedAmount: number, suggestedCurrency: string, chargeIds: string[]) => void;
+  /** Botão "Gerar ND" no cabeçalho de cada empresa (só faz sentido do lado
+   *  Venda) — abre o mesmo formulário de emissão de DN ao Cliente, já
+   *  escopado às taxas daquele grupo. */
+  onGenerateNd?: (partnerId: string, partnerName: string, groupCharges: any[]) => void;
 }
 
-function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, legColors, legBorderLeftColors, onDelete, onClone, onUpdate, colorClass, borderClass, cloneLabel, partners, defaultClonePartnerId, cargoMetrics, readOnly, showReconciliation, currentUserId, onPercentClick }: ChargeColumnProps) {
+function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, legColors, legBorderLeftColors, onDelete, onClone, onUpdate, colorClass, borderClass, cloneLabel, partners, defaultClonePartnerId, cargoMetrics, readOnly, showReconciliation, currentUserId, onPercentClick, onSendDn, onGenerateNd }: ChargeColumnProps) {
   const { t } = useLanguage();
   const [cloningId, setCloningId] = useState<string | null>(null);
   const [cloneAmount, setCloneAmount] = useState('');
@@ -2817,6 +2931,26 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
     return result;
   }, [charges, t]);
 
+  // Uma empresa pode ter taxas de Venda em mais de um trecho (origem/frete/
+  // destino), cada um possivelmente em moeda diferente — mas o "Gerar ND"
+  // deve juntar TODAS as taxas da empresa (todos os trechos/moedas) numa
+  // única Nota de Débito, convertida pro cliente na moeda de cobrança. Por
+  // isso o botão só aparece uma vez por empresa (no primeiro trecho em que
+  // ela aparece), levando consigo as taxas dos outros trechos também.
+  const { firstLegByPartner, allChargesByPartner } = useMemo(() => {
+    const firstLeg: Record<string, string> = {};
+    const allCharges: Record<string, any[]> = {};
+    for (const leg of LEGS) {
+      for (const c of charges.filter((c: any) => c.leg === leg)) {
+        const pid = c.partner_id || '__none__';
+        if (!(pid in firstLeg)) firstLeg[pid] = leg;
+        if (!allCharges[pid]) allCharges[pid] = [];
+        allCharges[pid].push(c);
+      }
+    }
+    return { firstLegByPartner: firstLeg, allChargesByPartner: allCharges };
+  }, [charges]);
+
   const totalsByLeg = useMemo(() => {
     const result: Record<string, Record<string, number>> = { origin: {}, freight: {}, destination: {} };
     for (const c of charges) {
@@ -2868,23 +3002,82 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                         {/* Partner sub-header with enhanced styling */}
                         <TableRow className={`bg-muted/30 border-t border-l-4 ${legBorderLeftColors[leg] || ''}`}>
                           <TableCell colSpan={4} className="py-2.5 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${legColors[leg] || ''}`}>
-                                {legLabels[leg] || leg}
-                              </span>
-                              <div className="flex items-center gap-1.5">
-                                <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
-                                <span className="text-sm font-bold text-foreground">
-                                  {group.partnerName}
+                            <div className="flex items-center justify-between gap-2.5 flex-wrap">
+                              <div className="flex items-center gap-2.5">
+                                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${legColors[leg] || ''}`}>
+                                  {legLabels[leg] || leg}
                                 </span>
-                                {group.partnerCategory && (
-                                  <Badge variant="secondary" className="text-[10px] h-5 bg-primary/10 text-primary border-primary/20">
-                                    {t(`registrations.category_${group.partnerCategory}`) !== `registrations.category_${group.partnerCategory}` 
-                                      ? t(`registrations.category_${group.partnerCategory}`) 
-                                      : group.partnerCategory}
-                                  </Badge>
-                                )}
+                                <div className="flex items-center gap-1.5">
+                                  <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                                  <span className="text-sm font-bold text-foreground">
+                                    {group.partnerName}
+                                  </span>
+                                  {group.partnerCategory && (
+                                    <Badge variant="secondary" className="text-[10px] h-5 bg-primary/10 text-primary border-primary/20">
+                                      {t(`registrations.category_${group.partnerCategory}`) !== `registrations.category_${group.partnerCategory}`
+                                        ? t(`registrations.category_${group.partnerCategory}`)
+                                        : group.partnerCategory}
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
+                              {onSendDn && amountKey === 'buy_amount' && group.partnerId && (() => {
+                                // Taxas já enviadas numa DN anterior (paga ou não) não entram de
+                                // novo — se o fornecedor mandar uma cobrança nova, ela chega como
+                                // taxa nova (sem sent_in_debit_note_id) e é essa que conta aqui.
+                                const pendingCharges = group.charges.filter((c: any) => !c.sent_in_debit_note_id);
+                                const hasPending = pendingCharges.length > 0;
+                                const allConfirmed = pendingCharges.every((c: any) => !!c.buy_actual_confirmed_at);
+                                const enabled = hasPending && allConfirmed;
+                                return (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 gap-1.5 text-xs"
+                                    disabled={!enabled}
+                                    title={
+                                      !hasPending
+                                        ? 'Todas as taxas deste fornecedor já foram enviadas em uma DN'
+                                        : allConfirmed
+                                          ? 'Enviar Debit Note deste fornecedor'
+                                          : 'Confira todas as taxas deste fornecedor antes de enviar a DN'
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // Soma o valor já conferido (buy_amount_actual) das taxas
+                                      // ainda não enviadas, na moeda predominante entre elas.
+                                      const currency = pendingCharges[0]?.currency || 'USD';
+                                      const amount = pendingCharges.reduce((s: number, c: any) => {
+                                        if ((c.currency || 'USD') !== currency) return s;
+                                        if (c.billing_unit === 'percent') return s + (Number(c.computed_buy_amount) || 0);
+                                        const unit = Number(c.buy_amount_actual ?? c.buy_amount) || 0;
+                                        const mult = c.billing_unit && c.billing_unit !== 'fixed' ? getBillingMultiplier(c.billing_unit) : 1;
+                                        return s + unit * mult;
+                                      }, 0);
+                                      const ids = pendingCharges.map((c: any) => c.id).filter(Boolean);
+                                      onSendDn(group.partnerId, group.partnerName, amount, currency, ids);
+                                    }}
+                                  >
+                                    <Send className="w-3.5 h-3.5" /> Enviar DN
+                                  </Button>
+                                );
+                              })()}
+                              {onGenerateNd && amountKey === 'sell_amount' && group.partnerId && firstLegByPartner[group.partnerId] === leg && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 gap-1.5 text-xs"
+                                  title="Gerar Nota de Débito para esta empresa (todas as taxas, todos os trechos)"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onGenerateNd(group.partnerId, group.partnerName, allChargesByPartner[group.partnerId] || group.charges);
+                                  }}
+                                >
+                                  <Send className="w-3.5 h-3.5" /> Gerar ND
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -3014,8 +3207,15 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   >
                                     <Copy className="w-3.5 h-3.5 text-muted-foreground" />
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDelete(c.id)}>
-                                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    disabled={!!c.sent_in_debit_note_id}
+                                    title={c.sent_in_debit_note_id ? 'Taxa já enviada em uma DN — não pode ser excluída' : undefined}
+                                    onClick={() => onDelete(c.id)}
+                                  >
+                                    <Trash2 className={`w-3.5 h-3.5 ${c.sent_in_debit_note_id ? 'text-muted-foreground' : 'text-destructive'}`} />
                                   </Button>
                                 </div>
                               </TableCell>
@@ -3183,14 +3383,28 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
   const { t } = useLanguage();
   const { profile } = useAuth();
   const [searchText, setSearchText] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const addedClientIds = new Set(quotePartners.map((qp: any) => qp.clients?.id || qp.client_id));
-  const filteredPartners = partners
-    .filter((p: any) => !addedClientIds.has(p.id))
-    .filter((p: any) => searchText.length >= 1 && p.name.toLowerCase().includes(searchText.toLowerCase()));
+  const availablePartners = partners.filter((p: any) => !addedClientIds.has(p.id));
+
+  // Só busca depois que o usuário digitar pelo menos 3 letras, ou pelo menos
+  // 3 dígitos (caso esteja digitando um CNPJ) — não abre lista ao simplesmente
+  // clicar no campo.
+  const query = searchText.trim();
+  const queryDigits = query.replace(/\D/g, '');
+  const searchReady = query.length >= 3 || queryDigits.length >= 3;
+  const filteredPartners = searchReady
+    ? availablePartners.filter((p: any) => {
+        const nameMatch = p.name.toLowerCase().includes(query.toLowerCase());
+        const taxIdMatch = queryDigits.length >= 3 && p.tax_id && p.tax_id.replace(/\D/g, '').includes(queryDigits);
+        return nameMatch || taxIdMatch;
+      })
+    : [];
+  const matchedPartner = availablePartners.find(
+    (p: any) => p.name.trim().toLowerCase() === query.toLowerCase()
+  );
 
   async function handleAdd(partnerId: string) {
     if (!partnerId || !companyId) return;
@@ -3222,6 +3436,16 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
     }
   }
 
+  function handleAddClick() {
+    if (matchedPartner) {
+      handleAdd(matchedPartner.id);
+    } else if (filteredPartners.length === 1) {
+      handleAdd(filteredPartners[0].id);
+    } else {
+      toast.error('Digite o nome exato ou selecione uma empresa na lista.');
+    }
+  }
+
   async function handleRemove(id: string) {
     try {
       const removedPartner = quotePartners.find((qp: any) => qp.id === id);
@@ -3244,63 +3468,63 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
 
   return (
     <div className="space-y-4">
-      <Popover open={pickerOpen} onOpenChange={(o) => { setPickerOpen(o); if (!o) { setSearchText(''); setShowSuggestions(false); } }}>
-        <PopoverTrigger asChild>
-          <Button type="button" size="sm" className="gap-2">
-            <Plus className="w-4 h-4" /> Adicionar Empresa
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-80 p-3 space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Vincule uma empresa já cadastrada a este processo. Ela servirá de base para as Taxas e, futuramente, para os documentos.
-          </p>
-          <div className="relative">
-            <Input
-              autoFocus
-              value={searchText}
-              onChange={(e) => {
-                setSearchText(e.target.value);
-                setShowSuggestions(true);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              placeholder={t('quotes.add_partner')}
-            />
-            {showSuggestions && filteredPartners.length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                {filteredPartners.slice(0, 10).map((p: any) => (
-                  <button
-                    key={p.id}
-                    className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex items-center justify-between"
-                    onMouseDown={async (e) => {
-                      e.preventDefault();
-                      await handleAdd(p.id);
-                      setPickerOpen(false);
-                    }}
-                    disabled={adding}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span>{p.name}</span>
-                    </div>
-                    {p.partner_category ? (
-                      <Badge variant="secondary" className="text-[10px] h-5 bg-primary/10 text-primary border-primary/20">
-                        {t(`registrations.category_${p.partner_category}`) !== `registrations.category_${p.partner_category}`
-                          ? t(`registrations.category_${p.partner_category}`)
-                          : p.partner_category}
-                      </Badge>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
-            )}
-            {searchText.length >= 1 && filteredPartners.length === 0 && (
-              <p className="text-xs text-muted-foreground mt-2">
+      <div className="flex items-center justify-between gap-3 flex-wrap rounded-lg border bg-muted/20 px-3 py-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Input
+            value={searchText}
+            onChange={(e) => {
+              setSearchText(e.target.value);
+              setShowSuggestions(true);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddClick();
+              }
+            }}
+            placeholder="Digite ao menos 3 letras ou o CNPJ..."
+            className="h-9 bg-background"
+          />
+          {showSuggestions && searchReady && filteredPartners.length > 0 && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
+              {filteredPartners.slice(0, 10).map((p: any) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex items-center justify-between"
+                  onMouseDown={async (e) => {
+                    e.preventDefault();
+                    await handleAdd(p.id);
+                  }}
+                  disabled={adding}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate">{p.name}</span>
+                    {p.tax_id && <span className="text-xs text-muted-foreground shrink-0">{p.tax_id}</span>}
+                  </div>
+                  {p.partner_category ? (
+                    <Badge variant="secondary" className="text-[10px] h-5 bg-primary/10 text-primary border-primary/20 shrink-0">
+                      {t(`registrations.category_${p.partner_category}`) !== `registrations.category_${p.partner_category}`
+                        ? t(`registrations.category_${p.partner_category}`)
+                        : p.partner_category}
+                    </Badge>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          )}
+          {showSuggestions && searchReady && filteredPartners.length === 0 && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg px-3 py-2">
+              <p className="text-xs text-muted-foreground">
                 Nenhuma empresa encontrada. Cadastre em <strong>Cadastros</strong> primeiro.
               </p>
-            )}
-          </div>
-        </PopoverContent>
-      </Popover>
+            </div>
+          )}
+        </div>
+      </div>
 
       {quotePartners.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">{t('quotes.no_partners')}</p>
@@ -3374,12 +3598,16 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId }: {
   const delta = actualTotal != null ? actualTotal - quotedTotal : 0;
   const deltaPct = quotedTotal > 0 && actualTotal != null ? (delta / quotedTotal) * 100 : 0;
   const cur = charge.currency || 'USD';
-  const [inputVal, setInputVal] = useState(actualUnit != null ? String(actualUnit) : '');
+  // Já vem preenchido com o valor cotado sugerido — se não houver divergência,
+  // o usuário só confirma direto, sem precisar digitar de novo.
+  const suggestedVal = String(charge.buy_amount ?? '');
+  const [inputVal, setInputVal] = useState(actualUnit != null ? String(actualUnit) : suggestedVal);
   const [reason, setReason] = useState<string>(charge.buy_variance_reason || '');
 
   useEffect(() => {
-    setInputVal(actualUnit != null ? String(actualUnit) : '');
+    setInputVal(actualUnit != null ? String(actualUnit) : suggestedVal);
     setReason(charge.buy_variance_reason || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actualUnit, charge.buy_variance_reason]);
 
   const deltaColor =
@@ -3417,6 +3645,13 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId }: {
     });
   };
 
+  // Depois que a conta a pagar dessa DN é quitada, a taxa fica travada —
+  // não dá mais pra reabrir nem editar o cobrado. Se chegar uma cobrança
+  // nova do fornecedor, o usuário cadastra outra taxa (linha nova) em vez
+  // de mexer nesta, que já foi paga.
+  const paid = !!charge.buy_paid_at;
+  const locked = confirmed && paid;
+
   return (
     <TableRow className={confirmed ? 'bg-emerald-500/5' : 'bg-muted/10'}>
       <TableCell colSpan={4} className="py-1.5 pl-8 pr-2">
@@ -3432,16 +3667,6 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId }: {
             placeholder={String(charge.buy_amount ?? '0')}
             className="h-6 w-24 text-xs font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
-          {actualTotal != null && (
-            <>
-              <span className="text-muted-foreground">
-                Total: <span className="font-mono">{cur} {actualTotal.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </span>
-              <span className={`font-mono font-semibold ${deltaColor}`}>
-                Δ {delta >= 0 ? '+' : ''}{delta.toFixed(2)} ({deltaPct >= 0 ? '+' : ''}{deltaPct.toFixed(1)}%)
-              </span>
-            </>
-          )}
           {actualTotal != null && Math.abs(delta) >= 0.01 && (
             <Select value={reason} onValueChange={saveReason} disabled={confirmed}>
               <SelectTrigger className="h-6 w-32 text-[11px]">
@@ -3455,7 +3680,11 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId }: {
             </Select>
           )}
           <div className="ml-auto flex items-center gap-1">
-            {confirmed ? (
+            {locked ? (
+              <Badge variant="outline" className="text-[10px] h-5 bg-primary/10 text-primary border-primary/30 gap-1" title="Taxa já paga — não pode ser reaberta">
+                <CheckCircle className="w-3 h-3" /> Pago
+              </Badge>
+            ) : confirmed ? (
               <>
                 <Badge variant="outline" className="text-[10px] h-5 bg-emerald-500/15 text-emerald-600 border-emerald-500/30 gap-1">
                   <CheckCircle className="w-3 h-3" /> Conferido

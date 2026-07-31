@@ -77,6 +77,7 @@ export default function Registrations() {
     commission_rate: '',
     is_foreign: false,
     partner_category: '',
+    storage_rebate_percent: '',
   });
 
   function getClientTrackingLink(taxId: string | null) {
@@ -195,6 +196,9 @@ export default function Registrations() {
         commission_rate: form.commission_rate ? parseFloat(form.commission_rate) : null,
         is_foreign: form.is_foreign,
         partner_category: form.type === 'client' ? null : (form.partner_category || null),
+        storage_rebate_percent: form.partner_category === 'co_loader' && form.storage_rebate_percent
+          ? parseFloat(form.storage_rebate_percent)
+          : null,
       };
 
       if (editingId) {
@@ -263,6 +267,7 @@ export default function Registrations() {
       commission_rate: client.commission_rate != null ? String(client.commission_rate) : '',
       is_foreign: client.is_foreign || false,
       partner_category: client.partner_category || '',
+      storage_rebate_percent: client.storage_rebate_percent != null ? String(client.storage_rebate_percent) : '',
     });
     setEditingId(client.id);
     setShowAdd(true);
@@ -280,9 +285,10 @@ export default function Registrations() {
       tax_id_type: 'CNPJ',
       type: (activeTab === 'client' ? 'client' : 'supplier') as ClientType, 
       salesperson_id: '', 
-      commission_rate: '', 
-      is_foreign: false, 
-      partner_category: '' 
+      commission_rate: '',
+      is_foreign: false,
+      partner_category: '',
+      storage_rebate_percent: '',
     });
   }
 
@@ -648,6 +654,29 @@ export default function Registrations() {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Rebate de armazenagem - só para Co-loaders */}
+            {form.partner_category === 'co_loader' && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                <Label>Rebate de armazenagem (%)</Label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    placeholder="0"
+                    value={form.storage_rebate_percent}
+                    onChange={(e) => setForm({ ...form, storage_rebate_percent: e.target.value })}
+                    className="pr-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Percentual do valor da armazenagem que este Co-loader repassa como rebate. É esse valor que vai para Contas a Receber quando armazenagem é lançada em um embarque LCL.
+                </p>
               </div>
             )}
 

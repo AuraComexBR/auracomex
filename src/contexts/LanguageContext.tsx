@@ -49,7 +49,7 @@ const translations: Record<string, Record<Language, string>> = {
   'shipments.destination': { pt: 'Destino', en: 'Destination' },
   'shipments.pickup': { pt: 'Coleta', en: 'Pickup' },
   'shipments.delivery': { pt: 'Entrega', en: 'Delivery' },
-  'shipments.mode': { pt: 'Modo', en: 'Mode' },
+  'shipments.mode': { pt: 'Modal', en: 'Mode' },
   'shipments.status': { pt: 'Status', en: 'Status' },
   'shipments.etd': { pt: 'ETD', en: 'ETD' },
   'shipments.eta': { pt: 'ETA', en: 'ETA' },
@@ -346,6 +346,11 @@ const translations: Record<string, Record<Language, string>> = {
   'auth.invalid_recovery_link': { pt: 'Link de recuperação inválido ou expirado.', en: 'Invalid or expired recovery link.' },
   'auth.send_reset_link': { pt: 'Enviar Link', en: 'Send Link' },
   'auth.back_to_login': { pt: 'Voltar ao Login', en: 'Back to Login' },
+  'auth.change_password': { pt: 'Alterar Senha', en: 'Change Password' },
+  'auth.first_access_desc': { pt: 'Este é seu primeiro acesso. Por favor, defina uma nova senha.', en: 'This is your first access. Please set a new password.' },
+  'auth.passwords_dont_match': { pt: 'As senhas não coincidem', en: 'Passwords do not match' },
+  'auth.password_too_short': { pt: 'A senha deve ter pelo menos 6 caracteres', en: 'Password must be at least 6 characters' },
+  'auth.password_changed': { pt: 'Senha alterada com sucesso!', en: 'Password changed successfully!' },
 
   // Settings
   'settings.title': { pt: 'Configurações', en: 'Settings' },

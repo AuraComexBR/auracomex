@@ -1,16 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSalespersonClients } from '@/hooks/useSalespersonClients';
-import { Search, Filter, FileText, CalendarIcon, Truck } from 'lucide-react';
+import { Search, Filter, FileText, CalendarIcon, Truck, Copy } from 'lucide-react';
 import { getCourierTrackingUrl } from '@/lib/courierTracking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DuplicateShipmentDialog } from '@/components/shipments/DuplicateShipmentDialog';
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -25,18 +26,70 @@ import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTableSort } from '@/hooks/useTableSort';
 import { SortableHeader } from '@/components/shared/SortableHeader';
+import { ColumnSearch } from '@/components/shared/ColumnSearch';
+import { ColumnFilter } from '@/components/shared/ColumnFilter';
 import { countryCodeToFlag } from '@/lib/countryFlag';
 
+
+const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road', 'multimodal'];
 
 export default function Shipments() {
   const { t } = useLanguage();
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const { isSalesperson, clientIds } = useSalespersonClients();
-  const [search, setSearch] = useState('');
+  // Busca por coluna (REF, Cliente, Origem, Destino): uma lupa no cabeçalho de
+  // cada uma abre um popover com o campo de busca daquela coluna só.
+  const [searchRef, setSearchRef] = useState('');
+  const [searchClient, setSearchClient] = useState('');
+  const [searchOrigin, setSearchOrigin] = useState('');
+  const [searchDestination, setSearchDestination] = useState('');
+  const [searchRefOpen, setSearchRefOpen] = useState(false);
+  const [searchClientOpen, setSearchClientOpen] = useState(false);
+  const [searchOriginOpen, setSearchOriginOpen] = useState(false);
+  const [searchDestinationOpen, setSearchDestinationOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [modeFilter, setModeFilter] = useState<string[]>([]);
-  const [filterOpen, setFilterOpen] = useState(false);
+  // Filtros de Status e Modal viraram popovers no próprio cabeçalho da coluna.
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
+  const [modeFilterOpen, setModeFilterOpen] = useState(false);
+  const [duplicateShipment, setDuplicateShipment] = useState<any>(null);
+  const filtersLoadedRef = useRef(false);
+  // null = ainda não sabemos: já existe preferência salva desse usuário para essa lista?
+  const [hasSavedPrefs, setHasSavedPrefs] = useState<boolean | null>(null);
+
+  // Filtros persistidos por usuário (localStorage), pra não zerar toda vez
+  // que ele sai da tela de Embarques e volta.
+  // Versão "v2" da chave: reseta de uma vez só as preferências salvas antes
+  // da mudança de comportamento (agora tudo vem marcado por padrão), pra
+  // quem já tinha filtro salvo também passar a ver o novo padrão. Dali em
+  // diante volta a lembrar normalmente a última escolha de cada um.
+  const filtersStorageKey = profile?.user_id ? `aura:filters:v2:${profile.user_id}:shipments` : null;
+
+  useEffect(() => {
+    if (!filtersStorageKey || filtersLoadedRef.current) return;
+    filtersLoadedRef.current = true;
+    try {
+      const raw = localStorage.getItem(filtersStorageKey);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (Array.isArray(saved.statusFilter)) setStatusFilter(saved.statusFilter);
+        if (Array.isArray(saved.modeFilter)) setModeFilter(saved.modeFilter);
+        setHasSavedPrefs(true);
+      } else {
+        // Sem preferência salva ainda: os filtros vêm todos marcados por
+        // padrão (mostrando tudo, igual antes) e o usuário desmarca o que
+        // não fizer sentido. O modal já sabemos de antemão; o status
+        // depende dos status customizados da empresa (preenchido no efeito
+        // abaixo assim que carregarem).
+        setHasSavedPrefs(false);
+        setModeFilter(MODES);
+      }
+    } catch {
+      setHasSavedPrefs(false);
+    }
+  }, [filtersStorageKey]);
 
   // Clicar em "Embarques" no menu enquanto já se está em /shipments não muda
   // de rota (mesmo path), então sem isso o processo aberto ficava preso na
@@ -45,6 +98,11 @@ export default function Shipments() {
   const location = useLocation();
   useEffect(() => {
     setSelectedId(null);
+    // A query da lista continua "montada" o tempo todo (só fica escondida
+    // enquanto um processo está aberto), então só resetar o selectedId não
+    // busca dados novos — precisa forçar o refetch aqui.
+    refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   // Fetch custom status options for label mapping
@@ -65,12 +123,31 @@ export default function Shipments() {
     statusOptions.map((o: any) => [o.value, o.label])
   );
 
+  // Preenche o Status com "tudo selecionado" assim que os status customizados
+  // da empresa chegarem — só quando não havia preferência salva pra esse
+  // usuário (senão sobrescreveria a última escolha dele).
+  useEffect(() => {
+    if (hasSavedPrefs === false && statusOptions.length > 0 && statusFilter.length === 0) {
+      setStatusFilter(statusOptions.map((o: any) => o.value));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSavedPrefs, statusOptions]);
+
+  useEffect(() => {
+    if (!filtersStorageKey || !filtersLoadedRef.current || hasSavedPrefs === null) return;
+    // Se ainda não havia preferência salva, espera os status customizados
+    // carregarem antes de persistir — senão gravaria um Status vazio antes
+    // da hora.
+    if (hasSavedPrefs === false && statusOptions.length === 0) return;
+    localStorage.setItem(filtersStorageKey, JSON.stringify({ statusFilter, modeFilter }));
+  }, [filtersStorageKey, statusFilter, modeFilter, hasSavedPrefs, statusOptions]);
+
   const { data: shipments = [], refetch } = useQuery({
     queryKey: ['shipments', isSalesperson, clientIds],
     queryFn: async () => {
       let query = supabase
         .from('shipments')
-        .select('id, reference_number, status, transport_mode, origin_city, origin_country, destination_city, destination_country, etd, eta, atd, ata, client_id, updated_at, last_accessed_at, next_update, courier_provider, courier_tracking_number, clients(name)')
+        .select('id, reference_number, status, transport_mode, origin_city, origin_country, origin_port, destination_city, destination_country, destination_port, incoterm, notes, weight_kg, volume_cbm, packages, cargo_description, etd, eta, atd, ata, client_id, updated_at, last_accessed_at, next_update, courier_provider, courier_tracking_number, clients(name)')
         .order('created_at', { ascending: false });
 
       if (isSalesperson && clientIds && clientIds.length > 0) {
@@ -85,18 +162,20 @@ export default function Shipments() {
     },
   });
 
-  const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road', 'multimodal'];
-
   const filtered = shipments.filter((s: any) => {
-    const matchesSearch = s.reference_number?.toLowerCase().includes(search.toLowerCase()) ||
-      s.origin_city?.toLowerCase().includes(search.toLowerCase()) ||
-      s.destination_city?.toLowerCase().includes(search.toLowerCase());
+    const matchesRef = !searchRef || s.reference_number?.toLowerCase().includes(searchRef.toLowerCase());
+    const matchesClient = !searchClient || (s.clients as any)?.name?.toLowerCase().includes(searchClient.toLowerCase());
+    const matchesOrigin = !searchOrigin || s.origin_city?.toLowerCase().includes(searchOrigin.toLowerCase());
+    const matchesDestination = !searchDestination || s.destination_city?.toLowerCase().includes(searchDestination.toLowerCase());
     const matchesStatus = statusFilter.length === 0 || statusFilter.includes(s.status);
     const matchesMode = modeFilter.length === 0 || modeFilter.includes(s.transport_mode);
-    return matchesSearch && matchesStatus && matchesMode;
+    return matchesRef && matchesClient && matchesOrigin && matchesDestination && matchesStatus && matchesMode;
   });
 
-  const activeFilterCount = statusFilter.length + modeFilter.length;
+  // "Ativo" só quando o usuário desmarcou algo (não no estado inicial, onde
+  // tudo já vem marcado e equivale a "sem filtro").
+  const statusFilterActive = statusFilter.length > 0 && statusFilter.length < statusOptions.length;
+  const modeFilterActive = modeFilter.length > 0 && modeFilter.length < MODES.length;
 
   function toggleStatusFilter(value: string) {
     setStatusFilter((prev) => prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]);
@@ -104,8 +183,10 @@ export default function Shipments() {
   function toggleModeFilter(value: string) {
     setModeFilter((prev) => prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]);
   }
-  function clearFilters() {
+  function clearStatusFilter() {
     setStatusFilter([]);
+  }
+  function clearModeFilter() {
     setModeFilter([]);
   }
 
@@ -114,6 +195,7 @@ export default function Shipments() {
     client: (r) => r.clients?.name,
     origin: (r) => r.origin_city,
     destination: (r) => r.destination_city,
+    transport_mode: (r) => r.transport_mode,
     etd: (r) => r.atd || r.etd,
     eta: (r) => r.ata || r.eta,
     status: (r) => statusLabelMap.get(r.status) || r.status,
@@ -149,86 +231,66 @@ export default function Shipments() {
 
   return (
     <div className="space-y-6 animate-slide-in">
-      <div className="flex gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder={t('shipments.search')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Popover open={filterOpen} onOpenChange={setFilterOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="icon" className="relative">
-              <Filter className="w-4 h-4" />
-              {activeFilterCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 h-4 min-w-[16px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                  {activeFilterCount}
-                </span>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-72 p-4" align="end">
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold">Filtros</p>
-                  {activeFilterCount > 0 && (
-                    <button type="button" className="text-xs text-muted-foreground hover:text-foreground underline" onClick={clearFilters}>
-                      Limpar
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
-                <div className="space-y-1.5 max-h-40 overflow-auto">
-                  {statusOptions.map((o: any) => (
-                    <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <Checkbox checked={statusFilter.includes(o.value)} onCheckedChange={() => toggleStatusFilter(o.value)} />
-                      {o.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Modal</p>
-                <div className="space-y-1.5">
-                  {MODES.map((m) => (
-                    <label key={m} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <Checkbox checked={modeFilter.includes(m)} onCheckedChange={() => toggleModeFilter(m)} />
-                      {t(`mode.${m}`)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
-      </div>
-
       <Card className="glass">
         <CardContent className="p-0">
           <Table className="text-sm">
             <TableHeader>
               <TableRow>
-                <SortableHeader label="REF" sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
-                <SortableHeader label={t('shipments.client')} sortKey="client" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
-                <SortableHeader label={t('shipments.origin')} sortKey="origin" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
-                <SortableHeader label={t('shipments.destination')} sortKey="destination" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
-                <SortableHeader label={t('shipments.etd')} sortKey="etd" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
-                <SortableHeader label={t('shipments.eta')} sortKey="eta" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
-                <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
-                <SortableHeader label="Next Update" sortKey="next_update" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
-                <SortableHeader label="Atividade" sortKey="updated_at" state={sortState} onToggle={toggleSort} className="h-9 px-3 text-xs" />
+                <SortableHeader
+                  label="REF" sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                  right={<ColumnSearch value={searchRef} onChange={setSearchRef} open={searchRefOpen} onOpenChange={setSearchRefOpen} />}
+                />
+                <SortableHeader
+                  label="Modal" sortKey="transport_mode" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                  right={
+                    <ColumnFilter open={modeFilterOpen} onOpenChange={setModeFilterOpen} active={modeFilterActive} title="Modal" onClear={clearModeFilter}>
+                      {MODES.map((m) => (
+                        <label key={m} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Checkbox checked={modeFilter.includes(m)} onCheckedChange={() => toggleModeFilter(m)} />
+                          <span className="truncate">{t(`mode.${m}`)}</span>
+                        </label>
+                      ))}
+                    </ColumnFilter>
+                  }
+                />
+                <SortableHeader
+                  label={t('shipments.client')} sortKey="client" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                  right={<ColumnSearch value={searchClient} onChange={setSearchClient} open={searchClientOpen} onOpenChange={setSearchClientOpen} />}
+                />
+                <SortableHeader
+                  label={t('shipments.origin')} sortKey="origin" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                  right={<ColumnSearch value={searchOrigin} onChange={setSearchOrigin} open={searchOriginOpen} onOpenChange={setSearchOriginOpen} />}
+                />
+                <SortableHeader
+                  label={t('shipments.destination')} sortKey="destination" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                  right={<ColumnSearch value={searchDestination} onChange={setSearchDestination} open={searchDestinationOpen} onOpenChange={setSearchDestinationOpen} />}
+                />
+                <SortableHeader label={t('shipments.etd')} sortKey="etd" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                <SortableHeader label={t('shipments.eta')} sortKey="eta" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                <SortableHeader
+                  label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                  right={
+                    <ColumnFilter open={statusFilterOpen} onOpenChange={setStatusFilterOpen} active={statusFilterActive} title="Status" onClear={clearStatusFilter} contentClassName="w-[min(90vw,420px)]">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                        {statusOptions.map((o: any) => (
+                          <label key={o.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox checked={statusFilter.includes(o.value)} onCheckedChange={() => toggleStatusFilter(o.value)} />
+                            <span className="truncate">{o.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </ColumnFilter>
+                  }
+                />
+                <SortableHeader label="Next Update" sortKey="next_update" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                <SortableHeader label="Atividade" sortKey="updated_at" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                <TableHead className="h-8 px-3 text-xs text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sorted.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
                     {t('common.no_data')}
                   </TableCell>
                 </TableRow>
@@ -245,7 +307,7 @@ export default function Shipments() {
                   return (
                   <TableRow key={s.id} className={`group whitespace-nowrap ${rowBg}`}>
                     <TableCell
-                      className="py-2 px-3 font-mono font-medium cursor-pointer hover:underline"
+                      className="py-0.5 px-3 font-mono font-medium cursor-pointer hover:underline"
                       onClick={() => setSelectedId(s.id)}
                     >
                       <span className="inline-flex items-center gap-1.5">
@@ -268,29 +330,37 @@ export default function Shipments() {
                         )}
                       </span>
                     </TableCell>
-                    <TableCell className="py-2 px-3 cursor-pointer max-w-[160px] truncate" onClick={() => setSelectedId(s.id)}>
+                    <TableCell className="py-0.5 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span><ModeIcon mode={s.transport_mode} /></span>
+                        </TooltipTrigger>
+                        <TooltipContent>{t(`mode.${s.transport_mode}`)}</TooltipContent>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell className="py-0.5 px-3 cursor-pointer max-w-[160px] truncate" onClick={() => setSelectedId(s.id)}>
                       {(s.clients as any)?.name || '-'}
                     </TableCell>
-                    <TableCell className="py-2 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
+                    <TableCell className="py-0.5 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
                       <span className="inline-flex items-center gap-1.5">
                         <span className="leading-none">{countryCodeToFlag(s.origin_country || '')}</span>
                         <span>{s.origin_city || s.origin_country || '-'}</span>
                       </span>
                     </TableCell>
-                    <TableCell className="py-2 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
+                    <TableCell className="py-0.5 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
                       <span className="inline-flex items-center gap-1.5">
                         <span className="leading-none">{countryCodeToFlag(s.destination_country || '')}</span>
                         <span>{s.destination_city || s.destination_country || '-'}</span>
                       </span>
                     </TableCell>
-                    <TableCell className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="py-0.5 px-1.5" onClick={(e) => e.stopPropagation()}>
                       <InlineDate
                         value={s.etd}
                         actualValue={s.atd}
                         onChange={(d) => updateShipmentField(s.id, 'etd', d)}
                       />
                     </TableCell>
-                    <TableCell className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="py-0.5 px-1.5" onClick={(e) => e.stopPropagation()}>
                       <InlineDate
                         value={s.eta}
                         actualValue={s.ata}
@@ -298,7 +368,7 @@ export default function Shipments() {
                       />
                     </TableCell>
                     {/* Read-only Status from Logistics */}
-                    <TableCell className="py-2 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
+                    <TableCell className="py-0.5 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
                       {statusLabelMap.has(s.status) ? (
                         <StatusBadge status={s.status} label={statusLabelMap.get(s.status)} />
                       ) : (
@@ -306,15 +376,31 @@ export default function Shipments() {
                       )}
                     </TableCell>
                     {/* Inline-editable Next Update */}
-                    <TableCell className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="py-0.5 px-1.5" onClick={(e) => e.stopPropagation()}>
                       <InlineNextUpdate
                         value={s.next_update}
                         onChange={(d) => updateShipmentField(s.id, 'next_update', d)}
                       />
                     </TableCell>
                     {/* Activity indicator */}
-                    <TableCell className="py-2 px-3">
+                    <TableCell className="py-0.5 px-3">
                       <ActivityIndicator updatedAt={s.updated_at} lastAccessedAt={(s as any).last_accessed_at} />
+                    </TableCell>
+                    {/* Actions */}
+                    <TableCell className="py-0.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={() => setDuplicateShipment(s)}
+                          >
+                            <Copy className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t('shipments.duplicate')}</TooltipContent>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                   );
@@ -325,6 +411,14 @@ export default function Shipments() {
         </CardContent>
       </Card>
 
+      <DuplicateShipmentDialog
+        shipment={duplicateShipment}
+        onClose={() => setDuplicateShipment(null)}
+        onDuplicated={() => {
+          setDuplicateShipment(null);
+          queryClient.invalidateQueries({ queryKey: ['quotes'] });
+        }}
+      />
     </div>
   );
 }
@@ -385,7 +479,7 @@ function InlineNextUpdate({ value, onChange }: { value: string | null; onChange:
         <Button
           variant="ghost"
           className={cn(
-            "h-7 text-xs px-2 font-normal justify-start w-[100px]",
+            "h-5 text-xs px-2 font-normal justify-start w-[100px]",
             !dateValue && "text-muted-foreground"
           )}
         >
@@ -434,7 +528,7 @@ function InlineDate({ value, actualValue, onChange }: { value: string | null; ac
           variant="ghost"
           title={isActual ? 'Data real' : 'Estimativa'}
           className={cn(
-            "h-7 text-xs px-2 font-normal justify-start w-[86px]",
+            "h-5 text-xs px-2 font-normal justify-start w-[86px]",
             !dateValue && "text-muted-foreground",
             isActual && "font-semibold text-emerald-600"
           )}

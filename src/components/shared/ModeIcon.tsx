@@ -1,9 +1,9 @@
-import { Ship, Plane, Truck, Combine } from 'lucide-react';
+import { Container, Package, Plane, Truck, Combine, Ship } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 const icons: Record<string, typeof Ship> = {
-  ocean_fcl: Ship,
-  ocean_lcl: Ship,
+  ocean_fcl: Container,
+  ocean_lcl: Package,
   air: Plane,
   road: Truck,
   multimodal: Combine,

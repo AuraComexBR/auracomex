@@ -35,6 +35,7 @@ type DN = {
 };
 
 type Charge = { id: string; description: string; sell_amount: number; currency: string; leg: string };
+export type { Charge as ClientDnCharge };
 
 const STATUS_LABEL: Record<string, string> = {
   pendente: 'Rascunho', emitida: 'Emitida', paga: 'Paga', cancelada: 'Cancelada',
@@ -51,9 +52,12 @@ interface Props {
   quoteId: string;
   companyId: string;
   clientId: string | null;
+  /** Modo somente leitura — usado na aba Documentos: lista informativa, sem
+   *  nenhum botão de ação (nem "Emitir Nova DN", nem os botões por linha). */
+  readOnly?: boolean;
 }
 
-export function ClientDebitNotesTab({ quoteId, companyId, clientId }: Props) {
+export function ClientDebitNotesTab({ quoteId, companyId, clientId, readOnly }: Props) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
@@ -135,20 +139,19 @@ export function ClientDebitNotesTab({ quoteId, companyId, clientId }: Props) {
   return (
     <Card className="glass">
       <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle className="flex items-center gap-2"><DollarSign className="w-5 h-5" /> Notas de Débito ao Cliente</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Documentos de cobrança emitidos ao importador/exportador com os dados bancários da sua empresa.
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)} disabled={!clientId}>
-          <Plus className="w-4 h-4 mr-1" /> Emitir Nova DN
-        </Button>
+        <CardTitle className="text-base flex items-center gap-2">
+          <DollarSign className="w-4 h-4" /> Notas de Débito ao Cliente
+        </CardTitle>
+        {!readOnly && (
+          <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!clientId}>
+            <Plus className="w-4 h-4 mr-1" /> Emitir Nova DN
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         {!clientId && <p className="text-sm text-amber-400 mb-3">Defina o cliente na aba Geral antes de emitir DN.</p>}
         {notes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhuma DN emitida.</p>
+          <p className="text-sm text-muted-foreground text-center py-6">Nenhuma DN emitida.</p>
         ) : (
           <Table>
             <TableHeader>
@@ -156,29 +159,31 @@ export function ClientDebitNotesTab({ quoteId, companyId, clientId }: Props) {
                 <TableHead>Número</TableHead>
                 <TableHead>Emissão</TableHead>
                 <TableHead>Vencimento</TableHead>
-                <TableHead>Valor</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-40"></TableHead>
+                {!readOnly && <TableHead className="text-right">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {notes.map(dn => (
                 <TableRow key={dn.id}>
-                  <TableCell className="font-mono">{dn.dn_number}</TableCell>
+                  <TableCell className="font-medium">{dn.dn_number}</TableCell>
                   <TableCell>{format(new Date(dn.issue_date), 'dd/MM/yyyy')}</TableCell>
                   <TableCell>{dn.due_date ? format(new Date(dn.due_date), 'dd/MM/yyyy') : '-'}</TableCell>
-                  <TableCell className="font-mono">{dn.currency} {Number(dn.total_amount).toFixed(2)}</TableCell>
-                  <TableCell><Badge className={STATUS_COLOR[dn.status] || 'bg-slate-500/20'}>{STATUS_LABEL[dn.status] || dn.status}</Badge></TableCell>
-                  <TableCell className="flex gap-1">
-                    <Button variant="ghost" size="icon" title="Ver PDF" onClick={() => setPdfDn(dn)}><FileText className="w-4 h-4" /></Button>
-                    {dn.status !== 'paga' && dn.status !== 'cancelada' && (
-                      <>
-                        <Button variant="ghost" size="icon" title="Marcar como paga" onClick={() => setPayDn(dn)}><CheckCircle className="w-4 h-4 text-emerald-400" /></Button>
-                        <Button variant="ghost" size="icon" title="Cancelar" onClick={() => cancelDn(dn.id)}><XCircle className="w-4 h-4 text-amber-400" /></Button>
-                      </>
-                    )}
-                    <Button variant="ghost" size="icon" title="Excluir" onClick={() => deleteDn(dn.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
-                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{dn.currency} {Number(dn.total_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                  <TableCell><Badge className={STATUS_COLOR[dn.status] || 'bg-slate-500/20'} variant="secondary">{STATUS_LABEL[dn.status] || dn.status}</Badge></TableCell>
+                  {!readOnly && (
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" title="Ver PDF" onClick={() => setPdfDn(dn)}><FileText className="w-4 h-4" /></Button>
+                      {dn.status !== 'paga' && dn.status !== 'cancelada' && (
+                        <>
+                          <Button variant="ghost" size="icon" title="Marcar como paga" onClick={() => setPayDn(dn)}><CheckCircle className="w-4 h-4 text-emerald-400" /></Button>
+                          <Button variant="ghost" size="icon" title="Cancelar" onClick={() => cancelDn(dn.id)}><XCircle className="w-4 h-4 text-amber-400" /></Button>
+                        </>
+                      )}
+                      <Button variant="ghost" size="icon" title="Excluir" onClick={() => deleteDn(dn.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -196,7 +201,10 @@ export function ClientDebitNotesTab({ quoteId, companyId, clientId }: Props) {
           charges={charges}
           bankAccounts={bankAccounts}
           userId={user?.id || null}
-          onCreated={() => qc.invalidateQueries({ queryKey: ['client_debit_notes', quoteId] })}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ['client_debit_notes', quoteId] });
+            qc.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
+          }}
         />
       )}
 
@@ -225,6 +233,63 @@ export function ClientDebitNotesTab({ quoteId, companyId, clientId }: Props) {
         </DialogContent>
       </Dialog>
     </Card>
+  );
+}
+
+/**
+ * Wrapper de "Gerar ND" acionado a partir do cabeçalho de cada empresa na
+ * aba Taxas (lado Venda) — reaproveita o mesmo formulário de emissão de DN
+ * ao Cliente (câmbio, conta bancária, seleção de taxas), só que já escopado
+ * às taxas daquele grupo/empresa específica.
+ */
+export function GenerateClientNdDialog({
+  open,
+  onClose,
+  quoteId,
+  companyId,
+  clientId,
+  charges,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  quoteId: string;
+  companyId: string;
+  clientId: string;
+  charges: Charge[];
+  onCreated?: () => void;
+}) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ['company_bank_accounts', companyId],
+    queryFn: async () => {
+      const { data } = await supabase.from('company_bank_accounts' as any)
+        .select('*').eq('company_id', companyId).eq('active', true);
+      return (data ?? []) as any[];
+    },
+    enabled: open,
+  });
+
+  if (!open) return null;
+
+  return (
+    <CreateClientDnDialog
+      open={open}
+      onClose={onClose}
+      quoteId={quoteId}
+      companyId={companyId}
+      clientId={clientId}
+      charges={charges}
+      bankAccounts={bankAccounts}
+      userId={user?.id || null}
+      onCreated={() => {
+        qc.invalidateQueries({ queryKey: ['client_debit_notes', quoteId] });
+        qc.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
+        onCreated?.();
+      }}
+    />
   );
 }
 
@@ -341,6 +406,13 @@ function CreateClientDnDialog({
         }));
       const { error: iErr } = await supabase.from('debit_note_items').insert(items as any);
       if (iErr) throw iErr;
+
+      // Marca as taxas incluídas nesta ND — não podem mais ser excluídas
+      // enquanto houver essa movimentação financeira vinculada.
+      const includedChargeIds = rows.filter(r => selected.has(r.id)).map(r => r.id);
+      if (includedChargeIds.length > 0) {
+        await supabase.from('quote_charges' as any).update({ sent_in_debit_note_id: (dn as any).id }).in('id', includedChargeIds);
+      }
 
       // Cria Conta a Receber no Financeiro
       await supabase.from('accounts_receivable' as any).insert({

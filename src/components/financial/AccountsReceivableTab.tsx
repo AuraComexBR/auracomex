@@ -24,7 +24,7 @@ type AR = {
   description: string;
   currency: string;
   amount: number;
-  due_date: string;
+  due_date: string | null;
   status: 'aberto' | 'recebido' | 'atrasado' | 'cancelado';
   received_at: string | null;
   receipt_reference: string | null;
@@ -38,6 +38,11 @@ const STATUS_COLOR: Record<string, string> = {
   recebido: 'bg-emerald-500/20 text-emerald-300',
   atrasado: 'bg-red-500/20 text-red-300',
   cancelado: 'bg-muted text-muted-foreground',
+};
+const SOURCE_LABEL: Record<string, string> = {
+  debit_note: 'Nota de Débito',
+  manual: 'Manual',
+  storage_fee: 'Rebate de Armazenagem',
 };
 
 export default function AccountsReceivableTab() {
@@ -80,8 +85,7 @@ export default function AccountsReceivableTab() {
 
   const today = startOfDay(new Date());
   const enriched = rows.map((r) => {
-    const due = new Date(r.due_date);
-    const overdue = r.status === 'aberto' && isBefore(due, today);
+    const overdue = r.status === 'aberto' && !!r.due_date && isBefore(new Date(r.due_date), today);
     return { ...r, status: overdue ? ('atrasado' as const) : r.status };
   });
 
@@ -96,7 +100,7 @@ export default function AccountsReceivableTab() {
       else if (r.status === 'atrasado') vencidos += amt;
       else if (r.status === 'aberto') {
         aberto += amt;
-        if (isBefore(new Date(r.due_date), in7)) aVencer += amt;
+        if (r.due_date && isBefore(new Date(r.due_date), in7)) aVencer += amt;
       }
     }
     return { vencidos, aVencer, recebidos, aberto };
@@ -138,7 +142,7 @@ export default function AccountsReceivableTab() {
 
       <Card className="glass">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Contas a Receber</CardTitle>
+          <CardTitle className="text-base">Valores a Receber</CardTitle>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -170,7 +174,7 @@ export default function AccountsReceivableTab() {
               <TableBody>
                 {filtered.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="text-xs uppercase text-muted-foreground">{r.source}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{SOURCE_LABEL[r.source] || r.source}</TableCell>
                     <TableCell>{r.description}</TableCell>
                     <TableCell>{r.client_id ? clientMap.get(r.client_id) ?? '—' : '—'}</TableCell>
                     <TableCell>
@@ -182,7 +186,9 @@ export default function AccountsReceivableTab() {
                         <Badge variant="secondary" className="bg-muted text-muted-foreground text-xs">—</Badge>
                       )}
                     </TableCell>
-                    <TableCell>{format(new Date(r.due_date), 'dd/MM/yyyy')}</TableCell>
+                    <TableCell>
+                      {r.due_date ? format(new Date(r.due_date), 'dd/MM/yyyy') : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {r.currency} {Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </TableCell>

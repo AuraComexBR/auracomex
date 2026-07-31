@@ -59,6 +59,14 @@ function planShipmentsLimit(sub: any): number | null {
   return PLAN_SHIPMENTS_DEFAULT[sub.plan] ?? null;
 }
 
+// Limite efetivo já somando o bônus de cortesia (embarques extras concedidos manualmente
+// pelo superadmin), usado no mesmo cálculo que o app aplica na hora de bloquear conversão.
+function planEffectiveShipmentsLimit(sub: any): number | null {
+  const base = planShipmentsLimit(sub);
+  if (base == null) return null;
+  return base + (sub?.bonus_shipments || 0);
+}
+
 function formatCnpj(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 14);
   return digits
@@ -82,7 +90,7 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
   const [planFilter, setPlanFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [editTarget, setEditTarget] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({ plan: 'starter', status: 'trial', seatsLimit: '', shipmentsLimit: '' });
+  const [editForm, setEditForm] = useState({ plan: 'starter', status: 'trial', seatsLimit: '', shipmentsLimit: '', bonusShipments: '' });
   const [editAddons, setEditAddons] = useState<Record<AddonKey, boolean>>({} as Record<AddonKey, boolean>);
   const [saving, setSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -161,6 +169,7 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
       status: row.sub?.status || 'trial',
       seatsLimit: row.sub?.seats_limit != null ? String(row.sub.seats_limit) : '',
       shipmentsLimit: row.sub?.shipments_limit != null ? String(row.sub.shipments_limit) : '',
+      bonusShipments: row.sub?.bonus_shipments ? String(row.sub.bonus_shipments) : '',
     });
     const addonState = {} as Record<AddonKey, boolean>;
     ADDON_KEYS.forEach((k) => { addonState[k] = row.addons?.has(k) || false; });
@@ -177,6 +186,7 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
         status: editForm.status,
         seats_limit: editForm.seatsLimit.trim() === '' ? null : parseInt(editForm.seatsLimit, 10),
         shipments_limit: editForm.shipmentsLimit.trim() === '' ? null : parseInt(editForm.shipmentsLimit, 10),
+        bonus_shipments: editForm.bonusShipments.trim() === '' ? 0 : (parseInt(editForm.bonusShipments, 10) || 0),
         updated_at: new Date().toISOString(),
       };
       const { error } = await supabase
@@ -284,7 +294,10 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
                         </button>
                       </TableCell>
                       <TableCell>
-                        {row.shipmentsThisMonth}{planShipmentsLimit(sub) != null ? ` / ${planShipmentsLimit(sub)}` : ' / ∞'}
+                        {row.shipmentsThisMonth}{planEffectiveShipmentsLimit(sub) != null ? ` / ${planEffectiveShipmentsLimit(sub)}` : ' / ∞'}
+                        {sub?.bonus_shipments > 0 && (
+                          <span className="ml-1 text-xs text-primary" title="Embarques bônus de cortesia">(+{sub.bonus_shipments})</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm">
                         {sub?.mrr_cents ? fmtBRL(sub.mrr_cents) : '—'}
@@ -377,8 +390,22 @@ export function CompanyPlansTable({ resettingPassword, onAccess, onEdit, onDelet
             )}
             <p className="text-xs text-muted-foreground">
               Embarques/mês: segue automaticamente o padrão do plano selecionado acima (Básico: 30, Professional: 100,
-              Business: ilimitado). Não precisa preencher nada aqui.
+              Business: ilimitado).
             </p>
+            <div className="space-y-2">
+              <Label>Embarques bônus (cortesia extra)</Label>
+              <Input
+                type="number"
+                min={0}
+                placeholder="0"
+                value={editForm.bonusShipments}
+                onChange={(e) => setEditForm({ ...editForm, bonusShipments: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Quantidade extra de embarques somada ao limite do plano nesse mês, pra empresa não perder um processo
+                já preenchido quando estourar o limite normal. Ex: plano Básico (30) + 5 aqui = 35 liberados.
+              </p>
+            </div>
 
             <div className="space-y-2 border-t pt-3">
               <Label>Add-ons</Label>

@@ -776,6 +776,7 @@ export type Database = {
       }
       company_subscriptions: {
         Row: {
+          bonus_shipments: number
           company_id: string
           created_at: string
           current_period_end: string | null
@@ -791,6 +792,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bonus_shipments?: number
           company_id: string
           created_at?: string
           current_period_end?: string | null
@@ -806,6 +808,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bonus_shipments?: number
           company_id?: string
           created_at?: string
           current_period_end?: string | null
@@ -1812,6 +1815,7 @@ export type Database = {
           buy_actual_confirmed_by: string | null
           buy_amount: number | null
           buy_amount_actual: number | null
+          buy_paid_at: string | null
           buy_variance_note: string | null
           buy_variance_reason: string | null
           charge_catalog_id: string | null
@@ -1828,6 +1832,7 @@ export type Database = {
           percent_base_charge_ids: string[] | null
           quote_id: string
           sell_amount: number | null
+          sent_in_debit_note_id: string | null
         }
         Insert: {
           aduaneira?: boolean
@@ -1836,6 +1841,7 @@ export type Database = {
           buy_actual_confirmed_by?: string | null
           buy_amount?: number | null
           buy_amount_actual?: number | null
+          buy_paid_at?: string | null
           buy_variance_note?: string | null
           buy_variance_reason?: string | null
           charge_catalog_id?: string | null
@@ -1852,6 +1858,7 @@ export type Database = {
           percent_base_charge_ids?: string[] | null
           quote_id: string
           sell_amount?: number | null
+          sent_in_debit_note_id?: string | null
         }
         Update: {
           aduaneira?: boolean
@@ -1860,6 +1867,7 @@ export type Database = {
           buy_actual_confirmed_by?: string | null
           buy_amount?: number | null
           buy_amount_actual?: number | null
+          buy_paid_at?: string | null
           buy_variance_note?: string | null
           buy_variance_reason?: string | null
           charge_catalog_id?: string | null
@@ -1876,6 +1884,7 @@ export type Database = {
           percent_base_charge_ids?: string[] | null
           quote_id?: string
           sell_amount?: number | null
+          sent_in_debit_note_id?: string | null
         }
         Relationships: [
           {
@@ -2397,6 +2406,7 @@ export type Database = {
           shipper_id: string | null
           status: Database["public"]["Enums"]["shipment_status"]
           transport_mode: Database["public"]["Enums"]["transport_mode"]
+          transshipment: string | null
           updated_at: string
           vessel_flight: string | null
           volume_cbm: number | null
@@ -2442,6 +2452,7 @@ export type Database = {
           shipper_id?: string | null
           status?: Database["public"]["Enums"]["shipment_status"]
           transport_mode?: Database["public"]["Enums"]["transport_mode"]
+          transshipment?: string | null
           updated_at?: string
           vessel_flight?: string | null
           volume_cbm?: number | null
@@ -2487,6 +2498,7 @@ export type Database = {
           shipper_id?: string | null
           status?: Database["public"]["Enums"]["shipment_status"]
           transport_mode?: Database["public"]["Enums"]["transport_mode"]
+          transshipment?: string | null
           updated_at?: string
           vessel_flight?: string | null
           volume_cbm?: number | null
@@ -2848,6 +2860,7 @@ export type Database = {
         | "customs_declaration"
         | "insurance"
         | "other"
+        | "debit_note_supplier"
       invoice_status_type: "pending" | "invoiced" | "paid"
       notification_type:
         | "deadline_warning"
@@ -3065,6 +3078,7 @@ export const Constants = {
         "customs_declaration",
         "insurance",
         "other",
+        "debit_note_supplier",
       ],
       invoice_status_type: ["pending", "invoiced", "paid"],
       notification_type: [

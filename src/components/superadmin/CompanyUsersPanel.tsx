@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { ROLE_LABELS } from '@/hooks/usePermissions';
-import { Loader2, UserPlus, Mail, Power, PowerOff } from 'lucide-react';
+import { Loader2, UserPlus, Mail, Power, PowerOff, KeyRound, Copy, Check } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -34,6 +34,10 @@ export function CompanyUsersPanel({ companyId }: CompanyUsersPanelProps) {
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [form, setForm] = useState({ fullName: '', email: '', role: 'admin' as AppRole });
+  const [tempPwTarget, setTempPwTarget] = useState<{ user_id: string; full_name: string } | null>(null);
+  const [tempPwResult, setTempPwResult] = useState<string | null>(null);
+  const [settingTempPw, setSettingTempPw] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['company-users-admin', companyId],
@@ -113,6 +117,30 @@ export function CompanyUsersPanel({ companyId }: CompanyUsersPanelProps) {
     } finally {
       setSending(false);
     }
+  }
+
+  async function handleSetTempPassword() {
+    if (!tempPwTarget) return;
+    setSettingTempPw(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-user', {
+        body: { action: 'set_temp_password', user_id: tempPwTarget.user_id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setTempPwResult(data.temp_password);
+    } catch (err: any) {
+      toast.error(err.message);
+      setTempPwTarget(null);
+    } finally {
+      setSettingTempPw(false);
+    }
+  }
+
+  function closeTempPwDialog() {
+    setTempPwTarget(null);
+    setTempPwResult(null);
+    setCopied(false);
   }
 
   async function handleToggleActive(userId: string, nextActive: boolean) {
@@ -205,6 +233,15 @@ export function CompanyUsersPanel({ companyId }: CompanyUsersPanelProps) {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="shrink-0"
+            title="Definir senha temporária"
+            onClick={() => setTempPwTarget({ user_id: u.user_id, full_name: u.full_name })}
+          >
+            <KeyRound className="w-4 h-4 text-amber-500" />
+          </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
@@ -235,6 +272,60 @@ export function CompanyUsersPanel({ companyId }: CompanyUsersPanelProps) {
           </AlertDialog>
         </div>
       ))}
+
+      <AlertDialog open={!!tempPwTarget} onOpenChange={(o) => !o && closeTempPwDialog()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {tempPwResult ? 'Senha temporária gerada' : 'Definir senha temporária?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              {tempPwResult ? (
+                <div className="space-y-3">
+                  <p>
+                    Passe essa senha para <strong>{tempPwTarget?.full_name}</strong> (por telefone, WhatsApp etc).
+                    Ela será obrigada a trocar a senha assim que fizer login.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 rounded-md bg-muted px-3 py-2 text-base font-mono tracking-wider text-foreground">
+                      {tempPwResult}
+                    </code>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(tempPwResult);
+                        setCopied(true);
+                        toast.success('Senha copiada');
+                      }}
+                    >
+                      {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <span>
+                  Isso substitui a senha atual de <strong>{tempPwTarget?.full_name}</strong> por uma senha temporária,
+                  que ela deverá trocar no próximo login. Use quando o email de redefinição de senha não estiver chegando.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            {tempPwResult ? (
+              <AlertDialogAction onClick={closeTempPwDialog}>Concluído</AlertDialogAction>
+            ) : (
+              <>
+                <AlertDialogCancel onClick={closeTempPwDialog}>Cancelar</AlertDialogCancel>
+                <Button onClick={handleSetTempPassword} disabled={settingTempPw}>
+                  {settingTempPw ? 'Gerando...' : 'Gerar senha temporária'}
+                </Button>
+              </>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

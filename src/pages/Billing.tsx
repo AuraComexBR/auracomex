@@ -168,7 +168,12 @@ export default function Billing() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
           <UsageStat icon={Users} label="Usuários" value={usage?.users ?? 0} limit={sub.seatsLimit} />
-          <UsageStat icon={Ship} label="Embarques este mês" value={usage?.shipmentsThisMonth ?? 0} limit={sub.shipmentsLimit} />
+          <UsageStat
+            icon={Ship}
+            label={sub.bonusShipments > 0 ? `Embarques este mês (+${sub.bonusShipments} cortesia)` : 'Embarques este mês'}
+            value={usage?.shipmentsThisMonth ?? 0}
+            limit={sub.effectiveShipmentsLimit}
+          />
           <div className="text-sm">
             <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">
               {sub.status === 'trial' ? 'Trial termina em' : 'Próximo ciclo'}

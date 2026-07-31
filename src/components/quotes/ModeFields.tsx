@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Package, Pencil, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Package, Pencil, AlertTriangle, ChevronUp, Loader2 } from 'lucide-react';
 
 // Module-level cache for NCM descriptions (code -> description)
 const ncmDescCache = new Map<string, string>();
@@ -132,6 +132,8 @@ interface ModeFieldsProps {
   items: CargoItem[];
   onChange: (items: CargoItem[]) => void;
   readOnly?: boolean;
+  /** Mostra um indicador de "salvando" ao lado do item em edição (auto-save). */
+  saving?: boolean;
 }
 
 const CONTAINER_TYPES = ['20GP', '20HC', '40GP', '40HC', '40NOR', '20RF', '40RF', '20OT', '40OT', '20FR', '40FR'];
@@ -252,7 +254,12 @@ export function calcItemCbm(item: CargoItem): number {
 export function getEffectiveVolume(item: CargoItem): number {
   const computed = calcItemCbm(item);
   if (computed > 0) return computed;
-  return parseFloat(item.volume_cbm) || 0;
+  // Cubagem manual (sem L/W/H): mesma regra do peso — o valor digitado é "por
+  // volume", então quando há mais de 1 volume (Volumes/packages >= 2) o total
+  // precisa multiplicar pela quantidade, senão a cubagem total fica subestimada.
+  const manual = parseFloat(item.volume_cbm) || 0;
+  const pkgs = parseInt(item.packages) || 1;
+  return pkgs >= 2 ? manual * pkgs : manual;
 }
 
 /** Total weight for an item: weight_per_volume × packages (when packages >= 2) */
@@ -302,220 +309,249 @@ function itemSubtitle(item: CargoItem, mode: string): string {
   return parts.length > 0 ? parts.join(' · ') : 'Sem detalhes preenchidos';
 }
 
-export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps) {
+function isEmptyCargoItem(it: CargoItem, showContainers: boolean): boolean {
+  if (showContainers && (it.container_qty > 1 || (it.container_type && it.container_type !== '20GP'))) return false;
+  return !it.weight_kg && !it.volume_cbm && !it.packages && !it.ncm_code && !it.commodity &&
+    !it.cargo_value && !it.notes && !it.length_cm && !it.width_cm && !it.height_cm &&
+    !it.vehicle_type && !it.dangerous_goods && !it.container_number;
+}
+
+export function ModeFields({ mode, items, onChange, readOnly, saving }: ModeFieldsProps) {
   const { t } = useLanguage();
-  const [formOpen, setFormOpen] = useState(false);
+  // null = nenhuma linha expandida; >=0 = editando/preenchendo items[idx]
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [draft, setDraft] = useState<CargoItem>({ ...emptyCargoItem });
-
-  const patchDraft = (patch: Partial<CargoItem>) => setDraft((d) => ({ ...d, ...patch }));
-
-  const openAddDialog = () => {
-    if (readOnly) return;
-    setDraft({ ...emptyCargoItem });
-    setEditingIndex(null);
-    setFormOpen(true);
-  };
-
-  const openEditDialog = (idx: number) => {
-    if (readOnly) return;
-    setDraft({ ...items[idx] });
-    setEditingIndex(idx);
-    setFormOpen(true);
-  };
-
-  const handleSave = () => {
-    if (editingIndex === null) {
-      onChange([...items, draft]);
-    } else {
-      onChange(items.map((it, i) => (i === editingIndex ? draft : it)));
-    }
-    setFormOpen(false);
-  };
-
-  const removeItem = (index: number) => {
-    if (readOnly) return;
-    onChange(items.filter((_, i) => i !== index));
-  };
 
   const showContainers = mode === 'ocean_fcl' || mode === 'multimodal';
   const showDimensions = mode !== 'ocean_fcl';
   const showVehicle = mode === 'road';
 
+  // Sem botão "Salvar": qualquer alteração já grava direto na lista de itens.
+  const updateItem = (idx: number, patch: Partial<CargoItem>) => {
+    onChange(items.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  };
+
+  const openAddInline = () => {
+    if (readOnly) return;
+    const next = [...items, { ...emptyCargoItem }];
+    onChange(next);
+    setEditingIndex(next.length - 1);
+  };
+
+  const openEditInline = (idx: number) => {
+    if (readOnly) return;
+    setEditingIndex(idx);
+  };
+
+  // Fecha a linha em edição. Se o item ficou vazio (usuário abriu "Adicionar
+  // Carga" e não preencheu nada), remove — não faz sentido guardar item em branco.
+  const collapseInline = (idx: number) => {
+    const it = items[idx];
+    if (it && isEmptyCargoItem(it, showContainers)) {
+      onChange(items.filter((_, i) => i !== idx));
+    }
+    setEditingIndex(null);
+  };
+
+  const removeItem = (index: number) => {
+    if (readOnly) return;
+    onChange(items.filter((_, i) => i !== index));
+    if (editingIndex === index) setEditingIndex(null);
+  };
+
   const totalCbm = items.reduce((s, i) => s + getEffectiveVolume(i), 0);
   const totalWeight = items.reduce((s, i) => s + calcItemWeight(i), 0);
   const totalChargeable = calcChargeableWeight(items, mode);
 
-  if (formOpen) {
+  // Formulário compacto, renderizado inline dentro da própria linha do item.
+  // IMPORTANTE: isso é uma função comum que retorna JSX (não um componente
+  // React separado) — se fosse um componente `<InlineForm/>` declarado aqui
+  // dentro, ele seria recriado a cada digitação (novo tipo a cada render) e
+  // o React remontaria o formulário inteiro, fazendo o campo perder o foco
+  // a cada letra digitada.
+  const renderInlineForm = (idx: number) => {
+    const item = items[idx];
+    const fieldLabelCls = "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 pb-1">
-          <span className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary">
-            <Package className="w-4 h-4" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold leading-tight">{editingIndex === null ? 'Adicionar Carga' : 'Editar Carga'}</p>
-            <p className="text-xs text-muted-foreground">Preencha os dados físicos da carga usados para cotar o frete.</p>
+      <div className="rounded-lg border-2 border-primary/40 bg-primary/5 p-3 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold text-primary uppercase tracking-wide">Editando item</p>
+            {saving && <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />}
           </div>
+          <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Recolher item" onClick={() => collapseInline(idx)}>
+            <ChevronUp className="w-3.5 h-3.5" />
+          </Button>
         </div>
 
-        <div className="space-y-3.5">
-          {/* Container */}
-          {showContainers && (
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.container_type')}</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <Select value={draft.container_type} onValueChange={(v) => patchDraft({ container_type: v })}>
-                  <SelectTrigger><SelectValue placeholder="20GP" /></SelectTrigger>
-                  <SelectContent>
-                    {CONTAINER_TYPES.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  inputMode="numeric"
-                  placeholder="Quantidade"
-                  value={draft.container_qty}
-                  onChange={(e) => patchDraft({ container_qty: parseInt(e.target.value) || 1 })}
-                />
-              </div>
-              {CONTAINER_SPECS[draft.container_type] && (
-                <div className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5 flex gap-4">
-                  <span>⚖️ Máx: <strong>{CONTAINER_SPECS[draft.container_type].maxWeight.toLocaleString()} kg</strong></span>
-                  <span>📦 Máx: <strong>{CONTAINER_SPECS[draft.container_type].maxVolume} m³</strong></span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Weight, Volume & Cargo Value */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {(parseInt(draft.packages) || 0) >= 2
-                  ? `${t('quotes.weight_kg')} por Volume`
-                  : t('quotes.weight_kg')}
-              </Label>
+        {/* Container (só FCL/multimodal) */}
+        {showContainers && (
+          <div className="space-y-1.5">
+            <Label className={fieldLabelCls}>{t('quotes.container_type')}</Label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <Select value={item.container_type} onValueChange={(v) => updateItem(idx, { container_type: v })}>
+                <SelectTrigger><SelectValue placeholder="20GP" /></SelectTrigger>
+                <SelectContent>
+                  {CONTAINER_TYPES.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
-                inputMode="decimal"
-                placeholder={showContainers && CONTAINER_SPECS[draft.container_type] ? `Máx ${CONTAINER_SPECS[draft.container_type].maxWeight.toLocaleString()}` : '0'}
-                value={draft.weight_kg}
-                onChange={(e) => patchDraft({ weight_kg: e.target.value })}
+                inputMode="numeric"
+                placeholder="Quantidade"
+                value={item.container_qty}
+                onChange={(e) => updateItem(idx, { container_qty: parseInt(e.target.value) || 1 })}
               />
             </div>
+            {CONTAINER_SPECS[item.container_type] && (
+              <div className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5 flex gap-4">
+                <span>⚖️ Máx: <strong>{CONTAINER_SPECS[item.container_type].maxWeight.toLocaleString()} kg</strong></span>
+                <span>📦 Máx: <strong>{CONTAINER_SPECS[item.container_type].maxVolume} m³</strong></span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Vehicle type (só Rodoviário) */}
+        {showVehicle && (
+          <div className="space-y-1.5">
+            <Label className={fieldLabelCls}>{t('quotes.vehicle_type')}</Label>
+            <Select value={item.vehicle_type} onValueChange={(v) => updateItem(idx, { vehicle_type: v })}>
+              <SelectTrigger><SelectValue placeholder={t('quotes.vehicle_type')} /></SelectTrigger>
+              <SelectContent>
+                {VEHICLE_TYPES.map((v) => (
+                  <SelectItem key={v} value={v}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Linha 1: Comprimento - Largura - Altura */}
+        {showDimensions && (
+          <div className="grid grid-cols-3 gap-2.5">
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.volume_cbm')}</Label>
-              {(() => {
-                const computed = calcItemCbm(draft);
-                const displayValue = computed > 0 ? computed.toFixed(4) : draft.volume_cbm;
-                const isComputed = computed > 0;
-                return (
-                  <Input
-                    inputMode="decimal"
-                    placeholder="0"
-                    value={displayValue}
-                    readOnly={isComputed}
-                    className={isComputed ? 'bg-muted/50' : ''}
-                    onChange={(e) => {
-                      if (!isComputed) patchDraft({ volume_cbm: e.target.value });
-                    }}
-                  />
-                );
-              })()}
+              <Label className={fieldLabelCls}>{t('quotes.length_cm')}</Label>
+              <Input inputMode="decimal" placeholder="0" value={item.length_cm} onChange={(e) => updateItem(idx, { length_cm: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Valor da Carga</Label>
-              <div className="flex gap-1.5">
-                <Select value={draft.cargo_value_currency || 'USD'} onValueChange={(v) => patchDraft({ cargo_value_currency: v })}>
-                  <SelectTrigger className="w-20 shrink-0"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {['USD', 'BRL', 'EUR', 'GBP', 'CNY'].map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input inputMode="decimal" placeholder="0.00" value={draft.cargo_value} onChange={(e) => patchDraft({ cargo_value: e.target.value })} />
-              </div>
+              <Label className={fieldLabelCls}>{t('quotes.width_cm')}</Label>
+              <Input inputMode="decimal" placeholder="0" value={item.width_cm} onChange={(e) => updateItem(idx, { width_cm: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className={fieldLabelCls}>{t('quotes.height_cm')}</Label>
+              <Input inputMode="decimal" placeholder="0" value={item.height_cm} onChange={(e) => updateItem(idx, { height_cm: e.target.value })} />
             </div>
           </div>
+        )}
 
-          {/* Dimensions – LCL, Air, Road, Multimodal */}
-          {showDimensions && (
+        {/* Linha 2: Quantidade - Peso - Cubagem */}
+        <div className="grid grid-cols-3 gap-2.5">
+          {mode !== 'ocean_fcl' && (
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dimensões (cm)</Label>
-              <div className="grid grid-cols-3 gap-3">
-                <Input inputMode="decimal" placeholder={t('quotes.length_cm')} value={draft.length_cm} onChange={(e) => patchDraft({ length_cm: e.target.value })} />
-                <Input inputMode="decimal" placeholder={t('quotes.width_cm')} value={draft.width_cm} onChange={(e) => patchDraft({ width_cm: e.target.value })} />
-                <Input inputMode="decimal" placeholder={t('quotes.height_cm')} value={draft.height_cm} onChange={(e) => patchDraft({ height_cm: e.target.value })} />
-              </div>
+              <Label className={fieldLabelCls}>{t('quotes.packages')}</Label>
+              <Input inputMode="numeric" placeholder="1" value={item.packages} onChange={(e) => updateItem(idx, { packages: e.target.value })} />
             </div>
           )}
-
-          {/* Vehicle type & Packages */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {showVehicle && (
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.vehicle_type')}</Label>
-                <Select value={draft.vehicle_type} onValueChange={(v) => patchDraft({ vehicle_type: v })}>
-                  <SelectTrigger><SelectValue placeholder={t('quotes.vehicle_type')} /></SelectTrigger>
-                  <SelectContent>
-                    {VEHICLE_TYPES.map((v) => (
-                      <SelectItem key={v} value={v}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {mode !== 'ocean_fcl' && (
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.packages')}</Label>
-                <Input inputMode="numeric" placeholder="0" value={draft.packages} onChange={(e) => patchDraft({ packages: e.target.value })} />
-              </div>
-            )}
-          </div>
-
-          {/* NCM */}
-          <NcmField
-            value={draft.ncm_code}
-            description={draft.commodity}
-            onCodeChange={(code, desc) => patchDraft({ ncm_code: code, commodity: desc })}
-          />
-
-          {/* Dangerous goods */}
-          <label className="flex items-center gap-2 rounded-lg border p-2.5 cursor-pointer select-none hover:bg-accent/40 transition-colors">
-            <Checkbox
-              checked={draft.dangerous_goods}
-              onCheckedChange={(v) => patchDraft({ dangerous_goods: !!v })}
-            />
-            <span className="text-sm">{t('quotes.dangerous_goods')}</span>
-          </label>
-
-          {/* Notes / Observações */}
           <div className="space-y-1.5">
-            <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Observações</Label>
-            <Input placeholder="Detalhes adicionais da carga..." value={draft.notes} onChange={(e) => patchDraft({ notes: e.target.value })} />
+            <Label className={fieldLabelCls}>
+              {(parseInt(item.packages) || 0) >= 2 ? `${t('quotes.weight_kg')}/vol.` : t('quotes.weight_kg')}
+            </Label>
+            <Input
+              inputMode="decimal"
+              placeholder={showContainers && CONTAINER_SPECS[item.container_type] ? `Máx ${CONTAINER_SPECS[item.container_type].maxWeight.toLocaleString()}` : '0'}
+              value={item.weight_kg}
+              onChange={(e) => updateItem(idx, { weight_kg: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className={fieldLabelCls}>{t('quotes.volume_cbm')}</Label>
+            {(() => {
+              const computed = calcItemCbm(item);
+              const displayValue = computed > 0 ? computed.toFixed(4) : item.volume_cbm;
+              const isComputed = computed > 0;
+              return (
+                <Input
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={displayValue}
+                  readOnly={isComputed}
+                  className={isComputed ? 'bg-muted/50' : ''}
+                  onChange={(e) => {
+                    if (!isComputed) updateItem(idx, { volume_cbm: e.target.value });
+                  }}
+                />
+              );
+            })()}
           </div>
         </div>
 
-        <div className="flex justify-between pt-1 border-t mt-4 pt-3">
-          <Button type="button" variant="ghost" onClick={() => setFormOpen(false)}>{t('common.cancel')}</Button>
-          <Button type="button" onClick={handleSave}>
-            {editingIndex === null ? 'Adicionar' : 'Salvar'}
-          </Button>
+        {/* Linha 3: Moeda/Valor da Carga - NCM - Carga Perigosa */}
+        <div className="grid grid-cols-3 gap-2.5 items-start">
+          <div className="space-y-1.5">
+            <Label className={fieldLabelCls}>Valor da Carga</Label>
+            <div className="flex gap-1.5">
+              <Select value={item.cargo_value_currency || 'USD'} onValueChange={(v) => updateItem(idx, { cargo_value_currency: v })}>
+                <SelectTrigger className="w-16 shrink-0 px-2"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {['USD', 'BRL', 'EUR', 'GBP', 'CNY'].map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input inputMode="decimal" placeholder="0.00" value={item.cargo_value} onChange={(e) => updateItem(idx, { cargo_value: e.target.value })} />
+            </div>
+          </div>
+          <NcmField
+            value={item.ncm_code}
+            description={item.commodity}
+            onCodeChange={(code, desc) => updateItem(idx, { ncm_code: code, commodity: desc })}
+          />
+          <div className="space-y-1.5">
+            <Label className={fieldLabelCls}>{t('quotes.dangerous_goods')}</Label>
+            <label className="flex items-center gap-2 rounded-md border h-10 px-2.5 cursor-pointer select-none hover:bg-accent/40 transition-colors bg-background">
+              <Checkbox
+                checked={item.dangerous_goods}
+                onCheckedChange={(v) => updateItem(idx, { dangerous_goods: !!v })}
+              />
+              <span className="text-sm">IMO</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Notes / Observações */}
+        <div className="space-y-1.5">
+          <Label className={fieldLabelCls}>Observações</Label>
+          <Input placeholder="Detalhes adicionais da carga..." value={item.notes} onChange={(e) => updateItem(idx, { notes: e.target.value })} />
         </div>
       </div>
     );
-  }
+  };
 
   return (
     <div className="space-y-4">
-      {/* Add item button — no topo, mesmo padrão do botão "Adicionar Taxa" */}
-      {!readOnly && (
-        <Button type="button" size="sm" className="gap-2" onClick={openAddDialog}>
-          <Plus className="w-4 h-4" /> Adicionar Carga
-        </Button>
-      )}
+      {/* Totais calculados + botão Adicionar, na mesma linha */}
+      <div className="flex items-center justify-between gap-3 flex-wrap rounded-lg border bg-muted/20 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm min-h-[20px]">
+          {items.length > 0 ? (
+            <>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.totals')}</span>
+              <span>{t('quotes.weight_kg')}: <strong className="font-mono">{totalWeight.toFixed(2)}</strong></span>
+              <span>{t('quotes.total_cbm')}: <strong className="font-mono">{totalCbm.toFixed(4)}</strong> m³</span>
+              {(mode === 'air' || mode === 'ocean_lcl') && (
+                <span>{t('quotes.total_chargeable')}: <strong className="font-mono">{totalChargeable.toFixed(2)}</strong> kg</span>
+              )}
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">Nenhuma carga adicionada ainda</span>
+          )}
+        </div>
+        {!readOnly && editingIndex === null && (
+          <Button type="button" size="sm" className="gap-2 shrink-0" onClick={openAddInline}>
+            <Plus className="w-4 h-4" /> Adicionar Carga
+          </Button>
+        )}
+      </div>
 
       {/* Lista organizada dos itens */}
       <div className="space-y-2">
@@ -525,57 +561,46 @@ export function ModeFields({ mode, items, onChange, readOnly }: ModeFieldsProps)
           </div>
         ) : (
           items.map((item, idx) => (
-            <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-secondary/50">
-              <button
-                type="button"
-                onClick={() => openEditDialog(idx)}
-                disabled={readOnly}
-                className="flex-1 min-w-0 flex items-center gap-3 text-left disabled:cursor-default"
-              >
-                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary shrink-0">
-                  <Package className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-sm font-medium truncate">{itemTitle(item, mode)}</p>
-                    {item.dangerous_goods && (
-                      <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-destructive/40 text-destructive gap-0.5">
-                        <AlertTriangle className="w-2.5 h-2.5" /> IMO
-                      </Badge>
-                    )}
+            editingIndex === idx ? (
+              <div key={idx}>{renderInlineForm(idx)}</div>
+            ) : (
+              <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-secondary/50">
+                <button
+                  type="button"
+                  onClick={() => openEditInline(idx)}
+                  disabled={readOnly}
+                  className="flex-1 min-w-0 flex items-center gap-3 text-left disabled:cursor-default"
+                >
+                  <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary shrink-0">
+                    <Package className="w-4 h-4" />
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">{itemSubtitle(item, mode)}</p>
-                </div>
-              </button>
-              {!readOnly && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(idx)}>
-                    <Pencil className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeItem(idx)}>
-                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                  </Button>
-                </div>
-              )}
-            </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-sm font-medium truncate">{itemTitle(item, mode)}</p>
+                      {item.dangerous_goods && (
+                        <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-destructive/40 text-destructive gap-0.5">
+                          <AlertTriangle className="w-2.5 h-2.5" /> IMO
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{itemSubtitle(item, mode)}</p>
+                  </div>
+                </button>
+                {!readOnly && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditInline(idx)}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeItem(idx)}>
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )
           ))
         )}
       </div>
-
-      {/* Totals */}
-      {items.length > 0 && (
-        <div className="rounded-lg border bg-muted/20 px-3 py-2.5 space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t('quotes.totals')}</p>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <span>{t('quotes.weight_kg')}: <strong className="font-mono">{totalWeight.toFixed(2)}</strong></span>
-            <span>{t('quotes.total_cbm')}: <strong className="font-mono">{totalCbm.toFixed(4)}</strong> m³</span>
-            {(mode === 'air' || mode === 'ocean_lcl') && (
-              <span>{t('quotes.total_chargeable')}: <strong className="font-mono">{totalChargeable.toFixed(2)}</strong> kg</span>
-            )}
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }

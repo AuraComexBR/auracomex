@@ -18,9 +18,9 @@ export default function Financial() {
       <Tabs value={active} onValueChange={(v) => setParams({ tab: v }, { replace: true })} className="space-y-4">
         <TabsList>
           <TabsTrigger value="geral">Visão Geral</TabsTrigger>
-          <TabsTrigger value="receber">Contas a Receber</TabsTrigger>
-          <TabsTrigger value="pagar">Por Processo</TabsTrigger>
-          <TabsTrigger value="fixas">Contas Fixas</TabsTrigger>
+          <TabsTrigger value="receber">Valores a Receber</TabsTrigger>
+          <TabsTrigger value="pagar">Valores a Pagar</TabsTrigger>
+          <TabsTrigger value="fixas">Despesas Gerais da Empresa</TabsTrigger>
         </TabsList>
         <TabsContent value="geral"><OverviewTab /></TabsContent>
         <TabsContent value="receber"><AccountsReceivableTab /></TabsContent>

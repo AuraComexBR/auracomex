@@ -85,6 +85,19 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
   const [partnerSearch, setPartnerSearch] = useState('');
   const [showPartnerPicker, setShowPartnerPicker] = useState(false);
 
+  // Diferente da aba Logística, as ações financeiras (add/excluir/verificar
+  // taxa etc.) não tocavam o updated_at do embarque — por isso a lista de
+  // Embarques não refletia essas mudanças como "atividade". Chamado no
+  // onSuccess de cada mutation financeira relevante.
+  async function touchShipmentActivity() {
+    await supabase.from('shipments').update({
+      updated_at: new Date().toISOString(),
+      next_update: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    } as any).eq('id', shipmentId);
+    queryClient.invalidateQueries({ queryKey: ['shipments'] });
+    queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] });
+  }
+
   // Fetch shipment flags
   const { data: shipment } = useQuery({
     queryKey: ['shipment-flags', shipmentId],
@@ -108,6 +121,21 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
         .select('*, clients(name)')
         .eq('shipment_id', shipmentId)
         .order('created_at');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch client name (used to suggest the client as partner on Venda charges)
+  const { data: clientInfo } = useQuery({
+    queryKey: ['shipment-client', clientId],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name, type')
+        .eq('id', clientId as string)
+        .single();
       if (error) throw error;
       return data;
     },
@@ -219,6 +247,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['charge-lines', shipmentId] });
+      touchShipmentActivity();
       setShowAdd(false);
       setForm(EMPTY_FORM);
       setDescSearch('');
@@ -234,6 +263,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['charge-lines', shipmentId] });
+      touchShipmentActivity();
       toast.success(t('common.delete'));
     },
   });
@@ -249,6 +279,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['charge-lines', shipmentId] });
+      touchShipmentActivity();
       toast.success(t('financial.charge_verified'));
     },
   });
@@ -275,7 +306,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shipment-flags', shipmentId] });
-      queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] });
+      touchShipmentActivity();
       toast.success(t('financial.released_success'));
     },
   });
@@ -289,6 +320,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['charge-lines', shipmentId] });
+      touchShipmentActivity();
       toast.success(t('financial.status_updated'));
     },
   });
@@ -327,7 +359,9 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
   const allCurrencies = [...new Set([...Object.keys(payableTotals), ...Object.keys(receivableTotals)])];
 
   const openAdd = (direction: Direction) => {
-    setForm({ ...EMPTY_FORM, direction });
+    // Na Venda, já sugere o cliente do embarque como parceiro padrão da taxa.
+    const defaultPartnerId = direction === 'receivable' && clientId ? clientId : '';
+    setForm({ ...EMPTY_FORM, direction, partner_id: defaultPartnerId });
     setDescSearch('');
     setShowAdd(true);
   };
@@ -417,12 +451,20 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
 
   const showVerificationCols = canVerifyCharges || isFullAccess;
 
-  // Partners for the charge form - only shipment partners
-  const chargePartners = shipmentPartners.map((sp: any) => ({
-    id: sp.clients?.id || sp.client_id,
-    name: sp.clients?.name || 'Unknown',
-    type: sp.clients?.type || 'client',
-  }));
+  // Partners for the charge form: parceiros do processo + o cliente do embarque
+  // (o cliente sempre pode ser escolhido, mesmo que ainda não tenha sido
+  // adicionado explicitamente em "Parceiros do Processo").
+  const chargePartners = (() => {
+    const fromShipmentPartners = shipmentPartners.map((sp: any) => ({
+      id: sp.clients?.id || sp.client_id,
+      name: sp.clients?.name || 'Unknown',
+      type: sp.clients?.type || 'client',
+    }));
+    if (clientInfo && !fromShipmentPartners.some((p: any) => p.id === clientInfo.id)) {
+      return [{ id: clientInfo.id, name: clientInfo.name, type: clientInfo.type || 'client' }, ...fromShipmentPartners];
+    }
+    return fromShipmentPartners;
+  })();
 
   const clientTypeLabel = (type: string) => {
     switch (type) {

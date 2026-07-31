@@ -71,14 +71,33 @@ interface DebitNotesTabProps {
   quoteId: string;
   companyId: string;
   partners: Array<{ id: string; name: string; partner_category?: string | null }>;
+  /** Arquivo já anexado na aba Documentos (categoria "DN Fornecedor") — quando
+   *  presente, abre o formulário de criação automaticamente com o arquivo
+   *  pronto, sem precisar clicar em "Nova Debit Note". */
+  pendingFile?: { path: string; name: string } | null;
+  onPendingFileConsumed?: () => void;
+  /** Esconde o botão manual "Nova Debit Note" — a criação passa a acontecer
+   *  só via anexo na aba Documentos. */
+  hideCreateButton?: boolean;
+  /** Modo somente leitura — usado na aba Documentos: lista informativa, sem
+   *  nenhum botão de ação (nem "Nova Debit Note", nem "Abrir"/"Excluir" por
+   *  linha, nem clique para abrir o detalhe). */
+  readOnly?: boolean;
 }
 
-export function DebitNotesTab({ quoteId, companyId, partners }: DebitNotesTabProps) {
+export function DebitNotesTab({ quoteId, companyId, partners, pendingFile, onPendingFileConsumed, hideCreateButton, readOnly }: DebitNotesTabProps) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [activeDnId, setActiveDnId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  // Documento anexado na aba Documentos com a categoria "DN Fornecedor":
+  // abre o formulário de criação automaticamente, já com o arquivo anexado.
+  useEffect(() => {
+    if (pendingFile) setCreateOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingFile?.path]);
 
   const { data: notes = [], refetch } = useQuery({
     queryKey: ['debit_notes', quoteId],
@@ -149,9 +168,11 @@ export function DebitNotesTab({ quoteId, companyId, partners }: DebitNotesTabPro
           <CardTitle className="text-base flex items-center gap-2">
             <FileText className="w-4 h-4" /> Debit Notes
           </CardTitle>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="w-4 h-4 mr-1" /> Nova Debit Note
-          </Button>
+          {!hideCreateButton && !readOnly && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="w-4 h-4 mr-1" /> Nova Debit Note
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {notes.length === 0 ? (
@@ -169,14 +190,14 @@ export function DebitNotesTab({ quoteId, companyId, partners }: DebitNotesTabPro
                   <TableHead>Vencimento</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  {!readOnly && <TableHead className="text-right">Ações</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {notes.map((n) => {
                   const partner = partners.find((p) => p.id === n.partner_id);
                   return (
-                    <TableRow key={n.id} className="cursor-pointer" onClick={() => setActiveDnId(n.id)}>
+                    <TableRow key={n.id} className={readOnly ? '' : 'cursor-pointer'} onClick={() => !readOnly && setActiveDnId(n.id)}>
                       <TableCell className="font-medium">{n.dn_number}</TableCell>
                       <TableCell>{partner?.name ?? '—'}</TableCell>
                       <TableCell>{n.issue_date ? format(new Date(n.issue_date), 'dd/MM/yyyy') : '—'}</TableCell>
@@ -206,14 +227,16 @@ export function DebitNotesTab({ quoteId, companyId, partners }: DebitNotesTabPro
                           );
                         })()}
                       </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="sm" onClick={() => setActiveDnId(n.id)}>
-                          Abrir
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(n.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
+                      {!readOnly && (
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="sm" onClick={() => setActiveDnId(n.id)}>
+                            Abrir
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(n.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
@@ -225,12 +248,17 @@ export function DebitNotesTab({ quoteId, companyId, partners }: DebitNotesTabPro
 
       <CreateDnDialog
         open={createOpen}
-        onOpenChange={setCreateOpen}
+        onOpenChange={(o) => {
+          setCreateOpen(o);
+          if (!o) onPendingFileConsumed?.();
+        }}
         quoteId={quoteId}
         companyId={companyId}
         partners={partners}
+        presetFile={pendingFile ?? null}
         onCreated={(id) => {
           setCreateOpen(false);
+          onPendingFileConsumed?.();
           refetch();
           setActiveDnId(id);
         }}
@@ -275,6 +303,7 @@ function CreateDnDialog({
   quoteId,
   companyId,
   partners,
+  presetFile,
   onCreated,
 }: {
   open: boolean;
@@ -282,6 +311,9 @@ function CreateDnDialog({
   quoteId: string;
   companyId: string;
   partners: Array<{ id: string; name: string }>;
+  /** Arquivo já anexado via aba Documentos (categoria "DN Fornecedor") —
+   *  quando presente, pula o upload próprio e usa esse arquivo direto. */
+  presetFile?: { path: string; name: string } | null;
   onCreated: (id: string) => void;
 }) {
   const { user } = useAuth();
@@ -321,8 +353,8 @@ function CreateDnDialog({
     }
     setSaving(true);
     try {
-      let file_url: string | null = null;
-      if (file) {
+      let file_url: string | null = presetFile?.path ?? null;
+      if (!presetFile && file) {
         const path = `debit-notes/${quoteId}/${Date.now()}_${file.name}`;
         const { error: upErr } = await supabase.storage.from('shipment-documents').upload(path, file);
         if (upErr) throw upErr;
@@ -406,7 +438,13 @@ function CreateDnDialog({
           </div>
           <div>
             <Label>Arquivo (PDF)</Label>
-            <Input type="file" accept="application/pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            {presetFile ? (
+              <div className="h-10 flex items-center gap-1.5 text-sm text-muted-foreground border rounded-md px-3 bg-muted/30 truncate">
+                <FileText className="w-3.5 h-3.5 shrink-0" /> {presetFile.name}
+              </div>
+            ) : (
+              <Input type="file" accept="application/pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            )}
           </div>
           <div className="col-span-2">
             <Label>Observações</Label>
@@ -762,6 +800,175 @@ function DnDetailDialog({
               </Button>
             </>
           )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Popup de "Enviar DN" acionado a partir do cabeçalho de cada fornecedor na
+ * aba Taxas (lado Compra), depois que todas as taxas daquele fornecedor já
+ * foram conferidas. Sobe o arquivo real da DN pro storage do processo, cria
+ * o registro em `documents` (categoria DN Fornecedor, aparece em Documentos),
+ * a Debit Note já como aprovada (a conferência já aconteceu antes, na aba
+ * Taxas — não faz sentido pedir aprovação de novo aqui) e a conta a pagar no
+ * financeiro, tudo de uma vez. As taxas incluídas ficam marcadas com esta DN
+ * e travadas assim que a conta a pagar for quitada. Nº da DN, moeda e valor
+ * já vêm prontos — o usuário só anexa o arquivo e diz o vencimento.
+ */
+export function SendSupplierDnDialog({
+  open,
+  onOpenChange,
+  quoteId,
+  companyId,
+  partnerId,
+  partnerName,
+  suggestedAmount,
+  suggestedCurrency,
+  chargeIds,
+  onSent,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  quoteId: string;
+  companyId: string;
+  partnerId: string;
+  partnerName: string;
+  /** Soma das taxas já conferidas desse fornecedor — vira o valor da DN. */
+  suggestedAmount: number;
+  suggestedCurrency: string;
+  /** IDs das taxas (quote_charges) incluídas nesta DN — ficam marcadas e,
+   *  quando a conta a pagar for paga, travadas contra reabertura/edição. */
+  chargeIds: string[];
+  onSent?: () => void;
+}) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [dueDate, setDueDate] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setDueDate('');
+      setFile(null);
+    }
+  }, [open]);
+
+  async function handleSave() {
+    if (!file) {
+      toast.error('Anexe o arquivo da DN');
+      return;
+    }
+    setSaving(true);
+    try {
+      const path = `${companyId}/${quoteId}/${Date.now()}_${file.name}`;
+      const { error: upErr } = await supabase.storage.from('shipment-documents').upload(path, file);
+      if (upErr) throw upErr;
+
+      await supabase.from('documents').insert({
+        quote_id: quoteId,
+        company_id: companyId,
+        name: file.name,
+        file_url: path,
+        file_size: file.size,
+        uploaded_by: user?.id,
+        document_type: 'debit_note_supplier' as any,
+      } as any);
+
+      const { data: numData, error: nErr } = await supabase.rpc('next_dn_number' as any, { p_company_id: companyId });
+      if (nErr) throw nErr;
+      const dn_number = numData as unknown as string;
+
+      // Já nasce aprovada — a conferência das taxas já aconteceu na aba Taxas
+      // antes de liberar o botão "Enviar DN".
+      const { data: dnRow, error: dnErr } = await supabase.from('debit_notes' as any).insert({
+        company_id: companyId,
+        quote_id: quoteId,
+        partner_id: partnerId,
+        dn_number,
+        issue_date: format(new Date(), 'yyyy-MM-dd'),
+        due_date: dueDate || null,
+        currency: suggestedCurrency,
+        exchange_rate: 1,
+        total_amount: suggestedAmount,
+        file_url: path,
+        created_by: user?.id,
+        status: 'aprovada',
+        approved_by: user?.id,
+        approved_at: new Date().toISOString(),
+      }).select('id').single();
+      if (dnErr) throw dnErr;
+      const dnId = (dnRow as any).id;
+
+      // Recupera o embarque vinculado (via base_reference da cotação), se houver.
+      const { data: qRef } = await supabase.from('quotes').select('base_reference').eq('id', quoteId).maybeSingle();
+      let shipmentId: string | null = null;
+      if (qRef?.base_reference) {
+        const { data: sh } = await supabase.from('shipments').select('id').eq('reference_number', qRef.base_reference).maybeSingle();
+        shipmentId = sh?.id ?? null;
+      }
+
+      const { error: apErr } = await supabase.from('accounts_payable' as any).insert({
+        company_id: companyId,
+        source: 'debit_note',
+        debit_note_id: dnId,
+        quote_id: quoteId,
+        shipment_id: shipmentId,
+        partner_id: partnerId,
+        description: `Debit Note ${dn_number}`,
+        currency: suggestedCurrency,
+        amount: suggestedAmount,
+        due_date: dueDate || new Date().toISOString().slice(0, 10),
+        status: 'aberto',
+        created_by: user?.id,
+      });
+      if (apErr) throw apErr;
+
+      // Marca as taxas incluídas com esta DN, pra travar depois que a conta a pagar for quitada.
+      if (chargeIds.length > 0) {
+        await supabase.from('quote_charges' as any).update({ sent_in_debit_note_id: dnId }).in('id', chargeIds);
+      }
+
+      qc.invalidateQueries({ queryKey: ['debit_notes', quoteId] });
+      qc.invalidateQueries({ queryKey: ['documents'] });
+      qc.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
+      qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+      toast.success('DN enviada e conta a pagar criada');
+      onOpenChange(false);
+      onSent?.();
+    } catch (e: any) {
+      toast.error('Erro ao enviar DN', { description: e.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !saving && onOpenChange(o)}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Enviar DN — {partnerName}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Arquivo da DN *</Label>
+            <Input type="file" accept="application/pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </div>
+          <div>
+            <Label>Vencimento</Label>
+            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Valor: {suggestedCurrency} {suggestedAmount.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (soma das taxas conferidas)
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            <Upload className="w-4 h-4 mr-1" /> {saving ? 'Enviando…' : 'Enviar'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -5,9 +5,12 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Upload, FileText, Download, Eye, Trash2, Radio } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
 interface Props {
   shipmentId: string;
@@ -15,11 +18,22 @@ interface Props {
   isQuoteMode?: boolean;
   quoteId?: string;
   onGeneratePdf?: () => void;
+  /** Empresas (fornecedores) vinculadas ao processo — mantido por compatibilidade
+   *  com quem chama este componente; não é mais usado aqui (DN vai direto ao
+   *  Financeiro, a partir da aba Taxas). */
+  dnPartners?: Array<{ id: string; name: string; partner_category?: string | null }>;
+  /** Cliente do processo — idem, não é mais usado aqui. */
+  dnClientId?: string | null;
 }
 
 export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGeneratePdf }: Props) {
   const { t } = useLanguage();
   const { profile } = useAuth();
+  // Arquivo(s) escolhidos (via botão ou arraste) aguardando a categoria
+  // obrigatória antes do envio efetivo.
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
+  const [uploadCategory, setUploadCategory] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   const { data: documents = [], refetch } = useQuery({
     queryKey: ['documents', shipmentId, isQuoteMode ? 'quote' : 'shipment'],
@@ -47,54 +61,54 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
     },
   });
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
+  // Envio de arquivo(s) — em vez de subir na hora, guarda os arquivos e abre
+  // o diálogo pedindo a categoria (obrigatória) antes de efetivar o envio.
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files);
-    for (const file of files) {
-      const path = `${companyId}/${shipmentId}/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('shipment-documents')
-        .upload(path, file);
+    if (files.length === 0) return;
+    setUploadCategory('');
+    setPendingUploadFiles(files);
+  }, []);
 
-      if (uploadError) {
-        toast.error(uploadError.message);
-        continue;
-      }
-
-      await supabase.from('documents').insert({
-        shipment_id: isQuoteMode ? null : shipmentId,
-        quote_id: isQuoteMode ? shipmentId : null,
-        company_id: companyId,
-        name: file.name,
-        file_url: path,
-        file_size: file.size,
-        uploaded_by: profile?.user_id,
-        document_type: 'other' as any,
-      } as any);
-    }
-    refetch();
-    toast.success(`${files.length} arquivo(s) enviado(s)`);
-  }, [shipmentId, companyId, profile, refetch]);
-
-  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    // Reuse drop logic
-    for (const file of Array.from(files)) {
-      const path = `${companyId}/${shipmentId}/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('shipment-documents')
-        .upload(path, file);
-      if (uploadError) { toast.error(uploadError.message); continue; }
-      await supabase.from('documents').insert({
-        shipment_id: isQuoteMode ? null : shipmentId, quote_id: isQuoteMode ? shipmentId : null,
-        company_id: companyId, name: file.name,
-        file_url: path, file_size: file.size, uploaded_by: profile?.user_id, document_type: 'other' as any,
-      } as any);
-    }
-    refetch();
-    toast.success(`${files.length} arquivo(s) enviado(s)`);
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Importante: converter para array ANTES de limpar e.target.value — o
+    // FileList de e.target.files é "vivo" e esvazia junto com o input, então
+    // limpar o value primeiro fazia o array sair vazio e nada subia.
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
+    if (files.length === 0) return;
+    setUploadCategory('');
+    setPendingUploadFiles(files);
   };
+
+  async function confirmUpload() {
+    if (!pendingUploadFiles || !uploadCategory) return;
+    setUploading(true);
+    try {
+      for (const file of pendingUploadFiles) {
+        const path = `${companyId}/${shipmentId}/${Date.now()}_${file.name}`;
+        const { error: uploadError } = await supabase.storage.from('shipment-documents').upload(path, file);
+        if (uploadError) { toast.error(uploadError.message); continue; }
+        await supabase.from('documents').insert({
+          shipment_id: isQuoteMode ? null : shipmentId,
+          quote_id: isQuoteMode ? shipmentId : (quoteId ?? null),
+          company_id: companyId,
+          name: file.name,
+          file_url: path,
+          file_size: file.size,
+          uploaded_by: profile?.user_id,
+          document_type: uploadCategory as any,
+        } as any);
+      }
+      refetch();
+      toast.success(`${pendingUploadFiles.length} arquivo(s) enviado(s)`);
+      setPendingUploadFiles(null);
+      setUploadCategory('');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <Card className="glass">
@@ -137,7 +151,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
                   <FileText className="w-5 h-5 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">{doc.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{doc.document_type} • {doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : ''}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{DOC_TYPE_LABELS[doc.document_type] ?? doc.document_type} • {doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : ''}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -180,6 +194,56 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
           )}
         </div>
       </CardContent>
+
+      {/* Categoria obrigatória antes de efetivar o envio. */}
+      <Dialog open={!!pendingUploadFiles} onOpenChange={(o) => { if (!o && !uploading) { setPendingUploadFiles(null); setUploadCategory(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Categoria do documento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {pendingUploadFiles?.length === 1
+                ? pendingUploadFiles[0].name
+                : `${pendingUploadFiles?.length ?? 0} arquivo(s) selecionado(s)`}
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Categoria *</Label>
+              <Select value={uploadCategory} onValueChange={setUploadCategory}>
+                <SelectTrigger><SelectValue placeholder="Selecione a categoria" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bl">BL</SelectItem>
+                  <SelectItem value="invoice">Invoice</SelectItem>
+                  <SelectItem value="packing_list">Packing List</SelectItem>
+                  <SelectItem value="certificate_origin">Certificado de Origem</SelectItem>
+                  <SelectItem value="customs_declaration">Declaração Aduaneira</SelectItem>
+                  <SelectItem value="insurance">Seguro</SelectItem>
+                  <SelectItem value="other">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setPendingUploadFiles(null); setUploadCategory(''); }} disabled={uploading}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmUpload} disabled={!uploadCategory || uploading}>
+              {uploading ? 'Enviando…' : 'Enviar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  bl: 'BL',
+  invoice: 'Invoice',
+  packing_list: 'Packing List',
+  certificate_origin: 'Certificado de Origem',
+  customs_declaration: 'Declaração Aduaneira',
+  insurance: 'Seguro',
+  other: 'Outro',
+  debit_note_supplier: 'DN Fornecedor',
+};

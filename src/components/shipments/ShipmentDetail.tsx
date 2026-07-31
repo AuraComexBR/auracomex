@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { ArrowLeft, MapPin, DollarSign, FileText, Activity, AlertTriangle, Package, Info, Users, ShoppingCart, Undo2, Copy } from 'lucide-react';
+import { ArrowLeft, MapPin, DollarSign, FileText, History, AlertTriangle, Package, Info, Users, ShoppingCart, Undo2, Copy } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,7 @@ import { ModeIcon } from '@/components/shared/ModeIcon';
 import { FinancialTab } from './FinancialTab';
 import { LogisticsTab } from './LogisticsTab';
 import { DocumentsTab } from './DocumentsTab';
-import { ActivityTab } from './ActivityTab';
+import { HistoryPanel } from '@/components/quotes/HistoryPanel';
 import { QuoteDetail } from '@/components/quotes/QuoteDetail';
 import { DuplicateShipmentDialog } from './DuplicateShipmentDialog';
 import { format } from 'date-fns';
@@ -90,6 +90,7 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
   const queryClient = useQueryClient();
   const { usdBrl, eurBrl } = useExchangeRate();
   const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const { data: shipment } = useQuery({
     queryKey: ['shipment', id],
@@ -139,6 +140,15 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
             {shipment.origin_city}, {shipment.origin_country} → {shipment.destination_city}, {shipment.destination_country}
           </p>
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          title="Histórico de alterações"
+          onClick={() => setHistoryOpen(true)}
+        >
+          <History className="w-4 h-4" />
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setDuplicateOpen(true)}>
           <Copy className="w-4 h-4 mr-2" />
           {t('shipments.duplicate')}
@@ -179,9 +189,6 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
           </TabsTrigger>
           <TabsTrigger value="documents" className="gap-1.5">
             <FileText className="w-4 h-4" /> {t('shipments.documents')}
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="gap-1.5">
-            <Activity className="w-4 h-4" /> {t('shipments.activity')}
           </TabsTrigger>
         </TabsList>
 
@@ -267,10 +274,13 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
         <TabsContent value="documents">
           <DocumentsTab shipmentId={id} companyId={shipment.company_id} />
         </TabsContent>
-        <TabsContent value="activity">
-          <ActivityTab shipmentId={id} companyId={shipment.company_id} />
-        </TabsContent>
       </Tabs>
+
+      <HistoryPanel
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        shipmentId={id}
+      />
 
       <DuplicateShipmentDialog
         shipment={duplicateOpen ? shipment : null}

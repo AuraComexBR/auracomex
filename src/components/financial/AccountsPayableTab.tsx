@@ -131,6 +131,14 @@ export default function AccountsPayableTab() {
 
     if (payTarget.debit_note_id) {
       await supabase.from('debit_notes' as any).update({ status: 'paga' }).eq('id', payTarget.debit_note_id);
+      // Trava as taxas que foram enviadas nessa DN — depois de paga, não
+      // podem mais ser reabertas/editadas na aba Taxas. Se o fornecedor
+      // mandar uma cobrança nova, o usuário cadastra outra taxa em vez de
+      // mexer nesta.
+      await supabase.from('quote_charges' as any)
+        .update({ buy_paid_at: payForm.paid_at })
+        .eq('sent_in_debit_note_id', payTarget.debit_note_id);
+      qc.invalidateQueries({ queryKey: ['quote-charges'] });
     }
 
     toast.success('Pagamento registrado');
@@ -150,7 +158,7 @@ export default function AccountsPayableTab() {
 
       <Card className="glass">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Contas a Pagar</CardTitle>
+          <CardTitle className="text-base">Valores a Pagar</CardTitle>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
             <SelectContent>

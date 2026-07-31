@@ -129,7 +129,7 @@ export function ReleasesPanel() {
           <DialogHeader><DialogTitle>{form.id ? 'Editar versão' : 'Nova versão'}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-3">
-              <div><Label>Versão *</Label><Input placeholder="1.2.0" value={form.version} onChange={e => setForm({ ...form, version: e.target.value })} /></div>
+              <div><Label>Versão *</Label><Input placeholder="AA.M.NN (ex: 26.7.01)" value={form.version} onChange={e => setForm({ ...form, version: e.target.value })} /></div>
               <div className="col-span-2"><Label>Título *</Label><Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div>
             </div>
             <div><Label>Resumo</Label><Textarea value={form.summary} onChange={e => setForm({ ...form, summary: e.target.value })} /></div>

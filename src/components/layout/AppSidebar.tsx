@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SupportSheet } from '@/components/support/SupportButton';
-import { APP_VERSION } from '@/lib/version';
+import { useReleases } from '@/hooks/useReleases';
 
 const allNavItems = [
   { key: 'nav.dashboard', icon: LayoutDashboard, path: '/', permission: 'canAccessDashboard' as const },
@@ -46,6 +46,10 @@ export function AppSidebar() {
   const permissions = usePermissions();
   const queryClient = useQueryClient();
   const { usdBrl, eurBrl, source: ratesSource, loading: ratesLoading, refetch: refetchRates } = useExchangeRate();
+  // Puxa direto da última versão cadastrada em Novidades (app_releases),
+  // em vez de um número fixo no código — nunca mais fica desatualizado.
+  const { releases } = useReleases();
+  const appVersion = releases[0]?.version;
 
   const { data: company } = useQuery({
     queryKey: ['company', profile?.company_id],
@@ -119,9 +123,9 @@ export function AppSidebar() {
             <Anchor className={collapsed ? "w-5 h-5" : "w-10 h-10"} />
           </div>
         )}
-        {!collapsed && (
+        {!collapsed && appVersion && (
           <span className="text-[10px] font-mono text-sidebar-foreground/50 mt-1">
-            v{APP_VERSION}
+            v{appVersion}
           </span>
         )}
       </div>

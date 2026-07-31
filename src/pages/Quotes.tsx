@@ -8,7 +8,7 @@ import { useSalespersonClients } from '@/hooks/useSalespersonClients';
 import { groupByCurrency } from '@/lib/utils';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { calcItemCbm, calcItemWeight, calcChargeableWeight, getEffectiveVolume } from '@/components/quotes/ModeFields';
-import { Plus, Search, Copy, CircleCheck, XCircle, FileText, Clock, Ship, Sparkles } from 'lucide-react';
+import { Plus, Copy, CircleCheck, XCircle, FileText, Clock, Ship, Sparkles } from 'lucide-react';
 import { QuoteCreateModal } from '@/components/quotes/QuoteCreateModal';
 import { QuoteDetail } from '@/components/quotes/QuoteDetail';
 import { DuplicateQuoteDialog } from '@/components/quotes/DuplicateQuoteDialog';
@@ -27,6 +27,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { toast } from 'sonner';
 import { useTableSort } from '@/hooks/useTableSort';
 import { SortableHeader } from '@/components/shared/SortableHeader';
+import { ColumnSearch } from '@/components/shared/ColumnSearch';
 
 function getSentIconColor(quote: any): string {
   if (quote.sent_at) return 'text-status-completed';
@@ -102,7 +103,14 @@ export default function Quotes() {
   const { isSalesperson, clientIds } = useSalespersonClients();
   const { profile } = useAuth();
   const aiImportGate = useAddonGate('ai_import');
-  const [search, setSearch] = useState('');
+  const [searchNumber, setSearchNumber] = useState('');
+  const [searchClient, setSearchClient] = useState('');
+  const [searchOrigin, setSearchOrigin] = useState('');
+  const [searchDestination, setSearchDestination] = useState('');
+  const [searchNumberOpen, setSearchNumberOpen] = useState(false);
+  const [searchClientOpen, setSearchClientOpen] = useState(false);
+  const [searchOriginOpen, setSearchOriginOpen] = useState(false);
+  const [searchDestinationOpen, setSearchDestinationOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [aiImportOpen, setAiImportOpen] = useState(false);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
@@ -116,6 +124,11 @@ export default function Quotes() {
   const location = useLocation();
   useEffect(() => {
     setSelectedQuoteId(null);
+    // A query da lista continua "montada" o tempo todo (só fica escondida
+    // enquanto uma cotação está aberta), então só resetar o id não busca
+    // dados novos — precisa invalidar/forçar refetch aqui.
+    queryClient.invalidateQueries({ queryKey: ['quotes'] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   // All quotes for the list (excluding approved/converted always; rejeitadas
@@ -217,9 +230,13 @@ export default function Quotes() {
     },
   });
 
-  const filtered = quotes.filter((q: any) =>
-    q.quote_number?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = quotes.filter((q: any) => {
+    const matchesNumber = !searchNumber || q.quote_number?.toLowerCase().includes(searchNumber.toLowerCase());
+    const matchesClient = !searchClient || (q.clients as any)?.name?.toLowerCase().includes(searchClient.toLowerCase());
+    const matchesOrigin = !searchOrigin || q.origin?.toLowerCase().includes(searchOrigin.toLowerCase());
+    const matchesDestination = !searchDestination || q.destination?.toLowerCase().includes(searchDestination.toLowerCase());
+    return matchesNumber && matchesClient && matchesOrigin && matchesDestination;
+  });
 
   const { sorted, sortState, toggleSort } = useTableSort<any>(filtered, {
     quote_number: (r) => r.quote_number,
@@ -260,30 +277,6 @@ export default function Quotes() {
 
   return (
     <div className="space-y-6 animate-slide-in">
-      <div className="flex items-center justify-end">
-        <div className="flex gap-2">
-          {/* Importar com IA — escondido por hora enquanto a integração de IA está sendo ajustada.
-              Pra reativar: descomenta este bloco. */}
-          {false && (
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (!aiImportGate.hasAccess) {
-                  toast.info('Este recurso é um add-on. Ative em Assinatura.');
-                  return;
-                }
-                setAiImportOpen(true);
-              }}
-              title={aiImportGate.lockedTitle}
-              className={!aiImportGate.hasAccess ? 'opacity-60' : ''}
-            >
-              <Sparkles className="w-4 h-4 mr-2" />Importar com IA
-            </Button>
-          )}
-          <Button onClick={() => setCreateOpen(true)}><Plus className="w-4 h-4 mr-2" />{t('quotes.new')}</Button>
-        </div>
-      </div>
-
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="glass">
@@ -322,16 +315,33 @@ export default function Quotes() {
       </div>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="relative max-w-md flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder={t('common.search')} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-        </div>
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'active' | 'rejected')}>
           <TabsList>
             <TabsTrigger value="active">Ativas</TabsTrigger>
             <TabsTrigger value="rejected">Rejeitadas{rejectedCount > 0 ? ` (${rejectedCount})` : ''}</TabsTrigger>
           </TabsList>
         </Tabs>
+        <div className="flex gap-2">
+          {/* Importar com IA — escondido por hora enquanto a integração de IA está sendo ajustada.
+              Pra reativar: descomenta este bloco. */}
+          {false && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!aiImportGate.hasAccess) {
+                  toast.info('Este recurso é um add-on. Ative em Assinatura.');
+                  return;
+                }
+                setAiImportOpen(true);
+              }}
+              title={aiImportGate.lockedTitle}
+              className={!aiImportGate.hasAccess ? 'opacity-60' : ''}
+            >
+              <Sparkles className="w-4 h-4 mr-2" />Importar com IA
+            </Button>
+          )}
+          <Button onClick={() => setCreateOpen(true)}><Plus className="w-4 h-4 mr-2" />{t('quotes.new')}</Button>
+        </div>
       </div>
 
       <Card className="glass">
@@ -339,14 +349,42 @@ export default function Quotes() {
           <Table className="text-[15px]">
             <TableHeader>
               <TableRow>
-                <SortableHeader label={t('quotes.number')} sortKey="quote_number" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
-                <SortableHeader label={t('shipments.client')} sortKey="client" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
-                <SortableHeader label={t('shipments.origin')} sortKey="origin" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
-                <SortableHeader label={t('shipments.destination')} sortKey="destination" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
-                <SortableHeader label="Lucro Estimado" sortKey="profit" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm text-right" align="right" />
-                <SortableHeader label={t('quotes.valid_until')} sortKey="valid_until" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
-                <SortableHeader label={t('shipments.status')} sortKey="status" state={sortState} onToggle={toggleSort} className="h-10 px-4 text-sm" />
-                <TableHead className="w-28 h-10 px-4"></TableHead>
+                <SortableHeader
+                  label={t('quotes.number')}
+                  sortKey="quote_number"
+                  state={sortState}
+                  onToggle={toggleSort}
+                  className="h-8 px-4 text-sm"
+                  right={<ColumnSearch value={searchNumber} onChange={setSearchNumber} open={searchNumberOpen} onOpenChange={setSearchNumberOpen} />}
+                />
+                <SortableHeader
+                  label={t('shipments.client')}
+                  sortKey="client"
+                  state={sortState}
+                  onToggle={toggleSort}
+                  className="h-8 px-4 text-sm"
+                  right={<ColumnSearch value={searchClient} onChange={setSearchClient} open={searchClientOpen} onOpenChange={setSearchClientOpen} />}
+                />
+                <SortableHeader
+                  label={t('shipments.origin')}
+                  sortKey="origin"
+                  state={sortState}
+                  onToggle={toggleSort}
+                  className="h-8 px-4 text-sm"
+                  right={<ColumnSearch value={searchOrigin} onChange={setSearchOrigin} open={searchOriginOpen} onOpenChange={setSearchOriginOpen} />}
+                />
+                <SortableHeader
+                  label={t('shipments.destination')}
+                  sortKey="destination"
+                  state={sortState}
+                  onToggle={toggleSort}
+                  className="h-8 px-4 text-sm"
+                  right={<ColumnSearch value={searchDestination} onChange={setSearchDestination} open={searchDestinationOpen} onOpenChange={setSearchDestinationOpen} />}
+                />
+                <SortableHeader label="Lucro Estimado" sortKey="profit" state={sortState} onToggle={toggleSort} className="h-8 px-4 text-sm text-right" align="right" />
+                <SortableHeader label={t('quotes.valid_until')} sortKey="valid_until" state={sortState} onToggle={toggleSort} className="h-8 px-4 text-sm" />
+                <SortableHeader label={t('shipments.status')} sortKey="status" state={sortState} onToggle={toggleSort} className="h-8 px-4 text-sm" />
+                <TableHead className="w-28 h-8 px-4"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -359,11 +397,11 @@ export default function Quotes() {
                     className="cursor-pointer hover:bg-secondary/50 whitespace-nowrap"
                     onClick={() => setSelectedQuoteId(q.id)}
                   >
-                    <TableCell className="py-2.5 px-4 font-mono font-medium">{q.quote_number}</TableCell>
-                    <TableCell className="py-2.5 px-4 max-w-[180px] truncate">{(q.clients as any)?.name || '-'}</TableCell>
-                    <TableCell className="py-2.5 px-4">{q.origin || '-'}</TableCell>
-                    <TableCell className="py-2.5 px-4">{q.destination || '-'}</TableCell>
-                    <TableCell className="py-2.5 px-4 text-right font-mono text-[15px] font-semibold">
+                    <TableCell className="py-0.5 px-4 font-mono font-medium">{q.quote_number}</TableCell>
+                    <TableCell className="py-0.5 px-4 max-w-[180px] truncate">{(q.clients as any)?.name || '-'}</TableCell>
+                    <TableCell className="py-0.5 px-4">{q.origin || '-'}</TableCell>
+                    <TableCell className="py-0.5 px-4">{q.destination || '-'}</TableCell>
+                    <TableCell className="py-0.5 px-4 text-right font-mono text-[15px] font-semibold">
                       {(() => {
                         const qCharges = (q as any).quote_charges || [];
                         const qItems = ((q as any).quote_items || []).map((item: any) => ({
@@ -424,9 +462,9 @@ export default function Quotes() {
                         );
                       })()}
                     </TableCell>
-                    <TableCell className="py-2.5 px-4">{q.valid_until ? format(new Date(q.valid_until), 'dd/MM/yy') : '-'}</TableCell>
-                    <TableCell className="py-2.5 px-4"><StatusBadge status={q.status} /></TableCell>
-                    <TableCell className="py-1.5 px-3">
+                    <TableCell className="py-0.5 px-4">{q.valid_until ? format(new Date(q.valid_until), 'dd/MM/yy') : '-'}</TableCell>
+                    <TableCell className="py-0.5 px-4"><StatusBadge status={q.status} /></TableCell>
+                    <TableCell className="py-0.5 px-3">
                         <div className="flex items-center gap-1.5">
                         {/* Mark as sent */}
                         <Tooltip>
@@ -434,10 +472,10 @@ export default function Quotes() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-4 w-4"
                               onClick={(e) => handleMarkSent(e, q)}
                             >
-                              <CircleCheck className={`w-4 h-4 ${getSentIconColor(q)}`} />
+                              <CircleCheck className={`w-3 h-3 ${getSentIconColor(q)}`} />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>{getSentTooltip(q, t)}</TooltipContent>
@@ -450,13 +488,13 @@ export default function Quotes() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8"
+                                className="h-4 w-4"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setRejectQuote(q);
                                 }}
                               >
-                                <XCircle className="w-4 h-4 text-destructive" />
+                                <XCircle className="w-3 h-3 text-destructive" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>{t('quotes.reject')}</TooltipContent>
@@ -469,13 +507,13 @@ export default function Quotes() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
+                              className="h-4 w-4"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setDuplicateQuote(q);
                               }}
                             >
-                              <Copy className="w-4 h-4" />
+                              <Copy className="w-3 h-3" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>{t('quotes.duplicate')}</TooltipContent>

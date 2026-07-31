@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,7 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PortSelect } from '@/components/shared/PortSelect';
 import { CountrySelect } from '@/components/shared/CountrySelect';
-import { MapPin, Ship, Plane, Truck, ArrowRight, Save, CalendarIcon, Settings, Plus, Trash2, GripVertical, ExternalLink } from 'lucide-react';
+import { MapPin, Ship, Plane, Truck, ArrowRight, CalendarIcon, Settings, Plus, Trash2, GripVertical, ExternalLink, ArrowDownAZ, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -30,17 +30,36 @@ const modeIcons: Record<string, typeof Ship> = {
   ocean_fcl: Ship, ocean_lcl: Ship, air: Plane, road: Truck, multimodal: Ship,
 };
 
-import { getCourierTrackingUrl } from '@/lib/courierTracking';
+const INCOTERMS_BY_MODE: Record<string, string[]> = {
+  ocean_fcl: ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'],
+  ocean_lcl: ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'],
+  air: ['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'],
+  road: ['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'],
+  multimodal: ['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'],
+};
 
+// Rótulo do "Carrier" muda de acordo com o modal — o dado salvo é o mesmo
+// campo (carrier), só muda como ele é chamado na tela.
+const CARRIER_LABEL_BY_MODE: Record<string, string> = {
+  ocean_fcl: 'Armador',
+  ocean_lcl: 'Co-Loader',
+  air: 'Cia Aérea',
+  road: 'Transportadora',
+  multimodal: 'Armador',
+};
+
+// Ordem alfabética por padrão (pedido do usuário) — o usuário ainda pode
+// reordenar arrastando na tela de Gerenciar Status, ou clicar em "Ordenar
+// A-Z" pra voltar pra essa ordem a qualquer momento.
 const DEFAULT_STATUSES = [
   { label: 'Aprovado', value: 'approved', position: 0 },
-  { label: 'Reservado', value: 'booked', position: 1 },
-  { label: 'Coletado', value: 'collected_at_origin', position: 2 },
-  { label: 'Docs', value: 'docs_at_origin', position: 3 },
-  { label: 'Trânsito', value: 'in_transit', position: 4 },
-  { label: 'Atracou', value: 'arrived', position: 5 },
-  { label: 'Entregue', value: 'delivered', position: 6 },
-  { label: 'Cancelado', value: 'cancelled', position: 7 },
+  { label: 'Atracou', value: 'arrived', position: 1 },
+  { label: 'Cancelado', value: 'cancelled', position: 2 },
+  { label: 'Coletado', value: 'collected_at_origin', position: 3 },
+  { label: 'Docs', value: 'docs_at_origin', position: 4 },
+  { label: 'Entregue', value: 'delivered', position: 5 },
+  { label: 'Reservado', value: 'booked', position: 6 },
+  { label: 'Trânsito', value: 'in_transit', position: 7 },
 ];
 
 export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
@@ -159,6 +178,20 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     }
   }
 
+  async function handleSortAlphabetically() {
+    if (dbStatusOptions.length === 0) return;
+    const sorted = [...dbStatusOptions].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+    try {
+      await Promise.all(sorted.map((s, i) =>
+        (supabase.from('shipment_status_options') as any).update({ position: i }).eq('id', s.id)
+      ));
+      queryClient.invalidateQueries({ queryKey: ['shipment-status-options'] });
+      toast.success('Status ordenados de A a Z');
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
+
   // Fetch partners for this shipment
   const { data: shipmentPartners = [] } = useQuery({
     queryKey: ['shipment-partners-logistics', shipment.id],
@@ -211,6 +244,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     origin_city: shipment.origin_city || '',
     origin_country: shipment.origin_country || '',
     origin_port: shipment.origin_port || '',
+    transshipment: (shipment as any).transshipment || '',
     destination_city: shipment.destination_city || '',
     destination_country: shipment.destination_country || '',
     destination_port: shipment.destination_port || '',
@@ -227,6 +261,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     atd: shipment.atd || '',
     ata: shipment.ata || '',
     status: shipment.status || 'draft',
+    incoterm: (shipment as any).incoterm || '',
+    transport_mode: shipment.transport_mode || 'ocean_fcl',
     shipper_id: (shipment as any).shipper_id || '',
     consignee_id: (shipment as any).consignee_id || '',
     notify_id: (shipment as any).notify_id || '',
@@ -262,9 +298,49 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   const stops = [
     { label: t('shipments.origin'), city: form.origin_city, country: form.origin_country, active: true },
     ...(form.origin_port ? [{ label: 'Port/Airport', city: form.origin_port, country: '', active: form.status === 'booked' || form.status === 'in_transit' }] : []),
+    ...(form.transshipment ? [{ label: 'Transbordo', city: form.transshipment, country: '', active: form.status === 'in_transit' }] : []),
     ...(form.destination_port ? [{ label: 'Port/Airport', city: form.destination_port, country: '', active: form.status === 'arrived' }] : []),
     { label: t('shipments.destination'), city: form.destination_city, country: form.destination_country, active: form.status === 'delivered' },
   ];
+
+  // Detecta alterações pendentes (contra o que já está salvo no embarque) pra
+  // disparar o auto-save — Logística não tem mais botão "Salvar" próprio.
+  const hasChanges = useMemo(() => {
+    const fieldsToCheck: (keyof typeof form)[] = [
+      'origin_city', 'origin_country', 'origin_port', 'transshipment',
+      'destination_city', 'destination_country', 'destination_port',
+      'carrier', 'vessel_flight', 'booking_number',
+      'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
+      'etd', 'eta', 'atd', 'ata', 'incoterm', 'transport_mode',
+      'shipper_id', 'consignee_id', 'notify_id',
+      'courier_provider', 'courier_tracking_number',
+    ];
+    for (const key of fieldsToCheck) {
+      const newVal = (form as any)[key] ?? '';
+      const oldVal = (shipment as any)[key] ?? '';
+      if (String(newVal) !== String(oldVal)) return true;
+    }
+    const existingContainers = parseContainerNumbers(shipment.container_number);
+    const currentContainers = containerNumbers.filter(Boolean);
+    if (existingContainers.length !== currentContainers.length) return true;
+    for (let i = 0; i < currentContainers.length; i++) {
+      if ((existingContainers[i] || '') !== (currentContainers[i] || '')) return true;
+    }
+    return false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, containerNumbers, shipment]);
+
+  // Auto-save: nenhum botão "Salvar" próprio — qualquer alteração grava
+  // sozinha depois de uma pausa curta de digitação (status continua salvando
+  // na hora, como já era, pelo próprio Select de status).
+  useEffect(() => {
+    if (!hasChanges || saving) return;
+    const timer = setTimeout(() => {
+      handleSave();
+    }, 900);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, containerNumbers, hasChanges, saving]);
 
   async function handleSave() {
     setSaving(true);
@@ -277,6 +353,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         origin_city: form.origin_city || null,
         origin_country: form.origin_country || null,
         origin_port: form.origin_port || null,
+        transshipment: form.transshipment || null,
         destination_city: form.destination_city || null,
         destination_country: form.destination_country || null,
         destination_port: form.destination_port || null,
@@ -293,6 +370,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         atd: form.atd || null,
         ata: form.ata || null,
         status: form.status,
+        incoterm: (form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : null,
+        transport_mode: form.transport_mode as any,
         container_number: containerNumberValue,
         shipper_id: form.shipper_id || null,
         consignee_id: form.consignee_id || null,
@@ -309,11 +388,11 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
       const auditLogs: { field_name: string; old_value: string | null; new_value: string | null }[] = [];
       const allFields = [
-        'origin_city', 'origin_country', 'origin_port',
+        'origin_city', 'origin_country', 'origin_port', 'transshipment',
         'destination_city', 'destination_country', 'destination_port',
         'carrier', 'vessel_flight', 'booking_number',
         'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
-        'etd', 'eta', 'atd', 'ata', 'status', 'container_number',
+        'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
         'shipper_id', 'consignee_id', 'notify_id',
         'courier_provider', 'courier_tracking_number',
       ];
@@ -327,6 +406,16 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
       const { error } = await (supabase.from('shipments') as any).update(updates).eq('id', shipment.id);
       if (error) throw error;
+
+      // Modal e Incoterm são espelhados com a aba Geral (tabela quotes) — editar
+      // aqui também atualiza a cotação de origem, pra nunca ficarem divergentes.
+      if (quoteId) {
+        await supabase.from('quotes').update({
+          transport_mode: updates.transport_mode,
+          incoterm: updates.incoterm,
+        } as any).eq('id', quoteId);
+        queryClient.invalidateQueries({ queryKey: ['quote-detail', quoteId] });
+      }
 
       if (auditLogs.length > 0 && profile) {
         await (supabase.from('shipment_audit_log') as any).insert(
@@ -401,24 +490,22 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   return (
     <Card className="glass">
       <CardContent className="p-6 space-y-6">
-        {/* Visual route */}
-        <div className="flex items-center justify-between py-8">
+        {/* Visual route — altura reduzida à metade de novo (largura e fontes seguem originais) */}
+        <div className="flex items-center justify-between py-0">
           {stops.map((stop, i) => (
             <div key={i} className="flex items-center">
               <div className="flex flex-col items-center">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${
                   stop.active ? 'border-status-transit bg-status-transit/10 text-status-transit' : 'border-border bg-secondary text-muted-foreground'
                 }`}>
-                  {i === 0 || i === stops.length - 1 ? <MapPin className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
+                  {i === 0 || i === stops.length - 1 ? <MapPin className="w-6 h-6" /> : <Icon className="w-6 h-6" />}
                 </div>
-                <p className="mt-2 text-sm font-semibold text-center">{stop.city}</p>
-                <p className="text-xs text-muted-foreground">{stop.country}</p>
-                <p className="text-[10px] text-muted-foreground uppercase">{stop.label}</p>
+                <p className="mt-1 text-sm font-semibold text-center leading-none uppercase">{stop.city}</p>
               </div>
               {i < stops.length - 1 && (
                 <div className="flex-1 mx-4 flex items-center">
                   <div className={`h-0.5 flex-1 ${stop.active ? 'bg-status-transit' : 'bg-border'}`} />
-                  <ArrowRight className={`w-4 h-4 mx-1 ${stop.active ? 'text-status-transit' : 'text-muted-foreground'}`} />
+                  <ArrowRight className={`w-8 h-8 mx-1 ${stop.active ? 'text-status-transit' : 'text-muted-foreground'}`} />
                   <div className={`h-0.5 flex-1 ${stop.active ? 'bg-status-transit' : 'bg-border'}`} />
                 </div>
               )}
@@ -426,9 +513,9 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           ))}
         </div>
 
-        {/* Status */}
-        <div className="pt-4 border-t border-border">
-          <div className="max-w-xs space-y-1">
+        {/* Status - Incoterm - Modal */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border">
+          <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Label className="text-xs font-semibold">Status</Label>
               {isFullAccess && (
@@ -477,6 +564,31 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Incoterm</Label>
+            <Select value={form.incoterm} onValueChange={(v) => updateField('incoterm', v)}>
+              <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+              <SelectContent>
+                {form.transport_mode === 'road' && <SelectItem value="NONE">— Sem incoterm —</SelectItem>}
+                {(INCOTERMS_BY_MODE[form.transport_mode] || INCOTERMS_BY_MODE.ocean_fcl).map((ic) => (
+                  <SelectItem key={ic} value={ic}>{ic}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Modal</Label>
+            <Select value={form.transport_mode} onValueChange={(v) => updateField('transport_mode', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {['ocean_fcl', 'ocean_lcl', 'air', 'road', 'multimodal'].map((m) => (
+                  <SelectItem key={m} value={m}>{t(`mode.${m}`)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Status Manager Dialog */}
@@ -486,6 +598,11 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
               <DialogTitle>Gerenciar Status de Embarque</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={handleSortAlphabetically} disabled={dbStatusOptions.length === 0}>
+                  <ArrowDownAZ className="w-3.5 h-3.5 mr-1.5" /> Ordenar A-Z
+                </Button>
+              </div>
               <div className="space-y-1">
                 {statusOptions.map((s, idx) => (
                   <div
@@ -527,47 +644,50 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           </DialogContent>
         </Dialog>
 
-        {/* Editable route fields */}
-        <div className="grid grid-cols-2 gap-6 pt-4 border-t border-border">
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase">{t('shipments.origin')}</h4>
-            <div className="space-y-1">
-              <Label className="text-xs">Endereço</Label>
-              <Input value={form.origin_city} onChange={e => updateField('origin_city', e.target.value)} placeholder="Endereço de origem..." />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">País</Label>
-              <CountrySelect value={form.origin_country} onChange={(v) => updateField('origin_country', v)} placeholder="Selecionar país..." />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Porto/Aeroporto</Label>
-              <PortSelect value={form.origin_port} onChange={(code) => updateField('origin_port', code)} transportMode={shipment.transport_mode} placeholder="Buscar porto/aeroporto..." />
-            </div>
+        {/* Coleta - Porto/Aeroporto Origem - Porto/Aeroporto Destino - Entrega */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-border">
+          <div className="space-y-1">
+            <Label className="text-xs">Coleta</Label>
+            <Input value={form.origin_city} onChange={e => updateField('origin_city', e.target.value)} placeholder="Endereço de coleta..." />
           </div>
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase">{t('shipments.destination')}</h4>
-            <div className="space-y-1">
-              <Label className="text-xs">Endereço</Label>
-              <Input value={form.destination_city} onChange={e => updateField('destination_city', e.target.value)} placeholder="Endereço de destino..." />
+          <div className="space-y-1">
+            <Label className="text-xs">Porto/Aeroporto Origem</Label>
+            <PortSelect value={form.origin_port} onChange={(code) => updateField('origin_port', code)} transportMode={form.transport_mode} placeholder="Buscar porto/aeroporto..." />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Porto/Aeroporto Destino</Label>
+            <PortSelect value={form.destination_port} onChange={(code) => updateField('destination_port', code)} transportMode={form.transport_mode} placeholder="Buscar porto/aeroporto..." />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Entrega</Label>
+            <Input value={form.destination_city} onChange={e => updateField('destination_city', e.target.value)} placeholder="Endereço de entrega..." />
+          </div>
+
+          <div className="space-y-1">
+            <CountrySelect value={form.origin_country} onChange={(v) => updateField('origin_country', v)} placeholder="País..." />
+          </div>
+          {form.transport_mode !== 'road' ? (
+            <div className="col-span-2 flex justify-center">
+              <div className="w-1/2">
+                <PortSelect value={form.transshipment} onChange={(code) => updateField('transshipment', code)} transportMode={form.transport_mode} placeholder="Transbordo (opcional)..." />
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">País</Label>
-              <CountrySelect value={form.destination_country} onChange={(v) => updateField('destination_country', v)} placeholder="Selecionar país..." />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Porto/Aeroporto</Label>
-              <PortSelect value={form.destination_port} onChange={(code) => updateField('destination_port', code)} transportMode={shipment.transport_mode} placeholder="Buscar porto/aeroporto..." />
-            </div>
+          ) : (
+            <div className="col-span-2" />
+          )}
+          <div className="space-y-1">
+            <CountrySelect value={form.destination_country} onChange={(v) => updateField('destination_country', v)} placeholder="País..." />
           </div>
         </div>
 
-        {/* Participants: Carrier, Shipper, Consignee, Notify */}
+        {/* Participantes: Shipper - Armador/Cia Aérea/Co-Loader/Transportadora - Notify - Consignee */}
         <div className="pt-4 border-t border-border space-y-2">
           <h4 className="text-xs font-semibold text-muted-foreground uppercase">Participantes</h4>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Carrier — stores partner name as text */}
+            <PartnerSelect label="Shipper" fieldKey="shipper_id" />
+            {/* Carrier — rótulo muda com o modal, mas grava sempre no mesmo campo (nome do parceiro em texto) */}
             <div className="space-y-1">
-              <Label className="text-xs">{t('shipments.carrier')}</Label>
+              <Label className="text-xs">{CARRIER_LABEL_BY_MODE[form.transport_mode] || t('shipments.carrier')}</Label>
               <Select value={form.carrier || '_none'} onValueChange={(v) => updateField('carrier', v === '_none' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecionar..." />
@@ -580,9 +700,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
                 </SelectContent>
               </Select>
             </div>
-            <PartnerSelect label="Shipper" fieldKey="shipper_id" />
-            <PartnerSelect label="Consignee" fieldKey="consignee_id" />
             <PartnerSelect label="Notify" fieldKey="notify_id" />
+            <PartnerSelect label="Consignee" fieldKey="consignee_id" />
           </div>
         </div>
 
@@ -710,13 +829,14 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           )}
         </div>
 
-        {/* Save button */}
-        <div className="flex justify-end pt-2">
-          <Button onClick={handleSave} disabled={saving}>
-            <Save className="w-4 h-4 mr-1" />
-            {saving ? t('common.loading') : t('common.save')}
-          </Button>
-        </div>
+        {/* Indicador de auto-save — não tem mais botão "Salvar" próprio */}
+        {saving && (
+          <div className="flex justify-end pt-2">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando…
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

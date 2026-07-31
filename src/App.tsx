@@ -32,6 +32,7 @@ const Signup = lazy(() => import("./pages/Signup"));
 const CheckoutReturn = lazy(() => import("./pages/CheckoutReturn"));
 const TermsOfUse = lazy(() => import("./pages/TermsOfUse"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const DemoLogin = lazy(() => import("./pages/DemoLogin"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -111,6 +112,7 @@ function AppRoutes() {
         <Route path="/checkout/return" element={<CheckoutReturn />} />
         <Route path="/termos" element={<TermsOfUse />} />
         <Route path="/privacidade" element={<PrivacyPolicy />} />
+        <Route path="/demo" element={<DemoLogin />} />
         <Route path="/" element={user && !loading ? <Navigate to="/dashboard" replace /> : <Auth />} />
         <Route path="/dashboard" element={<DashboardRoute />} />
         <Route path="/shipments" element={<ProtectedRoute requiredPermission="canAccessShipments"><Shipments /></ProtectedRoute>} />
