@@ -229,32 +229,6 @@ export default function Index() {
 
   return (
     <div className="space-y-6 animate-slide-in">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('dashboard.title')}</h1>
-          <p className="text-muted-foreground">
-            {t('dashboard.welcome')}, {profile?.full_name?.split(' ')[0]}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {canAccessQuotes && (
-            <Button asChild size="sm" className="gap-1.5">
-              <Link to="/quotes">
-                <Plus className="w-4 h-4" /> Nova Cotação
-              </Link>
-            </Button>
-          )}
-          {canAccessShipments && (
-            <Button asChild size="sm" variant="outline" className="gap-1.5">
-              <Link to="/shipments">
-                <Ship className="w-4 h-4" /> Ver Embarques
-              </Link>
-            </Button>
-          )}
-        </div>
-      </div>
-
       {/* Fechamentos, Referências e Embarques em andamento */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card className="glass hover:shadow-lg transition-shadow">
