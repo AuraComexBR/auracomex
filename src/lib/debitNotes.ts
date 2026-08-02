@@ -1,0 +1,59 @@
+import { supabase } from '@/integrations/supabase/client';
+import { logAuditEvent } from './auditLog';
+
+/**
+ * Exclui uma DN de fornecedor (e a conta a pagar vinculada) e libera de volta
+ * pra edição todas as taxas que estavam presas nela — usado tanto pelo botão
+ * "Excluir" da lista de DNs no Financeiro quanto pelo fluxo de "Reabrir" uma
+ * taxa já enviada, na aba Taxas do processo (mesma lógica, dois pontos de
+ * entrada). Só permite excluir se a DN ainda não foi paga.
+ */
+export async function deleteSupplierDn({
+  dnId,
+  companyId,
+  quoteId,
+  userId,
+  partnerName,
+}: {
+  dnId: string;
+  companyId: string;
+  quoteId?: string | null;
+  userId?: string | null;
+  /** Nome do fornecedor, se já disponível no chamador — evita um select extra. */
+  partnerName?: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: dn, error: dnErr } = await supabase
+    .from('debit_notes' as any)
+    .select('id, dn_number, status, quote_id')
+    .eq('id', dnId)
+    .maybeSingle();
+  if (dnErr) return { ok: false, error: dnErr.message };
+  if (!dn) return { ok: false, error: 'Debit Note não encontrada.' };
+  if ((dn as any).status === 'paga') {
+    return { ok: false, error: 'Esta DN já foi paga e não pode ser excluída.' };
+  }
+
+  await supabase.from('accounts_payable' as any).delete().eq('debit_note_id', dnId);
+  const { error: delErr } = await supabase.from('debit_notes' as any).delete().eq('id', dnId);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  // Libera as taxas que estavam presas nesta DN: tiram o vínculo e voltam a
+  // pedir conferência (o valor "cobrado" já digitado fica, só a confirmação
+  // que é desfeita — evita reenviar sem revisar de novo).
+  await supabase
+    .from('quote_charges' as any)
+    .update({ sent_in_debit_note_id: null, buy_actual_confirmed_at: null, buy_actual_confirmed_by: null })
+    .eq('sent_in_debit_note_id', dnId);
+
+  const effectiveQuoteId = quoteId || (dn as any).quote_id || null;
+  await logAuditEvent({
+    quoteId: effectiveQuoteId,
+    companyId,
+    userId,
+    field_name: 'debit_note',
+    old_value: `${partnerName ? partnerName + ' — ' : ''}DN ${(dn as any).dn_number}`,
+    new_value: null,
+  });
+
+  return { ok: true };
+}

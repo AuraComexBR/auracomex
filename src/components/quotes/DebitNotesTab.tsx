@@ -16,6 +16,7 @@ import { Plus, Trash2, Upload, CheckCircle, FileText, AlertTriangle } from 'luci
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
+import { deleteSupplierDn } from '@/lib/debitNotes';
 
 type DebitNote = {
   id: string;
@@ -151,14 +152,22 @@ export function DebitNotesTab({ quoteId, companyId, partners, pendingFile, onPen
   const activeDn = notes.find((n) => n.id === activeDnId) ?? null;
 
   async function handleDelete(id: string) {
-    // Remove também a conta a pagar vinculada (a FK está SET NULL, mas queremos que a AP suma junto)
-    await supabase.from('accounts_payable' as any).delete().eq('debit_note_id', id);
-    const { error } = await supabase.from('debit_notes' as any).delete().eq('id', id);
-    if (error) return toast.error('Erro ao excluir', { description: error.message });
-    toast.success('Debit Note excluída');
+    const dn = notes.find((n) => n.id === id);
+    const partner = partners.find((p) => p.id === dn?.partner_id);
+    const result = await deleteSupplierDn({
+      dnId: id,
+      companyId,
+      quoteId,
+      userId: user?.id,
+      partnerName: partner?.name,
+    });
+    if (!result.ok) return toast.error('Erro ao excluir', { description: result.error });
+    toast.success('Debit Note excluída — taxas liberadas para edição');
     setConfirmDelete(null);
     refetch();
     qc.invalidateQueries({ queryKey: ['accounts_payable'] });
+    qc.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
+    qc.invalidateQueries({ queryKey: ['quote_charges_for_dn', quoteId] });
   }
 
   return (
@@ -282,7 +291,9 @@ export function DebitNotesTab({ quoteId, companyId, partners, pendingFile, onPen
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir Debit Note?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. Os itens e a conta a pagar vinculada também serão removidos.
+              Esta ação não pode ser desfeita. A conta a pagar vinculada some junto e as taxas que estavam
+              presas nesta DN voltam a ficar editáveis (é preciso conferir de novo antes de reenviar).
+              Só é possível excluir DNs que ainda não foram pagas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

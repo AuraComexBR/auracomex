@@ -65,6 +65,7 @@ export const AUDIT_FIELD_LABELS: Record<string, Record<'pt' | 'en', string>> = {
   cargo_summary: { pt: 'Resumo da Carga', en: 'Cargo Summary' },
   charge: { pt: 'Taxa', en: 'Charge' },
   partner: { pt: 'Parceiro', en: 'Partner' },
+  debit_note: { pt: 'Debit Note', en: 'Debit Note' },
   estimate: { pt: 'Estimativa', en: 'Estimate' },
   conversion: { pt: 'Conversão', en: 'Conversion' },
   // Logística

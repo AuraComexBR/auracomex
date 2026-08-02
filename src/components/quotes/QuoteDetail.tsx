@@ -46,6 +46,7 @@ import { DocumentsTab } from '@/components/shipments/DocumentsTab';
 import { HistoryPanel } from './HistoryPanel';
 // ActivityTab removida como aba própria: histórico agora é unificado no HistoryPanel (botão no header).
 import { logAuditChanges, logAuditEvent } from '@/lib/auditLog';
+import { deleteSupplierDn } from '@/lib/debitNotes';
 
 const LEGS = ['origin', 'freight', 'destination'] as const;
 const CURRENCIES = ['USD', 'BRL', 'EUR', 'GBP', 'CNY'];
@@ -1413,6 +1414,33 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
+  // Reabrir uma taxa já enviada numa DN (ainda não paga): exclui a DN inteira
+  // (some do Financeiro) e libera de volta pra edição todas as taxas que
+  // estavam presas nela, com aviso no histórico da referência.
+  async function handleReopenChargeWithDn(charge: any, partnerName: string) {
+    if (!profile) return { ok: false as const, error: 'Não autenticado' };
+    const dnId = charge.sent_in_debit_note_id;
+    if (!dnId) return { ok: false as const, error: 'Taxa não está vinculada a uma DN' };
+    const result = await deleteSupplierDn({
+      dnId,
+      companyId: profile.company_id,
+      quoteId,
+      userId: profile.user_id,
+      partnerName,
+    });
+    if (result.ok) {
+      queryClient.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['debit_notes', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['debit_notes_ap', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quote_charges_for_dn', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
+      toast.success('DN excluída — taxas liberadas para edição');
+    } else {
+      toast.error(result.error);
+    }
+    return result;
+  }
+
   async function handleCloneCharge(charge: any, newAmount: number, targetSide: 'buy' | 'sell', partnerId?: string) {
     if (!profile) return;
     try {
@@ -2522,6 +2550,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     currentUserId={profile?.user_id}
                     onPercentClick={(id) => setPercentDialogChargeId(id)}
                     onSendDn={(id, name, amount, currency, chargeIds) => setSendDnPartner({ id, name, amount, currency, chargeIds })}
+                    onReopenCharge={handleReopenChargeWithDn}
                   />
                   <ChargeColumn
                     title={t('quotes.total_sell')}
@@ -2852,9 +2881,12 @@ interface ChargeColumnProps {
    *  Venda) — abre o mesmo formulário de emissão de DN ao Cliente, já
    *  escopado às taxas daquele grupo. */
   onGenerateNd?: (partnerId: string, partnerName: string, groupCharges: any[]) => void;
+  /** "Reabrir" uma taxa já enviada numa DN (ainda não paga) — exclui a DN
+   *  inteira e libera as taxas presas nela pra edição de novo. */
+  onReopenCharge?: (charge: any, partnerName: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
-function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, legColors, legBorderLeftColors, onDelete, onClone, onUpdate, colorClass, borderClass, cloneLabel, partners, defaultClonePartnerId, cargoMetrics, readOnly, showReconciliation, currentUserId, onPercentClick, onSendDn, onGenerateNd }: ChargeColumnProps) {
+function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, legColors, legBorderLeftColors, onDelete, onClone, onUpdate, colorClass, borderClass, cloneLabel, partners, defaultClonePartnerId, cargoMetrics, readOnly, showReconciliation, currentUserId, onPercentClick, onSendDn, onGenerateNd, onReopenCharge }: ChargeColumnProps) {
   const { t } = useLanguage();
   const [cloningId, setCloningId] = useState<string | null>(null);
   const [cloneAmount, setCloneAmount] = useState('');
@@ -3227,6 +3259,8 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                 cargoMetrics={cargoMetrics}
                                 onUpdate={onUpdate}
                                 currentUserId={currentUserId}
+                                partnerName={group.partnerName}
+                                onReopenCharge={onReopenCharge}
                               />
                             )}
                             {cloningId === c.id && (
@@ -3571,11 +3605,13 @@ const VARIANCE_LABELS: Record<string, string> = {
   sobrestadia: 'Sobrestadia', reajuste: 'Reajuste', outros: 'Outros',
 };
 
-function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId }: {
+function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId, partnerName, onReopenCharge }: {
   charge: any;
   cargoMetrics?: { totalWeight: number; totalCbm: number; totalChargeable: number; totalContainers: number; totalContainers20: number; totalContainers40: number };
   onUpdate: (id: string, updates: Record<string, any>) => Promise<void>;
   currentUserId?: string;
+  partnerName?: string;
+  onReopenCharge?: (charge: any, partnerName: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const mult = (() => {
     if (!cargoMetrics) return 1;
@@ -3616,11 +3652,27 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId }: {
     delta < 0 ? 'text-emerald-600' :
     Math.abs(deltaPct) <= 5 ? 'text-amber-500' : 'text-destructive';
 
+  const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
+  const [reopening, setReopening] = useState(false);
+
+  // Enviada numa DN é o travamento de verdade — a partir daí ninguém edita
+  // mais o valor direto aqui. Só "Conferir" (checklist, pré-requisito pra
+  // habilitar o botão "Enviar DN") não trava nada; dá pra editar à vontade
+  // até a DN ser realmente enviada.
+  const sentInDn = !!charge.sent_in_debit_note_id;
+
   const saveActual = () => {
     const val = inputVal === '' ? null : parseFloat(inputVal);
     if (val !== null && isNaN(val)) return;
     if (val === (actualUnit ?? null)) return;
-    onUpdate(charge.id, { buy_amount_actual: val });
+    const updates: Record<string, any> = { buy_amount_actual: val };
+    // Mudou o valor depois de já ter conferido (mas ainda não enviado)? A
+    // confirmação anterior fica desatualizada — precisa conferir de novo.
+    if (confirmed && !sentInDn) {
+      updates.buy_actual_confirmed_at = null;
+      updates.buy_actual_confirmed_by = null;
+    }
+    onUpdate(charge.id, updates);
   };
 
   const saveReason = (v: string) => {
@@ -3638,19 +3690,20 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId }: {
     });
   };
 
-  const reopen = () => {
-    onUpdate(charge.id, {
-      buy_actual_confirmed_at: null,
-      buy_actual_confirmed_by: null,
-    });
+  const handleReopenConfirm = async () => {
+    if (!onReopenCharge || reopening) return;
+    setReopening(true);
+    const result = await onReopenCharge(charge, partnerName || '');
+    setReopening(false);
+    if (result.ok) setReopenConfirmOpen(false);
   };
 
-  // Depois que a conta a pagar dessa DN é quitada, a taxa fica travada —
-  // não dá mais pra reabrir nem editar o cobrado. Se chegar uma cobrança
-  // nova do fornecedor, o usuário cadastra outra taxa (linha nova) em vez
-  // de mexer nesta, que já foi paga.
+  // Depois que a conta a pagar dessa DN é quitada, a taxa fica travada de
+  // vez — não dá mais pra reabrir nem editar o cobrado. Se chegar uma
+  // cobrança nova do fornecedor, o usuário cadastra outra taxa (linha nova)
+  // em vez de mexer nesta, que já foi paga.
   const paid = !!charge.buy_paid_at;
-  const locked = confirmed && paid;
+  const locked = sentInDn && paid;
 
   return (
     <TableRow className={confirmed ? 'bg-emerald-500/5' : 'bg-muted/10'}>
@@ -3661,14 +3714,14 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId }: {
           <Input
             type="number"
             value={inputVal}
-            disabled={confirmed}
+            disabled={sentInDn}
             onChange={(e) => setInputVal(e.target.value)}
             onBlur={saveActual}
             placeholder={String(charge.buy_amount ?? '0')}
             className="h-6 w-24 text-xs font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
           {actualTotal != null && Math.abs(delta) >= 0.01 && (
-            <Select value={reason} onValueChange={saveReason} disabled={confirmed}>
+            <Select value={reason} onValueChange={saveReason} disabled={sentInDn}>
               <SelectTrigger className="h-6 w-32 text-[11px]">
                 <SelectValue placeholder="Motivo" />
               </SelectTrigger>
@@ -3684,15 +3737,37 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId }: {
               <Badge variant="outline" className="text-[10px] h-5 bg-primary/10 text-primary border-primary/30 gap-1" title="Taxa já paga — não pode ser reaberta">
                 <CheckCircle className="w-3 h-3" /> Pago
               </Badge>
-            ) : confirmed ? (
+            ) : sentInDn ? (
               <>
-                <Badge variant="outline" className="text-[10px] h-5 bg-emerald-500/15 text-emerald-600 border-emerald-500/30 gap-1">
-                  <CheckCircle className="w-3 h-3" /> Conferido
+                <Badge variant="outline" className="text-[10px] h-5 bg-primary/15 text-primary border-primary/30 gap-1">
+                  <CheckCircle className="w-3 h-3" /> Enviado em DN
                 </Badge>
-                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={reopen}>
+                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setReopenConfirmOpen(true)}>
                   Reabrir
                 </Button>
+                <AlertDialog open={reopenConfirmOpen} onOpenChange={(o) => !reopening && setReopenConfirmOpen(o)}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Essa taxa já está numa DN enviada</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Reabrir vai excluir a Debit Note já enviada ao fornecedor e removê-la de Contas a
+                        Pagar. As taxas incluídas nela voltam a ficar editáveis e precisam ser conferidas
+                        de novo antes de gerar uma nova DN. Deseja continuar?
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={reopening}>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleReopenConfirm} disabled={reopening}>
+                        {reopening ? 'Excluindo…' : 'Sim, excluir DN'}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </>
+            ) : confirmed ? (
+              <Badge variant="outline" className="text-[10px] h-5 bg-emerald-500/15 text-emerald-600 border-emerald-500/30 gap-1">
+                <CheckCircle className="w-3 h-3" /> Conferido
+              </Badge>
             ) : (
               <Button
                 size="sm"
