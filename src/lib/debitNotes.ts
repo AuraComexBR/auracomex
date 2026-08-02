@@ -57,3 +57,60 @@ export async function deleteSupplierDn({
 
   return { ok: true };
 }
+
+/**
+ * Equivalente a `deleteSupplierDn`, só que pro lado Venda: exclui uma ND
+ * (Nota de Débito) já emitida ao cliente, junto com a conta a receber
+ * vinculada, e libera de volta pra edição as taxas de venda que estavam
+ * presas nela. Único jeito de reabrir uma taxa de venda já enviada numa ND
+ * — o valor cobrado do cliente não tem uma etapa de "conferência" separada
+ * como o lado compra, então gerar a ND já trava o valor direto.
+ */
+export async function deleteClientDn({
+  dnId,
+  companyId,
+  quoteId,
+  userId,
+  clientName,
+}: {
+  dnId: string;
+  companyId: string;
+  quoteId?: string | null;
+  userId?: string | null;
+  /** Nome do cliente/empresa, se já disponível no chamador — evita um select extra. */
+  clientName?: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: dn, error: dnErr } = await supabase
+    .from('debit_notes' as any)
+    .select('id, dn_number, status, quote_id')
+    .eq('id', dnId)
+    .maybeSingle();
+  if (dnErr) return { ok: false, error: dnErr.message };
+  if (!dn) return { ok: false, error: 'Debit Note não encontrada.' };
+  if ((dn as any).status === 'paga') {
+    return { ok: false, error: 'Esta ND já foi paga e não pode ser excluída.' };
+  }
+
+  await supabase.from('accounts_receivable' as any).delete().eq('debit_note_id', dnId);
+  const { error: delErr } = await supabase.from('debit_notes' as any).delete().eq('id', dnId);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  // Libera as taxas de venda presas nesta ND — não existe "confirmação"
+  // separada do lado venda, então só o vínculo precisa ser limpo.
+  await supabase
+    .from('quote_charges' as any)
+    .update({ sent_in_debit_note_id: null })
+    .eq('sent_in_debit_note_id', dnId);
+
+  const effectiveQuoteId = quoteId || (dn as any).quote_id || null;
+  await logAuditEvent({
+    quoteId: effectiveQuoteId,
+    companyId,
+    userId,
+    field_name: 'debit_note',
+    old_value: `${clientName ? clientName + ' — ' : ''}ND ${(dn as any).dn_number}`,
+    new_value: null,
+  });
+
+  return { ok: true };
+}

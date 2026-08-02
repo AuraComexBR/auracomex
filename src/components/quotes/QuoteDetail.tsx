@@ -46,7 +46,7 @@ import { DocumentsTab } from '@/components/shipments/DocumentsTab';
 import { HistoryPanel } from './HistoryPanel';
 // ActivityTab removida como aba própria: histórico agora é unificado no HistoryPanel (botão no header).
 import { logAuditChanges, logAuditEvent } from '@/lib/auditLog';
-import { deleteSupplierDn } from '@/lib/debitNotes';
+import { deleteSupplierDn, deleteClientDn } from '@/lib/debitNotes';
 
 const LEGS = ['origin', 'freight', 'destination'] as const;
 const CURRENCIES = ['USD', 'BRL', 'EUR', 'GBP', 'CNY'];
@@ -1441,6 +1441,33 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     return result;
   }
 
+  // Reabrir uma taxa de venda já enviada numa ND ao cliente (ainda não paga):
+  // exclui a ND inteira (some do Financeiro) e libera a taxa pra edição de
+  // novo, com aviso no histórico. Não existe "conferência" separada do lado
+  // venda — gerar a ND já é o que trava o valor cobrado do cliente.
+  async function handleReopenSellChargeWithNd(charge: any, partnerName: string) {
+    if (!profile) return { ok: false as const, error: 'Não autenticado' };
+    const dnId = charge.sent_in_debit_note_id;
+    if (!dnId) return { ok: false as const, error: 'Taxa não está vinculada a uma ND' };
+    const result = await deleteClientDn({
+      dnId,
+      companyId: profile.company_id,
+      quoteId,
+      userId: profile.user_id,
+      clientName: partnerName,
+    });
+    if (result.ok) {
+      queryClient.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['client_debit_notes', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['quote_sell_charges', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['accounts_receivable'] });
+      toast.success('ND excluída — taxa liberada para edição');
+    } else {
+      toast.error(result.error);
+    }
+    return result;
+  }
+
   async function handleCloneCharge(charge: any, newAmount: number, targetSide: 'buy' | 'sell', partnerId?: string) {
     if (!profile) return;
     try {
@@ -2571,6 +2598,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     readOnly={!canEditCharges}
                     onPercentClick={(id) => setPercentDialogChargeId(id)}
                     onGenerateNd={(id, name, groupCharges) => setGenerateNdPartner({ id, name, charges: groupCharges })}
+                    onReopenSellCharge={handleReopenSellChargeWithNd}
                   />
                 </div>
               );
@@ -2884,9 +2912,12 @@ interface ChargeColumnProps {
   /** "Reabrir" uma taxa já enviada numa DN (ainda não paga) — exclui a DN
    *  inteira e libera as taxas presas nela pra edição de novo. */
   onReopenCharge?: (charge: any, partnerName: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Equivalente do lado venda: "Reabrir" uma taxa já enviada numa ND ao
+   *  cliente — exclui a ND e libera a taxa pra edição de novo. */
+  onReopenSellCharge?: (charge: any, partnerName: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
-function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, legColors, legBorderLeftColors, onDelete, onClone, onUpdate, colorClass, borderClass, cloneLabel, partners, defaultClonePartnerId, cargoMetrics, readOnly, showReconciliation, currentUserId, onPercentClick, onSendDn, onGenerateNd, onReopenCharge }: ChargeColumnProps) {
+function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, legColors, legBorderLeftColors, onDelete, onClone, onUpdate, colorClass, borderClass, cloneLabel, partners, defaultClonePartnerId, cargoMetrics, readOnly, showReconciliation, currentUserId, onPercentClick, onSendDn, onGenerateNd, onReopenCharge, onReopenSellCharge }: ChargeColumnProps) {
   const { t } = useLanguage();
   const [cloningId, setCloningId] = useState<string | null>(null);
   const [cloneAmount, setCloneAmount] = useState('');
@@ -3095,30 +3126,41 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   </Button>
                                 );
                               })()}
-                              {onGenerateNd && amountKey === 'sell_amount' && group.partnerId && firstLegByPartner[group.partnerId] === leg && (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 gap-1.5 text-xs"
-                                  title="Gerar Nota de Débito para esta empresa (todas as taxas, todos os trechos)"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onGenerateNd(group.partnerId, group.partnerName, allChargesByPartner[group.partnerId] || group.charges);
-                                  }}
-                                >
-                                  <Send className="w-3.5 h-3.5" /> Gerar ND
-                                </Button>
-                              )}
+                              {onGenerateNd && amountKey === 'sell_amount' && group.partnerId && firstLegByPartner[group.partnerId] === leg && (() => {
+                                // Taxas já enviadas numa ND anterior ficam de fora — reentram só
+                                // se a ND antiga for reaberta/excluída primeiro.
+                                const pending = (allChargesByPartner[group.partnerId] || group.charges).filter((c: any) => !c.sent_in_debit_note_id);
+                                return (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 gap-1.5 text-xs"
+                                    disabled={pending.length === 0}
+                                    title={pending.length === 0 ? 'Todas as taxas desta empresa já foram enviadas em uma ND' : 'Gerar Nota de Débito para esta empresa (todas as taxas, todos os trechos)'}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onGenerateNd(group.partnerId, group.partnerName, pending);
+                                    }}
+                                  >
+                                    <Send className="w-3.5 h-3.5" /> Gerar ND
+                                  </Button>
+                                );
+                              })()}
                             </div>
                           </TableCell>
                         </TableRow>
-                        {group.charges.map((c: any) => (
+                        {group.charges.map((c: any) => {
+                          // Do lado venda, gerar a ND já trava o valor cobrado do cliente — não
+                          // tem uma etapa de "conferência" separada como o lado compra. Só dá pra
+                          // editar de novo reabrindo (o que exclui a ND vinculada).
+                          const lockedForEdit = amountKey === 'sell_amount' && !!c.sent_in_debit_note_id;
+                          return (
                           <React.Fragment key={c.id}>
                             <TableRow
-                              className={`${readOnly ? '' : 'cursor-pointer'} hover:bg-muted/40 transition-colors`}
+                              className={`${readOnly || lockedForEdit ? '' : 'cursor-pointer'} hover:bg-muted/40 transition-colors`}
                               onClick={() => {
-                                if (readOnly) return;
+                                if (readOnly || lockedForEdit) return;
                                 if (c.billing_unit === 'percent' && onPercentClick) {
                                   onPercentClick(c.id);
                                   return;
@@ -3222,6 +3264,11 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                     )}
                                   </>
                                 )}
+                                {lockedForEdit && (
+                                  <Badge variant="outline" className="ml-1.5 text-[9px] h-4 px-1 bg-primary/10 text-primary border-primary/30">
+                                    ND
+                                  </Badge>
+                                )}
                               </TableCell>
                               {!readOnly && (
                               <TableCell onClick={(e) => e.stopPropagation()}>
@@ -3239,16 +3286,20 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   >
                                     <Copy className="w-3.5 h-3.5 text-muted-foreground" />
                                   </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    disabled={!!c.sent_in_debit_note_id}
-                                    title={c.sent_in_debit_note_id ? 'Taxa já enviada em uma DN — não pode ser excluída' : undefined}
-                                    onClick={() => onDelete(c.id)}
-                                  >
-                                    <Trash2 className={`w-3.5 h-3.5 ${c.sent_in_debit_note_id ? 'text-muted-foreground' : 'text-destructive'}`} />
-                                  </Button>
+                                  {lockedForEdit && onReopenSellCharge ? (
+                                    <ReopenNdButton charge={c} partnerName={group.partnerName} onReopenSellCharge={onReopenSellCharge} />
+                                  ) : (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      disabled={!!c.sent_in_debit_note_id}
+                                      title={c.sent_in_debit_note_id ? 'Taxa já enviada em uma DN — não pode ser excluída' : undefined}
+                                      onClick={() => onDelete(c.id)}
+                                    >
+                                      <Trash2 className={`w-3.5 h-3.5 ${c.sent_in_debit_note_id ? 'text-muted-foreground' : 'text-destructive'}`} />
+                                    </Button>
+                                  )}
                                 </div>
                               </TableCell>
                               )}
@@ -3313,7 +3364,8 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                               </TableRow>
                             )}
                           </React.Fragment>
-                        ))}
+                          );
+                        })}
                       </React.Fragment>
                     ))}
                   </React.Fragment>
@@ -3595,6 +3647,55 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
         </Table>
       )}
     </div>
+  );
+}
+
+/* ── Botão "Reabrir" de uma taxa de venda já enviada numa ND ao cliente ── */
+function ReopenNdButton({ charge, partnerName, onReopenSellCharge }: {
+  charge: any;
+  partnerName: string;
+  onReopenSellCharge: (charge: any, partnerName: string) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleConfirm = async () => {
+    if (loading) return;
+    setLoading(true);
+    const result = await onReopenSellCharge(charge, partnerName);
+    setLoading(false);
+    if (result.ok) setOpen(false);
+  };
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        title="Reabrir (exclui a ND vinculada)"
+        onClick={() => setOpen(true)}
+      >
+        <Undo2 className="w-3.5 h-3.5 text-primary" />
+      </Button>
+      <AlertDialog open={open} onOpenChange={(o) => !loading && setOpen(o)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Essa taxa já está numa ND emitida</AlertDialogTitle>
+            <AlertDialogDescription>
+              Reabrir vai excluir a Nota de Débito já emitida ao cliente e removê-la de Contas a
+              Receber. A taxa volta a ficar editável. Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirm} disabled={loading}>
+              {loading ? 'Excluindo…' : 'Sim, excluir ND'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
