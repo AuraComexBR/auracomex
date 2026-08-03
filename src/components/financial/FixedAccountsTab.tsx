@@ -36,6 +36,8 @@ export default function FixedAccountsTab() {
   const [oneOffOpen, setOneOffOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<any | null>(null);
   const [payDate, setPayDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [editAmountTarget, setEditAmountTarget] = useState<any | null>(null);
+  const [editAmountValue, setEditAmountValue] = useState<string>('');
 
   const totals = useMemo(() => {
     const list = entries.data || [];
@@ -298,6 +300,12 @@ export default function FixedAccountsTab() {
                               <StatusBadge status={overdue ? 'late' : e.status} />
                             </td>
                             <td className="py-2 pr-3 text-right space-x-1">
+                              {e.status !== 'paid' && (
+                                <Button size="icon" variant="ghost" title="Alterar valor"
+                                  onClick={() => { setEditAmountTarget(e); setEditAmountValue(String(e.amount)); }}>
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                               {e.status !== 'paid' ? (
                                 <Button size="sm" variant="outline"
                                   onClick={() => {
@@ -394,6 +402,39 @@ export default function FixedAccountsTab() {
               }}
             >
               Confirmar pagamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editAmountTarget} onOpenChange={(o) => !o && setEditAmountTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar valor do lançamento</DialogTitle>
+            {editAmountTarget && (
+              <DialogDescription>
+                {expensesById.get(editAmountTarget.overhead_expense_id)?.name || 'Lançamento'} — vencimento {fmtDate(editAmountTarget.due_date)}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Valor</Label>
+            <Input type="number" step="0.01" value={editAmountValue} onChange={(ev) => setEditAmountValue(ev.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditAmountTarget(null)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                if (!editAmountTarget) return;
+                const val = Number(editAmountValue);
+                if (!isFinite(val) || val < 0) return;
+                entries.update.mutate(
+                  { id: editAmountTarget.id, patch: { amount: val } },
+                  { onSuccess: () => setEditAmountTarget(null) },
+                );
+              }}
+            >
+              Salvar
             </Button>
           </DialogFooter>
         </DialogContent>
