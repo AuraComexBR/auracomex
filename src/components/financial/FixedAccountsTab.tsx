@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,10 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Trash2, Pencil, Play, CheckCircle2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Pencil, Play, CheckCircle2, Loader2, Paperclip } from 'lucide-react';
 import { useOverheadCategories, useOverheadEntries, useOverheadExpenses, OverheadExpense } from '@/hooks/useOverhead';
 import { OverheadExpenseModal } from '@/components/overhead/OverheadExpenseModal';
 import { OneOffExpenseModal } from '@/components/overhead/OneOffExpenseModal';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
+import { toast } from 'sonner';
 
 function currentMonthISO() {
   const d = new Date(); d.setDate(1);
@@ -26,6 +30,8 @@ function fmtDate(s?: string | null) {
 }
 
 export default function FixedAccountsTab() {
+  const { profile } = useAuth();
+  const companyId = profile?.company_id;
   const [referenceMonth, setReferenceMonth] = useState(currentMonthISO());
   const categories = useOverheadCategories();
   const expenses = useOverheadExpenses();
@@ -36,8 +42,8 @@ export default function FixedAccountsTab() {
   const [oneOffOpen, setOneOffOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<any | null>(null);
   const [payDate, setPayDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  const [editAmountTarget, setEditAmountTarget] = useState<any | null>(null);
-  const [editAmountValue, setEditAmountValue] = useState<string>('');
+  const [payFile, setPayFile] = useState<File | null>(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
   const totals = useMemo(() => {
     const list = entries.data || [];
@@ -149,11 +155,18 @@ export default function FixedAccountsTab() {
                               <StatusBadge status={overdue ? 'late' : e.status} />
                             </td>
                             <td className="py-2 pr-3 text-right space-x-1">
+                              {e.payment_proof_url && (
+                                <Button size="icon" variant="ghost" title="Ver comprovante"
+                                  onClick={() => openSignedDoc(e.payment_proof_url!).catch((err: any) => toast.error(err.message))}>
+                                  <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
+                                </Button>
+                              )}
                               {e.status !== 'paid' ? (
                                 <Button size="sm" variant="outline"
                                   onClick={() => {
                                     setPayTarget(e);
                                     setPayDate(new Date().toISOString().slice(0, 10));
+                                    setPayFile(null);
                                   }}>
                                   <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Pagar
                                 </Button>
@@ -295,15 +308,22 @@ export default function FixedAccountsTab() {
                               {cat ? <Badge variant="secondary" style={{ borderColor: cat.color || undefined }}>{cat.name}</Badge> : '—'}
                             </td>
                             <td className={`py-2 pr-3 ${overdue ? 'text-destructive font-medium' : ''}`}>{fmtDate(e.due_date)}</td>
-                            <td className="py-2 pr-3 text-right tabular-nums">{fmt(Number(e.amount), e.currency)}</td>
+                            <td className="py-2 pr-3 text-right">
+                              <EditableAmountCell
+                                value={Number(e.amount)}
+                                currency={e.currency}
+                                disabled={e.status === 'paid'}
+                                onSave={(v) => entries.update.mutate({ id: e.id, patch: { amount: v } })}
+                              />
+                            </td>
                             <td className="py-2 pr-3">
                               <StatusBadge status={overdue ? 'late' : e.status} />
                             </td>
                             <td className="py-2 pr-3 text-right space-x-1">
-                              {e.status !== 'paid' && (
-                                <Button size="icon" variant="ghost" title="Alterar valor"
-                                  onClick={() => { setEditAmountTarget(e); setEditAmountValue(String(e.amount)); }}>
-                                  <Pencil className="w-3.5 h-3.5" />
+                              {e.payment_proof_url && (
+                                <Button size="icon" variant="ghost" title="Ver comprovante"
+                                  onClick={() => openSignedDoc(e.payment_proof_url!).catch((err: any) => toast.error(err.message))}>
+                                  <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
                                 </Button>
                               )}
                               {e.status !== 'paid' ? (
@@ -311,6 +331,7 @@ export default function FixedAccountsTab() {
                                   onClick={() => {
                                     setPayTarget(e);
                                     setPayDate(new Date().toISOString().slice(0, 10));
+                                    setPayFile(null);
                                   }}>
                                   <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Pagar
                                 </Button>
@@ -386,60 +407,74 @@ export default function FixedAccountsTab() {
               </DialogDescription>
             )}
           </DialogHeader>
-          <div className="space-y-2">
-            <Label>Data do pagamento</Label>
-            <Input type="date" value={payDate} onChange={(ev) => setPayDate(ev.target.value)} />
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Data do pagamento</Label>
+              <Input type="date" value={payDate} onChange={(ev) => setPayDate(ev.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Comprovante (opcional)</Label>
+              <Input type="file" accept="application/pdf,image/*" onChange={(ev) => setPayFile(ev.target.files?.[0] ?? null)} />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPayTarget(null)}>Cancelar</Button>
+            <Button variant="ghost" onClick={() => setPayTarget(null)} disabled={uploadingReceipt}>Cancelar</Button>
             <Button
-              onClick={() => {
+              disabled={uploadingReceipt}
+              onClick={async () => {
                 if (!payTarget || !payDate) return;
+                let payment_proof_url: string | null = null;
+                if (payFile) {
+                  setUploadingReceipt(true);
+                  const path = `receipts/${companyId}/overhead/${payTarget.id}/${Date.now()}_${payFile.name}`;
+                  const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, payFile);
+                  setUploadingReceipt(false);
+                  if (upErr) return toast.error('Erro ao anexar comprovante', { description: upErr.message });
+                  payment_proof_url = path;
+                }
                 entries.update.mutate(
-                  { id: payTarget.id, patch: { status: 'paid', paid_at: new Date(payDate + 'T12:00:00').toISOString() } },
-                  { onSuccess: () => setPayTarget(null) },
+                  {
+                    id: payTarget.id,
+                    patch: {
+                      status: 'paid',
+                      paid_at: new Date(payDate + 'T12:00:00').toISOString(),
+                      ...(payment_proof_url ? { payment_proof_url } : {}),
+                    },
+                  },
+                  { onSuccess: () => { setPayTarget(null); setPayFile(null); } },
                 );
               }}
             >
-              Confirmar pagamento
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!editAmountTarget} onOpenChange={(o) => !o && setEditAmountTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Alterar valor do lançamento</DialogTitle>
-            {editAmountTarget && (
-              <DialogDescription>
-                {expensesById.get(editAmountTarget.overhead_expense_id)?.name || 'Lançamento'} — vencimento {fmtDate(editAmountTarget.due_date)}
-              </DialogDescription>
-            )}
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label>Valor</Label>
-            <Input type="number" step="0.01" value={editAmountValue} onChange={(ev) => setEditAmountValue(ev.target.value)} />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditAmountTarget(null)}>Cancelar</Button>
-            <Button
-              onClick={() => {
-                if (!editAmountTarget) return;
-                const val = Number(editAmountValue);
-                if (!isFinite(val) || val < 0) return;
-                entries.update.mutate(
-                  { id: editAmountTarget.id, patch: { amount: val } },
-                  { onSuccess: () => setEditAmountTarget(null) },
-                );
-              }}
-            >
-              Salvar
+              {uploadingReceipt ? 'Enviando…' : 'Confirmar pagamento'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function EditableAmountCell({ value, currency, disabled, onSave }: { value: number; currency: string; disabled?: boolean; onSave: (v: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => { setDraft(String(value)); }, [value]);
+
+  if (disabled) {
+    return <span className="tabular-nums">{fmt(value, currency)}</span>;
+  }
+
+  return (
+    <Input
+      type="number"
+      step="0.01"
+      className="w-28 h-8 text-right ml-auto tabular-nums"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const n = Number(draft);
+        if (isFinite(n) && n >= 0 && n !== value) onSave(n);
+        else setDraft(String(value));
+      }}
+    />
   );
 }
 
