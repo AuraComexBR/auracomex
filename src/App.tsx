@@ -18,7 +18,8 @@ const FirstAccess = lazy(() => import("./pages/FirstAccess"));
 const Shipments = lazy(() => import("./pages/Shipments"));
 const Quotes = lazy(() => import("./pages/Quotes"));
 const Registrations = lazy(() => import("./pages/Registrations"));
-const Financial = lazy(() => import("./pages/Financial"));
+const FinancialProcess = lazy(() => import("./pages/FinancialProcess"));
+const FinancialCompany = lazy(() => import("./pages/FinancialCompany"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const MyAccount = lazy(() => import("./pages/MyAccount"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
@@ -118,8 +119,10 @@ function AppRoutes() {
         <Route path="/shipments" element={<ProtectedRoute requiredPermission="canAccessShipments"><Shipments /></ProtectedRoute>} />
         <Route path="/quotes" element={<ProtectedRoute requiredPermission="canAccessQuotes"><Quotes /></ProtectedRoute>} />
         <Route path="/registrations" element={<ProtectedRoute requiredPermission="canAccessRegistrations"><Registrations /></ProtectedRoute>} />
-        <Route path="/financial" element={<ProtectedRoute requiredPermission="canAccessFinancial"><Financial /></ProtectedRoute>} />
-        <Route path="/overhead" element={<Navigate to="/financial?tab=fixas" replace />} />
+        <Route path="/financial" element={<Navigate to="/financial/processo" replace />} />
+        <Route path="/financial/processo" element={<ProtectedRoute requiredPermission="canAccessFinancial"><FinancialProcess /></ProtectedRoute>} />
+        <Route path="/financial/empresa" element={<ProtectedRoute requiredPermission="canAccessFinancial"><FinancialCompany /></ProtectedRoute>} />
+        <Route path="/overhead" element={<Navigate to="/financial/empresa?tab=fixas" replace />} />
         <Route path="/settings" element={<ProtectedRoute requiredPermission="canAccessSettings"><SettingsPage /></ProtectedRoute>} />
         <Route path="/account" element={<ProtectedRoute><MyAccount /></ProtectedRoute>} />
         <Route path="/billing" element={<Navigate to="/settings#assinatura" replace />} />

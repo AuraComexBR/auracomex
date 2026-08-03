@@ -348,7 +348,7 @@ export default function Index() {
                   <Wallet className="w-4 h-4 text-status-attention" />
                   Financeiro em Atenção
                 </CardTitle>
-                <Link to="/financial" className="text-xs text-primary hover:underline flex items-center gap-0.5">
+                <Link to="/financial/processo" className="text-xs text-primary hover:underline flex items-center gap-0.5">
                   Ver tudo <ArrowRight className="w-3 h-3" />
                 </Link>
               </CardHeader>

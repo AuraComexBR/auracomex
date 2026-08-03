@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Ship, FileText, DollarSign, Database,
-  Settings, ChevronLeft, ChevronRight, Anchor, ArrowLeft, CreditCard, LifeBuoy, RefreshCw
+  Settings, ChevronLeft, ChevronRight, ChevronDown, Anchor, ArrowLeft, CreditCard, LifeBuoy, RefreshCw
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,7 +18,16 @@ const allNavItems = [
   { key: 'nav.dashboard', icon: LayoutDashboard, path: '/', permission: 'canAccessDashboard' as const },
   { key: 'nav.quotes', icon: FileText, path: '/quotes', permission: 'canAccessQuotes' as const },
   { key: 'nav.shipments', icon: Ship, path: '/shipments', permission: 'canAccessShipments' as const },
-  { key: 'nav.financial', icon: DollarSign, path: '/financial', permission: 'canAccessFinancial' as const },
+  {
+    key: 'nav.financial', icon: DollarSign, path: '/financial/processo', permission: 'canAccessFinancial' as const,
+    // Financeiro por processo (Receber/Pagar) e da empresa (Visão Geral/Despesas
+    // Fixas) são fluxos diferentes — em vez de um item novo solto no menu,
+    // "Financeiro" expande em dois, mantendo um ícone só.
+    children: [
+      { key: 'nav.financial_process', path: '/financial/processo' },
+      { key: 'nav.financial_company', path: '/financial/empresa' },
+    ],
+  },
   { key: 'nav.registrations', icon: Database, path: '/registrations', permission: 'canAccessRegistrations' as const },
   { key: 'nav.settings', icon: Settings, path: '/settings', permission: 'canAccessSettings' as const },
 ];
@@ -29,6 +38,7 @@ export function AppSidebar() {
     () => typeof window !== 'undefined' && window.innerWidth < 1024,
   );
   const [supportOpen, setSupportOpen] = useState(false);
+  const [financialOpen, setFinancialOpen] = useState(false);
 
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 1023px)');
@@ -43,6 +53,12 @@ export function AppSidebar() {
   const { isSuperadmin, activeCompanyName, exitCompany, profile } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Mantém "Financeiro" expandido enquanto o usuário estiver em alguma das
+  // suas duas sub-páginas (evita fechar sozinho ao trocar de aba).
+  useEffect(() => {
+    if (location.pathname.startsWith('/financial')) setFinancialOpen(true);
+  }, [location.pathname]);
   const permissions = usePermissions();
   const queryClient = useQueryClient();
   const { usdBrl, eurBrl, source: ratesSource, loading: ratesLoading, refetch: refetchRates } = useExchangeRate();
@@ -163,8 +179,77 @@ export function AppSidebar() {
       <div className="flex-1 flex flex-col overflow-hidden py-4 px-2">
         <nav className="space-y-1">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.path ||
-              (item.path !== '/' && location.pathname.startsWith(item.path));
+            const hasChildren = !!(item as any).children;
+            const isActive = !hasChildren && (location.pathname === item.path ||
+              (item.path !== '/' && location.pathname.startsWith(item.path)));
+            const isParentActive = hasChildren && location.pathname.startsWith('/financial');
+
+            if (hasChildren) {
+              return (
+                <div key={item.key}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (collapsed) { navigate(item.path); return; }
+                      setFinancialOpen((o) => !o);
+                    }}
+                    className={cn(
+                      "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                      isParentActive
+                        ? "bg-sidebar-primary/10 text-sidebar-primary"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    )}
+                  >
+                    <item.icon className="w-5 h-5 shrink-0" />
+                    {!collapsed && <span className="flex-1 text-left">{t(item.key)}</span>}
+                    {!collapsed && (
+                      <ChevronDown className={cn("w-3.5 h-3.5 shrink-0 transition-transform", financialOpen && "rotate-180")} />
+                    )}
+                    {overdueCount > 0 && (
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold rounded-full bg-red-500 text-white",
+                          collapsed ? "absolute -mt-6 ml-4 w-4 h-4 flex items-center justify-center" : "px-1.5 py-0.5 min-w-[20px] text-center"
+                        )}
+                        title={`${overdueCount} conta(s) vencida(s)`}
+                      >
+                        {overdueCount}
+                      </span>
+                    )}
+                  </button>
+                  {!collapsed && financialOpen && (
+                    <div className="ml-4 pl-3 border-l border-sidebar-border space-y-1 mt-1">
+                      {(item as any).children.map((child: { key: string; path: string }) => {
+                        const childActive = location.pathname === child.path;
+                        return (
+                          <Link
+                            key={child.key}
+                            to={child.path}
+                            className={cn(
+                              "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                              childActive
+                                ? "bg-sidebar-primary/10 text-sidebar-primary"
+                                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                            )}
+                          >
+                            <span className="flex-1">{t(child.key)}</span>
+                            {child.path === '/financial/processo' && overdueCount > 0 && (
+                              <span
+                                className="text-[10px] font-bold rounded-full bg-red-500 text-white px-1.5 py-0.5 min-w-[20px] text-center"
+                                title={`${overdueCount} conta(s) vencida(s)`}
+                              >
+                                {overdueCount}
+                              </span>
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             return (
               <Link
                 key={item.key}
@@ -178,17 +263,6 @@ export function AppSidebar() {
               >
                 <item.icon className="w-5 h-5 shrink-0" />
                 {!collapsed && <span className="flex-1">{t(item.key)}</span>}
-                {item.path === '/financial' && overdueCount > 0 && (
-                  <span
-                    className={cn(
-                      "text-[10px] font-bold rounded-full bg-red-500 text-white",
-                      collapsed ? "absolute -mt-6 ml-4 w-4 h-4 flex items-center justify-center" : "px-1.5 py-0.5 min-w-[20px] text-center"
-                    )}
-                    title={`${overdueCount} conta(s) vencida(s)`}
-                  >
-                    {overdueCount}
-                  </span>
-                )}
               </Link>
             );
           })}
