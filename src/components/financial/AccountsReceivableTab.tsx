@@ -29,6 +29,7 @@ type AR = {
   due_date: string | null;
   status: 'aberto' | 'recebido' | 'atrasado' | 'cancelado';
   received_at: string | null;
+  received_amount: number | null;
   receipt_reference: string | null;
   receipt_url: string | null;
 };
@@ -52,7 +53,7 @@ export default function AccountsReceivableTab() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [target, setTarget] = useState<AR | null>(null);
-  const [form, setForm] = useState<{ received_at: string; receipt_reference: string; file: File | null }>({ received_at: format(new Date(), 'yyyy-MM-dd'), receipt_reference: '', file: null });
+  const [form, setForm] = useState<{ received_at: string; received_amount: string; receipt_reference: string; file: File | null }>({ received_at: format(new Date(), 'yyyy-MM-dd'), received_amount: '', receipt_reference: '', file: null });
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
   const { data: rows = [], refetch } = useQuery({
@@ -100,7 +101,7 @@ export default function AccountsReceivableTab() {
     let vencidos = 0, aVencer = 0, recebidos = 0, aberto = 0;
     for (const r of enriched) {
       const amt = Number(r.amount) || 0;
-      if (r.status === 'recebido') recebidos += amt;
+      if (r.status === 'recebido') recebidos += Number(r.received_amount ?? r.amount) || 0;
       else if (r.status === 'atrasado') vencidos += amt;
       else if (r.status === 'aberto') {
         aberto += amt;
@@ -112,6 +113,10 @@ export default function AccountsReceivableTab() {
 
   async function markReceived() {
     if (!target) return;
+    const receivedAmount = Number(form.received_amount);
+    if (!isFinite(receivedAmount) || receivedAmount < 0) {
+      return toast.error('Informe um valor recebido válido');
+    }
     let receipt_url: string | null = null;
     if (form.file) {
       setUploadingReceipt(true);
@@ -126,7 +131,7 @@ export default function AccountsReceivableTab() {
       .update({
         status: 'recebido',
         received_at: form.received_at,
-        received_amount: target.amount,
+        received_amount: receivedAmount,
         receipt_reference: form.receipt_reference || null,
         ...(receipt_url ? { receipt_url } : {}),
       })
@@ -135,7 +140,7 @@ export default function AccountsReceivableTab() {
 
     if (target.debit_note_id) {
       await supabase.from('debit_notes' as any).update({
-        status: 'paga', paid_at: form.received_at, paid_amount: target.amount, payment_reference: form.receipt_reference || null,
+        status: 'paga', paid_at: form.received_at, paid_amount: receivedAmount, payment_reference: form.receipt_reference || null,
       }).eq('id', target.debit_note_id);
     }
 
@@ -204,7 +209,14 @@ export default function AccountsReceivableTab() {
                       {r.due_date ? format(new Date(r.due_date), 'dd/MM/yyyy') : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.currency} {Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {r.status === 'recebido' && r.received_amount != null && Number(r.received_amount) !== Number(r.amount) ? (
+                        <div className="flex flex-col items-end">
+                          <span>{r.currency} {Number(r.received_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className="text-xs text-muted-foreground line-through">{Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                      ) : (
+                        <>{r.currency} {Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge className={STATUS_COLOR[r.status]} variant="secondary">
@@ -219,7 +231,7 @@ export default function AccountsReceivableTab() {
                           </Button>
                         )}
                         {r.status !== 'recebido' && r.status !== 'cancelado' && (
-                          <Button size="sm" variant="outline" onClick={() => { setTarget(r); setForm({ received_at: format(new Date(), 'yyyy-MM-dd'), receipt_reference: '', file: null }); }}>
+                          <Button size="sm" variant="outline" onClick={() => { setTarget(r); setForm({ received_at: format(new Date(), 'yyyy-MM-dd'), received_amount: String(r.amount), receipt_reference: '', file: null }); }}>
                             Receber
                           </Button>
                         )}
@@ -239,11 +251,20 @@ export default function AccountsReceivableTab() {
           {target && (
             <div className="space-y-3">
               <div className="text-sm text-muted-foreground">
-                {target.description} — {target.currency} {Number(target.amount).toFixed(2)}
+                {target.description} — previsto {target.currency} {Number(target.amount).toFixed(2)}
               </div>
               <div>
                 <Label>Data do recebimento</Label>
                 <Input type="date" value={form.received_at} onChange={(e) => setForm({ ...form, received_at: e.target.value })} />
+              </div>
+              <div>
+                <Label>Valor recebido</Label>
+                <Input type="number" step="0.01" value={form.received_amount} onChange={(e) => setForm({ ...form, received_amount: e.target.value })} />
+                {form.received_amount !== '' && Number(form.received_amount) !== Number(target.amount) && (
+                  <p className={`text-xs mt-1 ${Number(form.received_amount) < Number(target.amount) ? 'text-amber-500' : 'text-emerald-500'}`}>
+                    Diferença em relação ao previsto: {target.currency} {(Number(form.received_amount) - Number(target.amount)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'always' })}
+                  </p>
+                )}
               </div>
               <div>
                 <Label>Referência (TED/PIX/SWIFT)</Label>
