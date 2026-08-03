@@ -29,6 +29,7 @@ import { SortableHeader } from '@/components/shared/SortableHeader';
 import { ColumnSearch } from '@/components/shared/ColumnSearch';
 import { ColumnFilter } from '@/components/shared/ColumnFilter';
 import { countryCodeToFlag } from '@/lib/countryFlag';
+import { countryCodeToName } from '@/lib/countries';
 
 
 const MODES = ['ocean_fcl', 'ocean_lcl', 'air', 'road', 'multimodal'];
@@ -344,13 +345,13 @@ export default function Shipments() {
                     <TableCell className="py-0.5 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
                       <span className="inline-flex items-center gap-1.5">
                         <span className="leading-none">{countryCodeToFlag(s.origin_country || '')}</span>
-                        <span>{s.origin_city || s.origin_country || '-'}</span>
+                        <span>{s.origin_city || countryCodeToName(s.origin_country) || '-'}</span>
                       </span>
                     </TableCell>
                     <TableCell className="py-0.5 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
                       <span className="inline-flex items-center gap-1.5">
                         <span className="leading-none">{countryCodeToFlag(s.destination_country || '')}</span>
-                        <span>{s.destination_city || s.destination_country || '-'}</span>
+                        <span>{s.destination_city || countryCodeToName(s.destination_country) || '-'}</span>
                       </span>
                     </TableCell>
                     <TableCell className="py-0.5 px-1.5" onClick={(e) => e.stopPropagation()}>

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PortSelect } from '@/components/shared/PortSelect';
+import { CountrySelect } from '@/components/shared/CountrySelect';
 import { toast } from 'sonner';
 
 interface Props {
@@ -84,10 +85,10 @@ export function QuickCreateModal({ open, onClose, onCreated }: Props) {
                 value={form.origin_city}
                 onChange={(e) => setForm({ ...form, origin_city: e.target.value })}
               />
-              <Input
-                placeholder="BR"
+              <CountrySelect
+                placeholder="País de origem"
                 value={form.origin_country}
-                onChange={(e) => setForm({ ...form, origin_country: e.target.value })}
+                onChange={(v) => setForm({ ...form, origin_country: v })}
               />
               <PortSelect
                 value={form.origin_port}
@@ -103,10 +104,10 @@ export function QuickCreateModal({ open, onClose, onCreated }: Props) {
                 value={form.destination_city}
                 onChange={(e) => setForm({ ...form, destination_city: e.target.value })}
               />
-              <Input
-                placeholder="NL"
+              <CountrySelect
+                placeholder="País de destino"
                 value={form.destination_country}
-                onChange={(e) => setForm({ ...form, destination_country: e.target.value })}
+                onChange={(v) => setForm({ ...form, destination_country: v })}
               />
               <PortSelect
                 value={form.destination_port}

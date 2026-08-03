@@ -420,6 +420,24 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     },
   });
 
+  // Country codes for origin/destination port codes — looked up directly from the
+  // `ports` table (reliable for both UN/LOCODEs and IATA airport codes), instead of
+  // guessing the country from the code's characters.
+  const { data: routeCountries } = useQuery({
+    queryKey: ['route-countries', form.origin, form.destination],
+    enabled: !!(form.origin || form.destination),
+    queryFn: async () => {
+      const codes = [form.origin, form.destination].filter(Boolean);
+      const { data, error } = await supabase
+        .from('ports')
+        .select('code, country_code')
+        .in('code', codes);
+      if (error) throw error;
+      const map = new Map((data || []).map((p: any) => [p.code, p.country_code]));
+      return { origin: map.get(form.origin) || '', destination: map.get(form.destination) || '' };
+    },
+  });
+
   async function handleRevertToQuote() {
     if (!shipmentId) return;
     setReverting(true);
@@ -752,9 +770,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     destination: 'border-l-amber-500',
   };
 
-  // Country flags derived from origin/destination
-  const originFlag = countryCodeToFlag(extractCountryFromPort(form.origin));
-  const destFlag = countryCodeToFlag(extractCountryFromPort(form.destination));
+  // Country flags derived from the port's actual country_code (looked up above),
+  // falling back to parsing the code string itself (works for UN/LOCODEs) if the
+  // lookup hasn't resolved yet.
+  const originFlag = countryCodeToFlag(routeCountries?.origin || extractCountryFromPort(form.origin));
+  const destFlag = countryCodeToFlag(routeCountries?.destination || extractCountryFromPort(form.destination));
 
   async function syncTotals() {
     const { data } = await supabase
@@ -1123,7 +1143,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           .maybeSingle();
         if (originPort) {
           originCity = originPort.city || '';
-          originCountry = originPort.country_name || originPort.country_code || '';
+          // Store the 2-letter code (not the name) — that's what the flags
+          // shown in the shipments list expect.
+          originCountry = originPort.country_code || '';
         }
       }
       if (form.destination) {
@@ -1134,7 +1156,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           .maybeSingle();
         if (destPort) {
           destCity = destPort.city || '';
-          destCountry = destPort.country_name || destPort.country_code || '';
+          destCountry = destPort.country_code || '';
         }
       }
 

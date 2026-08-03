@@ -1,12 +1,18 @@
+import { resolveCountryCode } from './countries';
+
 /**
- * Convert a 2-letter ISO country code to an emoji flag.
- * e.g. "BR" → "🇧🇷", "US" → "🇺🇸"
+ * Convert a country value to an emoji flag. Accepts either a clean 2-letter
+ * ISO code ("BR") or a legacy free-form value (a pt-BR country name like
+ * "Brasil", or an abbreviation like "EUA") — it resolves either case to the
+ * correct code before building the flag, so old/mismatched data doesn't
+ * render the wrong country.
+ * e.g. "BR" → "🇧🇷", "Estados Unidos" → "🇺🇸"
  */
 export function countryCodeToFlag(code: string): string {
-  if (!code || code.length < 2) return '';
-  const upper = code.toUpperCase().slice(0, 2);
+  const resolved = resolveCountryCode(code);
+  if (!resolved || resolved.length !== 2) return '';
   return String.fromCodePoint(
-    ...upper.split('').map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)
+    ...resolved.split('').map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)
   );
 }
 

@@ -18,6 +18,7 @@ import { DocumentsTab } from './DocumentsTab';
 import { HistoryPanel } from '@/components/quotes/HistoryPanel';
 import { QuoteDetail } from '@/components/quotes/QuoteDetail';
 import { DuplicateShipmentDialog } from './DuplicateShipmentDialog';
+import { countryCodeToName } from '@/lib/countries';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { calcItemCbm, calcChargeableWeight, getEffectiveVolume } from '@/components/quotes/ModeFields';
@@ -137,7 +138,7 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
           </div>
           <p className="text-muted-foreground text-sm mt-1">
             {(shipment as any).clients?.name && <span className="font-medium">{(shipment as any).clients.name} · </span>}
-            {shipment.origin_city}, {shipment.origin_country} → {shipment.destination_city}, {shipment.destination_country}
+            {shipment.origin_city}, {countryCodeToName(shipment.origin_country)} → {shipment.destination_city}, {countryCodeToName(shipment.destination_country)}
           </p>
         </div>
         <Button
