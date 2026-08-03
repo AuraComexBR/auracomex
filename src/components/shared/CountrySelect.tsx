@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { countryCodeToFlag } from '@/lib/countryFlag';
 import { COUNTRIES, resolveCountryCode } from '@/lib/countries';
+import { FlagIcon } from '@/components/shared/FlagIcon';
 
 interface CountrySelectProps {
   /** Stores/receives a 2-letter ISO country code (e.g. "BR"), not the country name. */
@@ -71,7 +71,7 @@ export function CountrySelect({ value, onChange, placeholder = 'País...', class
               onClick={() => handleSelect(c)}
               className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
             >
-              <span className="text-base">{countryCodeToFlag(c.code)}</span>
+              <FlagIcon country={c.code} className="text-base" />
               <span className="truncate">{c.name}</span>
               <span className="text-muted-foreground text-xs ml-auto">{c.code}</span>
             </button>

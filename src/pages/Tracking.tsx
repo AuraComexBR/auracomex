@@ -11,7 +11,7 @@ import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, C
 import { format } from 'date-fns';
 import { StatusTimeline } from '@/components/tracking/StatusTimeline';
 import { buildTimeline } from '@/lib/shipmentTimeline';
-import { countryCodeToFlag } from '@/lib/countryFlag';
+import { FlagIcon } from '@/components/shared/FlagIcon';
 import { usePlatformSettings } from '@/hooks/usePlatformSettings';
 import { buildCourierTrackingUrl } from '@/lib/utils';
 
@@ -288,8 +288,6 @@ export default function Tracking() {
 
 function ShipmentCard({ shipment: s, docs }: { shipment: any; docs: any[] }) {
   const { steps, kpis } = buildTimeline(s);
-  const originFlag = countryCodeToFlag(s.origin_country || '');
-  const destFlag = countryCodeToFlag(s.destination_country || '');
 
   return (
     <Card className="glass hover:shadow-md transition-shadow">
@@ -306,13 +304,13 @@ function ShipmentCard({ shipment: s, docs }: { shipment: any; docs: any[] }) {
 
           {/* Rota */}
           <div className="flex items-center gap-2 text-sm flex-wrap">
-            <span className="text-lg leading-none">{originFlag}</span>
+            <FlagIcon country={s.origin_country} className="text-lg" />
             <span className="font-medium">
               {s.origin_city || s.origin_port || '—'}
               {s.origin_country ? `, ${s.origin_country}` : ''}
             </span>
             <ArrowRight className="w-4 h-4 text-muted-foreground" />
-            <span className="text-lg leading-none">{destFlag}</span>
+            <FlagIcon country={s.destination_country} className="text-lg" />
             <span className="font-medium">
               {s.destination_city || s.destination_port || '—'}
               {s.destination_country ? `, ${s.destination_country}` : ''}

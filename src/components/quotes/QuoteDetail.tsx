@@ -27,7 +27,8 @@ import { ModeIcon } from '@/components/shared/ModeIcon';
 import { PortSelect } from '@/components/shared/PortSelect';
 import { ModeFields, emptyCargoItem, type CargoItem, calcItemCbm, calcItemWeight, calcChargeableWeight, calcChargeableWeightFromTotals, getEffectiveVolume } from './ModeFields';
 import { useCostEstimate } from '@/hooks/useCostEstimate';
-import { countryCodeToFlag, extractCountryFromPort } from '@/lib/countryFlag';
+import { extractCountryFromPort } from '@/lib/countryFlag';
+import { FlagIcon } from '@/components/shared/FlagIcon';
 import { BenchmarkCard } from '@/components/shared/BenchmarkCard';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -770,11 +771,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     destination: 'border-l-amber-500',
   };
 
-  // Country flags derived from the port's actual country_code (looked up above),
+  // Country derived from the port's actual country_code (looked up above),
   // falling back to parsing the code string itself (works for UN/LOCODEs) if the
   // lookup hasn't resolved yet.
-  const originFlag = countryCodeToFlag(routeCountries?.origin || extractCountryFromPort(form.origin));
-  const destFlag = countryCodeToFlag(routeCountries?.destination || extractCountryFromPort(form.destination));
+  const originCountryCode = routeCountries?.origin || extractCountryFromPort(form.origin);
+  const destCountryCode = routeCountries?.destination || extractCountryFromPort(form.destination);
 
   async function syncTotals() {
     const { data } = await supabase
@@ -1710,9 +1711,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           >
             {(clients.find((c: any) => c.id === form.client_id)?.name || '-').split(' ')[0]}
             {' - '}
-            {originFlag && <span className="text-base mr-0.5">{originFlag}</span>}
+            {originCountryCode && <FlagIcon country={originCountryCode} className="text-base mr-0.5" />}
             {form.origin || '?'}/
-            {destFlag && <span className="text-base mr-0.5">{destFlag}</span>}
+            {destCountryCode && <FlagIcon country={destCountryCode} className="text-base mr-0.5" />}
             {form.destination || '?'}
             {form.incoterm ? ` - ${form.incoterm}` : ''}
           </span>
