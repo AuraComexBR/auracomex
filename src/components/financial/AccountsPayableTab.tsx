@@ -10,12 +10,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { CheckCircle, Wallet, AlertTriangle, CalendarClock } from 'lucide-react';
+import { CheckCircle, Wallet, AlertTriangle, CalendarClock, Paperclip } from 'lucide-react';
 import { format, isBefore, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
+import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
 
 type AP = {
   id: string;
+  company_id: string;
   source: string;
   debit_note_id: string | null;
   quote_id: string | null;
@@ -48,7 +50,8 @@ export default function AccountsPayableTab() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [payTarget, setPayTarget] = useState<AP | null>(null);
-  const [payForm, setPayForm] = useState({ paid_at: format(new Date(), 'yyyy-MM-dd'), payment_method: '' });
+  const [payForm, setPayForm] = useState<{ paid_at: string; payment_method: string; file: File | null }>({ paid_at: format(new Date(), 'yyyy-MM-dd'), payment_method: '', file: null });
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
   const { data: rows = [], refetch } = useQuery({
     queryKey: ['accounts_payable'],
@@ -119,12 +122,22 @@ export default function AccountsPayableTab() {
 
   async function markPaid() {
     if (!payTarget) return;
+    let receipt_url: string | null = null;
+    if (payForm.file) {
+      setUploadingReceipt(true);
+      const path = `receipts/${payTarget.company_id}/${payTarget.id}/${Date.now()}_${payForm.file.name}`;
+      const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, payForm.file);
+      setUploadingReceipt(false);
+      if (upErr) return toast.error('Erro ao anexar comprovante', { description: upErr.message });
+      receipt_url = path;
+    }
     const { error } = await supabase
       .from('accounts_payable' as any)
       .update({
         status: 'pago',
         paid_at: payForm.paid_at,
         payment_method: payForm.payment_method || null,
+        ...(receipt_url ? { receipt_url } : {}),
       })
       .eq('id', payTarget.id);
     if (error) return toast.error('Erro ao registrar pagamento', { description: error.message });
@@ -224,11 +237,18 @@ export default function AccountsPayableTab() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {r.status !== 'pago' && r.status !== 'cancelado' && (
-                        <Button size="sm" variant="outline" onClick={() => { setPayTarget(r); setPayForm({ paid_at: format(new Date(), 'yyyy-MM-dd'), payment_method: '' }); }}>
-                          Pagar
-                        </Button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {r.receipt_url && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver comprovante" onClick={() => openSignedDoc(r.receipt_url).catch((e) => toast.error(e.message))}>
+                            <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
+                          </Button>
+                        )}
+                        {r.status !== 'pago' && r.status !== 'cancelado' && (
+                          <Button size="sm" variant="outline" onClick={() => { setPayTarget(r); setPayForm({ paid_at: format(new Date(), 'yyyy-MM-dd'), payment_method: '', file: null }); }}>
+                            Pagar
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -256,11 +276,15 @@ export default function AccountsPayableTab() {
                 <Label>Forma de pagamento</Label>
                 <Input placeholder="Ex: TED, Boleto, PIX" value={payForm.payment_method} onChange={(e) => setPayForm({ ...payForm, payment_method: e.target.value })} />
               </div>
+              <div>
+                <Label>Comprovante (opcional)</Label>
+                <Input type="file" accept="application/pdf,image/*" onChange={(e) => setPayForm({ ...payForm, file: e.target.files?.[0] ?? null })} />
+              </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPayTarget(null)}>Cancelar</Button>
-            <Button onClick={markPaid}>Confirmar pagamento</Button>
+            <Button variant="ghost" onClick={() => setPayTarget(null)} disabled={uploadingReceipt}>Cancelar</Button>
+            <Button onClick={markPaid} disabled={uploadingReceipt}>{uploadingReceipt ? 'Enviando…' : 'Confirmar pagamento'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

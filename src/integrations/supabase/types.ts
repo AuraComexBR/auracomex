@@ -155,6 +155,7 @@ export type Database = {
           notes: string | null
           quote_id: string | null
           receipt_reference: string | null
+          receipt_url: string | null
           received_amount: number | null
           received_at: string | null
           shipment_id: string | null
@@ -177,6 +178,7 @@ export type Database = {
           notes?: string | null
           quote_id?: string | null
           receipt_reference?: string | null
+          receipt_url?: string | null
           received_amount?: number | null
           received_at?: string | null
           shipment_id?: string | null
@@ -199,6 +201,7 @@ export type Database = {
           notes?: string | null
           quote_id?: string | null
           receipt_reference?: string | null
+          receipt_url?: string | null
           received_amount?: number | null
           received_at?: string | null
           shipment_id?: string | null

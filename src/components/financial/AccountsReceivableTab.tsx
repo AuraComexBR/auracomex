@@ -10,9 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { CheckCircle, Wallet, AlertTriangle, CalendarClock } from 'lucide-react';
+import { CheckCircle, Wallet, AlertTriangle, CalendarClock, Paperclip } from 'lucide-react';
 import { format, isBefore, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
+import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
 
 type AR = {
   id: string;
@@ -21,6 +22,7 @@ type AR = {
   quote_id: string | null;
   shipment_id: string | null;
   client_id: string | null;
+  company_id: string;
   description: string;
   currency: string;
   amount: number;
@@ -28,6 +30,7 @@ type AR = {
   status: 'aberto' | 'recebido' | 'atrasado' | 'cancelado';
   received_at: string | null;
   receipt_reference: string | null;
+  receipt_url: string | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -49,7 +52,8 @@ export default function AccountsReceivableTab() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [target, setTarget] = useState<AR | null>(null);
-  const [form, setForm] = useState({ received_at: format(new Date(), 'yyyy-MM-dd'), receipt_reference: '' });
+  const [form, setForm] = useState<{ received_at: string; receipt_reference: string; file: File | null }>({ received_at: format(new Date(), 'yyyy-MM-dd'), receipt_reference: '', file: null });
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
   const { data: rows = [], refetch } = useQuery({
     queryKey: ['accounts_receivable'],
@@ -108,6 +112,15 @@ export default function AccountsReceivableTab() {
 
   async function markReceived() {
     if (!target) return;
+    let receipt_url: string | null = null;
+    if (form.file) {
+      setUploadingReceipt(true);
+      const path = `receipts/${target.company_id}/${target.id}/${Date.now()}_${form.file.name}`;
+      const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, form.file);
+      setUploadingReceipt(false);
+      if (upErr) return toast.error('Erro ao anexar comprovante', { description: upErr.message });
+      receipt_url = path;
+    }
     const { error } = await supabase
       .from('accounts_receivable' as any)
       .update({
@@ -115,6 +128,7 @@ export default function AccountsReceivableTab() {
         received_at: form.received_at,
         received_amount: target.amount,
         receipt_reference: form.receipt_reference || null,
+        ...(receipt_url ? { receipt_url } : {}),
       })
       .eq('id', target.id);
     if (error) return toast.error('Erro ao registrar recebimento', { description: error.message });
@@ -198,11 +212,18 @@ export default function AccountsReceivableTab() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {r.status !== 'recebido' && r.status !== 'cancelado' && (
-                        <Button size="sm" variant="outline" onClick={() => { setTarget(r); setForm({ received_at: format(new Date(), 'yyyy-MM-dd'), receipt_reference: '' }); }}>
-                          Receber
-                        </Button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {r.receipt_url && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver comprovante" onClick={() => openSignedDoc(r.receipt_url).catch((e) => toast.error(e.message))}>
+                            <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
+                          </Button>
+                        )}
+                        {r.status !== 'recebido' && r.status !== 'cancelado' && (
+                          <Button size="sm" variant="outline" onClick={() => { setTarget(r); setForm({ received_at: format(new Date(), 'yyyy-MM-dd'), receipt_reference: '', file: null }); }}>
+                            Receber
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -228,11 +249,15 @@ export default function AccountsReceivableTab() {
                 <Label>Referência (TED/PIX/SWIFT)</Label>
                 <Input placeholder="Opcional" value={form.receipt_reference} onChange={(e) => setForm({ ...form, receipt_reference: e.target.value })} />
               </div>
+              <div>
+                <Label>Comprovante (opcional)</Label>
+                <Input type="file" accept="application/pdf,image/*" onChange={(e) => setForm({ ...form, file: e.target.files?.[0] ?? null })} />
+              </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setTarget(null)}>Cancelar</Button>
-            <Button onClick={markReceived}>Confirmar recebimento</Button>
+            <Button variant="ghost" onClick={() => setTarget(null)} disabled={uploadingReceipt}>Cancelar</Button>
+            <Button onClick={markReceived} disabled={uploadingReceipt}>{uploadingReceipt ? 'Enviando…' : 'Confirmar recebimento'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
