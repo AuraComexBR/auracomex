@@ -194,7 +194,7 @@ export default function AccountsReceivableTab() {
                 {filtered.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="text-xs text-muted-foreground">{SOURCE_LABEL[r.source] || r.source}</TableCell>
-                    <TableCell>{r.description}</TableCell>
+                    <TableCell className="max-w-[220px] truncate whitespace-nowrap" title={r.description}>{r.description}</TableCell>
                     <TableCell>{r.client_id ? clientMap.get(r.client_id) ?? '—' : '—'}</TableCell>
                     <TableCell>
                       {r.quote_id && quoteMap.get(r.quote_id) ? (
