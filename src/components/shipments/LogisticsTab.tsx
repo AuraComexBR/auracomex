@@ -198,14 +198,36 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     }
   }
 
-  // Fetch partners for this shipment
+  // Fetch partners for this shipment (fallback for standalone shipments with
+  // no linked quote — the normal case reads from quote_partners below instead,
+  // so companies added/removed in the aba Empresas show up right away here).
   const { data: shipmentPartners = [] } = useQuery({
     queryKey: ['shipment-partners-logistics', shipment.id],
+    enabled: !quoteId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('shipment_partners')
-        .select('*, clients:client_id(id, name, type)')
+        .select('*, clients:client_id(id, name, type, partner_category)')
         .eq('shipment_id', shipment.id)
+        .order('created_at');
+      if (error) throw error;
+      return data as any[];
+    },
+  });
+
+  // Empresas vinculadas ao processo na aba Empresas (quote_partners) — fonte
+  // principal das opções de Shipper/Armador/Notify/Consignee, pra qualquer
+  // empresa adicionada lá aparecer aqui na hora, sem precisar converter de
+  // novo. partner_category vem junto pra ajudar a preencher (ex: sugerir
+  // o Armador sozinho quando só tem uma transportadora do modal certo).
+  const { data: quotePartners = [] } = useQuery({
+    queryKey: ['quote-partners-logistics', quoteId],
+    enabled: !!quoteId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('quote_partners' as any)
+        .select('*, clients:client_id(id, name, type, partner_category)')
+        .eq('quote_id', quoteId!)
         .order('created_at');
       if (error) throw error;
       return data as any[];
@@ -297,9 +319,29 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
   const [saving, setSaving] = useState(false);
 
-  const partnerOptions = shipmentPartners
+  // Prioriza quote_partners (aba Empresas) quando há uma cotação vinculada —
+  // shipment_partners só serve de fallback pra embarque avulso sem cotação.
+  const partnerOptions = (quoteId ? quotePartners : shipmentPartners)
     .map((sp: any) => sp.clients)
     .filter(Boolean);
+
+  // Categorias de empresa (cadastradas na aba Empresas) que fazem sentido
+  // como Armador/Transportadora pra cada modal — usado tanto pra rotular as
+  // opções quanto pra preencher o campo sozinho quando não há ambiguidade.
+  const carrierCategoriesByMode: Record<string, string[]> = {
+    ocean_fcl: ['ocean_carrier', 'co_loader'],
+    ocean_lcl: ['co_loader', 'ocean_carrier'],
+    air: ['air_carrier'],
+    road: ['road_carrier'],
+    multimodal: ['ocean_carrier', 'co_loader', 'air_carrier', 'road_carrier'],
+  };
+
+  function partnerCategoryLabel(category?: string | null) {
+    if (!category) return '';
+    const translated = t(`registrations.category_${category}`);
+    const label = translated !== `registrations.category_${category}` ? translated : category;
+    return ` (${label})`;
+  }
 
   const stops = [
     { label: t('shipments.origin'), city: form.origin_city, country: form.origin_country, active: true },
@@ -463,6 +505,19 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
   const updateField = (key: string, value: string) => setForm(f => ({ ...f, [key]: value }));
 
+  // Preenche o Armador sozinho quando existe exatamente uma empresa da
+  // categoria certa pro modal vinculada ao processo — ex: só uma
+  // transportadora rodoviária cadastrada em Empresas com modal Rodoviário.
+  useEffect(() => {
+    if (form.carrier) return;
+    const relevantCategories = carrierCategoriesByMode[form.transport_mode] || [];
+    const matches = partnerOptions.filter((p: any) => relevantCategories.includes(p.partner_category));
+    if (matches.length === 1) {
+      updateField('carrier', matches[0].name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partnerOptions.map((p: any) => p.id).join(','), form.transport_mode, form.carrier]);
+
   function DateField({ label, fieldKey }: { label: string; fieldKey: string }) {
     const value = (form as any)[fieldKey];
     const dateValue = value ? new Date(value) : undefined;
@@ -502,7 +557,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           <SelectContent>
             <SelectItem value="_none">—</SelectItem>
             {partnerOptions.map((p: any) => (
-              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              <SelectItem key={p.id} value={p.id}>{p.name}{partnerCategoryLabel(p.partner_category)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -718,7 +773,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
                 <SelectContent>
                   <SelectItem value="_none">—</SelectItem>
                   {partnerOptions.map((p: any) => (
-                    <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
+                    <SelectItem key={p.id} value={p.name}>{p.name}{partnerCategoryLabel(p.partner_category)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
