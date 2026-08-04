@@ -176,7 +176,7 @@ export function AppSidebar() {
       )}
 
       {/* Nav + Quick Notes */}
-      <div className="flex-1 flex flex-col overflow-hidden py-4 px-2">
+      <div className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden py-4 px-2">
         <nav className="space-y-1">
           {navItems.map((item) => {
             const hasChildren = !!(item as any).children;
