@@ -234,6 +234,23 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     },
   });
 
+  // A própria empresa (dona da conta) — sempre disponível como opção, já que
+  // ela mesma pode figurar como Shipper, Notify, Consignee ou Armador em
+  // alguns processos (ex: exportação direta, ou atuando como co-loader).
+  const { data: ownCompany } = useQuery({
+    queryKey: ['own-company-logistics', profile?.company_id],
+    enabled: !!profile?.company_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('id, name')
+        .eq('id', profile!.company_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
   // Fetch quote_items to know container count for FCL
   const { data: quoteItems = [] } = useQuery({
     queryKey: ['logistics-quote-items', shipment.id],
@@ -321,9 +338,30 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
   // Prioriza quote_partners (aba Empresas) quando há uma cotação vinculada —
   // shipment_partners só serve de fallback pra embarque avulso sem cotação.
-  const partnerOptions = (quoteId ? quotePartners : shipmentPartners)
-    .map((sp: any) => sp.clients)
-    .filter(Boolean);
+  // A própria empresa e a empresa cliente do processo sempre ficam
+  // disponíveis, mesmo que ninguém as tenha adicionado na aba Empresas.
+  const partnerOptions = useMemo(() => {
+    const linked = (quoteId ? quotePartners : shipmentPartners)
+      .map((sp: any) => sp.clients)
+      .filter(Boolean);
+    const always: any[] = [];
+    if (ownCompany?.name) {
+      always.push({ id: ownCompany.id, name: ownCompany.name, partner_category: '__own' });
+    }
+    const clientId = (shipment as any).client_id;
+    const clientName = (shipment as any).clients?.name;
+    if (clientId && clientName) {
+      always.push({ id: clientId, name: clientName, partner_category: '__client' });
+    }
+    const combined = [...always, ...linked];
+    const seen = new Set<string>();
+    return combined.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteId, quotePartners, shipmentPartners, ownCompany, shipment]);
 
   // Categorias de empresa (cadastradas na aba Empresas) que fazem sentido
   // como Armador/Transportadora pra cada modal — usado tanto pra rotular as
@@ -338,6 +376,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
   function partnerCategoryLabel(category?: string | null) {
     if (!category) return '';
+    if (category === '__own') return ' (Sua empresa)';
+    if (category === '__client') return ' (Cliente do processo)';
     const translated = t(`registrations.category_${category}`);
     const label = translated !== `registrations.category_${category}` ? translated : category;
     return ` (${label})`;
