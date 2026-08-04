@@ -426,7 +426,7 @@ export default function FixedAccountsTab() {
                 let payment_proof_url: string | null = null;
                 if (payFile) {
                   setUploadingReceipt(true);
-                  const path = `receipts/${companyId}/overhead/${payTarget.id}/${Date.now()}_${payFile.name}`;
+                  const path = `${companyId}/receipts/overhead/${payTarget.id}/${Date.now()}_${payFile.name}`;
                   const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, payFile);
                   setUploadingReceipt(false);
                   if (upErr) return toast.error('Erro ao anexar comprovante', { description: upErr.message });

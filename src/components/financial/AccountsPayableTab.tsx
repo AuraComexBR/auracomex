@@ -125,7 +125,7 @@ export default function AccountsPayableTab() {
     let receipt_url: string | null = null;
     if (payForm.file) {
       setUploadingReceipt(true);
-      const path = `receipts/${payTarget.company_id}/${payTarget.id}/${Date.now()}_${payForm.file.name}`;
+      const path = `${payTarget.company_id}/receipts/${payTarget.id}/${Date.now()}_${payForm.file.name}`;
       const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, payForm.file);
       setUploadingReceipt(false);
       if (upErr) return toast.error('Erro ao anexar comprovante', { description: upErr.message });
