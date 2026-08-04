@@ -103,7 +103,11 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "client_id and filter required" }, 400);
       }
 
-      const activeStatuses = ["approved", "booked", "in_transit"];
+      // "Em Andamento" precisa cobrir todos os status intermediários do
+      // padrão (não só approved/booked/in_transit) — faltavam
+      // collected_at_origin e docs_at_origin, então embarques nesses status
+      // simplesmente sumiam do tracking do cliente, em qualquer aba.
+      const activeStatuses = ["approved", "booked", "collected_at_origin", "docs_at_origin", "in_transit"];
       const finishedStatuses = ["arrived", "delivered"];
       const statuses = filter === "active" ? activeStatuses : finishedStatuses;
 
