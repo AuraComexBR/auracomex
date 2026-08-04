@@ -38,6 +38,12 @@ const INCOTERMS_BY_MODE: Record<string, string[]> = {
   multimodal: ['EXW', 'FCA', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'],
 };
 
+// Campos de data: comparados por instante (getTime), não por string — o
+// Supabase devolve timestamps num formato diferente de Date.toISOString()
+// (ex: "+00:00" em vez de "Z"), então comparar como texto detecta uma
+// "mudança" que não existe e trava o auto-save num loop infinito.
+const DATE_FIELDS = new Set(['etd', 'eta', 'atd', 'ata']);
+
 // Rótulo do "Carrier" muda de acordo com o modal — o dado salvo é o mesmo
 // campo (carrier), só muda como ele é chamado na tela.
 const CARRIER_LABEL_BY_MODE: Record<string, string> = {
@@ -318,6 +324,15 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     for (const key of fieldsToCheck) {
       const newVal = (form as any)[key] ?? '';
       const oldVal = (shipment as any)[key] ?? '';
+      if (DATE_FIELDS.has(key)) {
+        // Datas voltam do banco com formatação diferente de Date.toISOString()
+        // (ex: "+00:00" em vez de "Z"), mesmo sendo o mesmo instante — comparar
+        // como string aqui fazia o auto-save entrar em loop infinito.
+        const newTime = newVal ? new Date(newVal).getTime() : null;
+        const oldTime = oldVal ? new Date(oldVal).getTime() : null;
+        if (newTime !== oldTime) return true;
+        continue;
+      }
       if (String(newVal) !== String(oldVal)) return true;
     }
     const existingContainers = parseContainerNumbers(shipment.container_number);
@@ -399,6 +414,14 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
       for (const dbKey of allFields) {
         const oldVal = shipment[dbKey]?.toString() || '';
         const newVal = (updates[dbKey]?.toString()) || '';
+        if (DATE_FIELDS.has(dbKey)) {
+          const oldTime = shipment[dbKey] ? new Date(shipment[dbKey]).getTime() : null;
+          const newTime = updates[dbKey] ? new Date(updates[dbKey]).getTime() : null;
+          if (oldTime !== newTime) {
+            auditLogs.push({ field_name: dbKey, old_value: oldVal || null, new_value: newVal || null });
+          }
+          continue;
+        }
         if (oldVal !== newVal) {
           auditLogs.push({ field_name: dbKey, old_value: oldVal || null, new_value: newVal || null });
         }
