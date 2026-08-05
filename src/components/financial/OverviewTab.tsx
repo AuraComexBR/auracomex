@@ -4,7 +4,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { TrendingUp, TrendingDown, DollarSign, Receipt, Target, Percent, Wallet } from 'lucide-react';
-import { useOverheadEntries } from '@/hooks/useOverhead';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 
 function fmtBRL(n: number) {
@@ -31,58 +30,76 @@ export default function OverviewTab() {
 
   const { usdBrl, eurBrl, loading: ratesLoading } = useExchangeRate();
 
-  const toBRL = (amount: number, currency?: string | null) => {
-    const v = Number(amount || 0);
-    const c = (currency || 'BRL').toUpperCase();
-    if (c === 'BRL') return v;
-    if (c === 'USD') return v * (usdBrl || 0);
-    if (c === 'EUR') return v * (eurBrl || 0);
-    return v;
-  };
-
-  const { data: releasedShipmentIds = [] } = useQuery({
-    queryKey: ['financial-overview-shipments', monthStart, monthEnd],
+  // "Resultado do mês" é regime de caixa: soma tudo que foi de fato recebido
+  // dentro do mês (accounts_receivable.received_at) e deduz tudo que foi de
+  // fato pago dentro do mês (accounts_payable.paid_at + despesas fixas
+  // pagas) — não o que foi lançado/competência do processo.
+  const { data: cashIn = [] } = useQuery({
+    queryKey: ['financial-overview-cash-in', monthStart, monthEnd],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('shipments')
-        .select('id')
-        .eq('financial_released', true)
-        .gte('created_at', monthStart)
-        .lt('created_at', monthEnd);
-      if (error) throw error;
-      return (data || []).map((s: any) => s.id as string);
-    },
-  });
-
-  const { data: lines = [] } = useQuery({
-    queryKey: ['financial-overview-lines', releasedShipmentIds.join(',')],
-    enabled: releasedShipmentIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('charge_lines')
-        .select('amount, currency, direction, shipment_id')
-        .in('shipment_id', releasedShipmentIds);
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const entries = useOverheadEntries(referenceMonth);
-
-  // Custo Variável = accounts_payable dos embarques liberados no mês (mesma competência da receita).
-  const { data: payables = [] } = useQuery({
-    queryKey: ['financial-overview-payables', releasedShipmentIds.join(',')],
-    enabled: releasedShipmentIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('accounts_payable' as any)
-        .select('amount, currency, status, shipment_id')
-        .in('shipment_id', releasedShipmentIds)
-        .neq('status', 'cancelado');
+        .from('accounts_receivable' as any)
+        .select('amount, received_amount, currency, received_at, debit_note_id')
+        .eq('status', 'recebido')
+        .gte('received_at', monthStart)
+        .lt('received_at', monthEnd);
       if (error) throw error;
       return (data || []) as any[];
     },
   });
+  const { data: cashOutAp = [] } = useQuery({
+    queryKey: ['financial-overview-cash-out-ap', monthStart, monthEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('accounts_payable' as any)
+        .select('amount, currency, paid_at, debit_note_id')
+        .eq('status', 'pago')
+        .gte('paid_at', monthStart)
+        .lt('paid_at', monthEnd);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+  const { data: cashOutOverhead = [] } = useQuery({
+    queryKey: ['financial-overview-cash-out-overhead', monthStart, monthEnd],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('overhead_entries')
+        .select('amount, currency, paid_at')
+        .eq('status', 'paid')
+        .gte('paid_at', monthStart)
+        .lt('paid_at', monthEnd);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  // Câmbio de cada linha tem que ser o digitado pelo usuário na hora de
+  // criar a DN/ND vinculada (mesma correção já feita em Contas a Pagar/Receber),
+  // não a cotação do dia — senão o resultado do mês passado muda todo dia.
+  const debitNoteIds = Array.from(new Set([
+    ...cashIn.map((r: any) => r.debit_note_id),
+    ...cashOutAp.map((r: any) => r.debit_note_id),
+  ].filter(Boolean))) as string[];
+  const { data: dnRates = [] } = useQuery({
+    queryKey: ['financial-overview-dn-rates', debitNoteIds.join(',')],
+    enabled: debitNoteIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('debit_notes' as any).select('id, exchange_rate').in('id', debitNoteIds);
+      if (error) throw error;
+      return (data || []) as unknown as Array<{ id: string; exchange_rate: number | null }>;
+    },
+  });
+  const dnRateMap = new Map(dnRates.map((d) => [d.id, d.exchange_rate]));
+
+  function toBRL(amount: number, currency?: string | null, debitNoteId?: string | null) {
+    const v = Number(amount || 0);
+    const c = (currency || 'BRL').toUpperCase();
+    if (c === 'BRL') return v;
+    const stored = debitNoteId ? dnRateMap.get(debitNoteId) : null;
+    const rate = stored != null ? Number(stored) : c === 'USD' ? (usdBrl || 0) : c === 'EUR' ? (eurBrl || 0) : 0;
+    return v * rate;
+  }
 
   // Fluxo previsto 30 dias
   const next30End = useMemo(() => {
@@ -105,14 +122,9 @@ export default function OverviewTab() {
   });
 
   const totals = useMemo(() => {
-    let receita = 0;
-    lines.forEach((l: any) => {
-      if (l.direction === 'receivable') receita += toBRL(l.amount, l.currency);
-    });
-    const custoVar = payables.reduce((s: number, p: any) => s + toBRL(p.amount, p.currency), 0);
-    const fixas = (entries.data || [])
-      .filter((e: any) => e.status !== 'skipped')
-      .reduce((s, e: any) => s + toBRL(e.amount, e.currency), 0);
+    const receita = cashIn.reduce((s: number, r: any) => s + toBRL(r.received_amount ?? r.amount, r.currency, r.debit_note_id), 0);
+    const custoVar = cashOutAp.reduce((s: number, r: any) => s + toBRL(r.amount, r.currency, r.debit_note_id), 0);
+    const fixas = cashOutOverhead.reduce((s: number, r: any) => s + toBRL(r.amount, r.currency), 0);
     const lucroBruto = receita - custoVar;
     const lucroLiquido = lucroBruto - fixas;
     const margemBruta = receita > 0 ? (lucroBruto / receita) * 100 : 0;
@@ -120,13 +132,14 @@ export default function OverviewTab() {
     const pontoEquilibrio = margemBruta > 0 ? (fixas / (margemBruta / 100)) : 0;
     const fluxo30 = upcomingPayables.reduce((s: number, p: any) => s + toBRL(p.amount, p.currency), 0);
     return { receita, custoVar, fixas, lucroBruto, lucroLiquido, margemBruta, margemLiquida, pontoEquilibrio, fluxo30 };
-  }, [lines, entries.data, payables, upcomingPayables, usdBrl, eurBrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cashIn, cashOutAp, cashOutOverhead, upcomingPayables, dnRateMap, usdBrl, eurBrl]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Valores convertidos para BRL {usdBrl ? `(USD ${usdBrl.toFixed(4)} · EUR ${(eurBrl || 0).toFixed(4)})` : ''}. Receita e custo variável usam embarques liberados ao financeiro no mês.
+          Valores convertidos para BRL {usdBrl ? `(USD ${usdBrl.toFixed(4)} · EUR ${(eurBrl || 0).toFixed(4)})` : ''}. Regime de caixa: receita e custo somam o que foi efetivamente recebido/pago dentro do mês.
           {ratesLoading && ' · atualizando cotações...'}
         </p>
         <Input
@@ -138,9 +151,9 @@ export default function OverviewTab() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPI label="Receita Bruta" value={fmtBRL(totals.receita)} icon={<TrendingUp className="w-5 h-5" />} tone="emerald" />
-        <KPI label="Custo Variável" value={fmtBRL(totals.custoVar)} icon={<TrendingDown className="w-5 h-5" />} tone="destructive" />
-        <KPI label="Despesas Fixas" value={fmtBRL(totals.fixas)} icon={<Receipt className="w-5 h-5" />} tone="amber" />
+        <KPI label="Receita Bruta" value={fmtBRL(totals.receita)} icon={<TrendingUp className="w-5 h-5" />} tone="emerald" hint="Recebido dentro do mês" />
+        <KPI label="Custo Variável" value={fmtBRL(totals.custoVar)} icon={<TrendingDown className="w-5 h-5" />} tone="destructive" hint="Pago dentro do mês (processos)" />
+        <KPI label="Despesas Fixas" value={fmtBRL(totals.fixas)} icon={<Receipt className="w-5 h-5" />} tone="amber" hint="Pago dentro do mês (subsistência)" />
         <KPI label="Lucro Líquido" value={fmtBRL(totals.lucroLiquido)} icon={<DollarSign className="w-5 h-5" />} tone={totals.lucroLiquido >= 0 ? 'emerald' : 'destructive'} highlight />
       </div>
 
