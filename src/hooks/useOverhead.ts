@@ -3,12 +3,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
+export type OverheadKind = 'despesa' | 'receita';
+
 export type OverheadCategory = {
   id: string;
   company_id: string;
   name: string;
   color: string | null;
   active: boolean;
+  kind: OverheadKind;
 };
 
 export type OverheadExpense = {
@@ -27,6 +30,7 @@ export type OverheadExpense = {
   cost_center: string | null;
   active: boolean;
   notes: string | null;
+  kind: OverheadKind;
 };
 
 export type OverheadEntry = {
@@ -42,6 +46,7 @@ export type OverheadEntry = {
   paid_at: string | null;
   payment_proof_url: string | null;
   notes: string | null;
+  kind: OverheadKind;
 };
 
 function monthsBetween(start: Date, end: Date) {
@@ -186,6 +191,7 @@ export function useOverheadEntries(referenceMonth: string) {
           amount: exp.amount_default,
           currency: exp.currency,
           status: 'pending',
+          kind: exp.kind || 'despesa',
         });
       }
       if (rows.length === 0) return 0;
@@ -225,7 +231,9 @@ export function useOverheadEntries(referenceMonth: string) {
       currency: string;
       due_date: string; // yyyy-MM-dd
       notes?: string | null;
+      kind?: OverheadKind;
     }) => {
+      const kind = input.kind || 'despesa';
       const due = input.due_date;
       const day = Math.min(Math.max(1, parseInt(due.slice(8, 10)) || 1), 28);
       const { data: exp, error: e1 } = await (supabase as any)
@@ -242,6 +250,7 @@ export function useOverheadEntries(referenceMonth: string) {
           end_date: due,
           active: false,
           notes: input.notes || null,
+          kind,
         })
         .select('id')
         .single();
@@ -257,13 +266,15 @@ export function useOverheadEntries(referenceMonth: string) {
           currency: input.currency,
           status: 'pending',
           notes: input.notes || null,
+          kind,
         });
       if (e2) throw e2;
+      return kind;
     },
-    onSuccess: () => {
+    onSuccess: (kind) => {
       qc.invalidateQueries({ queryKey: ['overhead_entries', companyId, referenceMonth] });
       qc.invalidateQueries({ queryKey: ['overhead_expenses', companyId] });
-      toast.success('Despesa avulsa adicionada');
+      toast.success(kind === 'receita' ? 'Receita avulsa adicionada' : 'Despesa avulsa adicionada');
     },
     onError: (e: any) => toast.error(e.message),
   });

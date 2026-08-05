@@ -63,10 +63,14 @@ export default function OverviewTab() {
   const { data: cashOutOverhead = [] } = useQuery({
     queryKey: ['financial-overview-cash-out-overhead', monthStart, monthEnd],
     queryFn: async () => {
+      // "Despesas Fixas" do Resultado do mês é só o lado despesa — a aba Geral
+      // agora também aceita receita da empresa (kind='receita'), que não deve
+      // entrar nesse total.
       const { data, error } = await (supabase as any)
         .from('overhead_entries')
         .select('amount, currency, paid_at')
         .eq('status', 'paid')
+        .eq('kind', 'despesa')
         .gte('paid_at', monthStart)
         .lt('paid_at', monthEnd);
       if (error) throw error;
