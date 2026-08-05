@@ -107,6 +107,20 @@ export default function AccountsPayableTab() {
   const quoteMap = new Map((quotesQ.data ?? []).map((q) => [q.id, q.base_reference]));
   const shipmentMap = new Map((shipmentsQ.data ?? []).map((s) => [s.id, s.reference_number]));
 
+  // Câmbio de cada linha tem que ser o digitado pelo usuário na hora de
+  // criar a DN (debit_notes.exchange_rate), não a cotação do dia — senão o
+  // valor em R$ exibido muda todo dia mesmo pra pagamentos já fechados.
+  const debitNoteIds = Array.from(new Set(rows.map((r) => r.debit_note_id).filter(Boolean))) as string[];
+  const dnRatesQ = useQuery({
+    queryKey: ['ap-dn-rates', debitNoteIds.join(',')],
+    enabled: debitNoteIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from('debit_notes' as any).select('id, exchange_rate').in('id', debitNoteIds);
+      return (data ?? []) as unknown as Array<{ id: string; exchange_rate: number | null }>;
+    },
+  });
+  const dnRateMap = new Map((dnRatesQ.data ?? []).map((d) => [d.id, d.exchange_rate]));
+
   const today = startOfDay(new Date());
   const enriched = rows.map((r) => {
     const due = new Date(r.due_date);
@@ -132,19 +146,26 @@ export default function AccountsPayableTab() {
   // pra uma moeda comum antes de somar, o total exibido como "R$" na verdade
   // misturava valores de moedas diferentes como se fossem a mesma coisa.
   const { usdBrl, eurBrl } = useExchangeRate();
-  function toBRL(amount: number, currency: string): number {
+  // Taxa efetiva de uma linha: a digitada pelo usuário na DN, se houver; senão
+  // (conta manual, sem DN) cai pra cotação do dia como estimativa.
+  function rateFor(currency: string, debitNoteId: string | null): number {
     const cur = (currency || 'BRL').toUpperCase();
-    if (cur === 'BRL') return amount;
-    if (cur === 'USD') return amount * (usdBrl || 0);
-    if (cur === 'EUR') return amount * (eurBrl || 0);
-    return amount;
+    if (cur === 'BRL') return 1;
+    const stored = debitNoteId ? dnRateMap.get(debitNoteId) : null;
+    if (stored != null) return Number(stored);
+    if (cur === 'USD') return usdBrl || 0;
+    if (cur === 'EUR') return eurBrl || 0;
+    return 1;
+  }
+  function toBRL(amount: number, currency: string, debitNoteId: string | null = null): number {
+    return amount * rateFor(currency, debitNoteId);
   }
 
   const kpis = useMemo(() => {
     const in7 = addDays(today, 7);
     let vencidos = 0, aVencer = 0, pagos = 0, aberto = 0;
     for (const r of enriched) {
-      const amt = toBRL(Number(r.amount) || 0, r.currency);
+      const amt = toBRL(Number(r.amount) || 0, r.currency, r.debit_note_id);
       if (r.status === 'pago') pagos += amt;
       else if (r.status === 'atrasado') vencidos += amt;
       else if (r.status === 'aberto') {
@@ -154,7 +175,7 @@ export default function AccountsPayableTab() {
     }
     return { vencidos, aVencer, pagos, aberto };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enriched, today, usdBrl, eurBrl]);
+  }, [enriched, today, usdBrl, eurBrl, dnRateMap]);
 
   async function markPaid() {
     if (!payTarget) return;
@@ -313,8 +334,8 @@ export default function AccountsPayableTab() {
                       <div>{r.currency} {Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                       {r.currency && r.currency.toUpperCase() !== 'BRL' && (
                         <div className="text-[10px] text-muted-foreground font-normal">
-                          câmbio {r.currency.toUpperCase() === 'USD' ? (usdBrl ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : r.currency.toUpperCase() === 'EUR' ? (eurBrl ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}
-                          {' = R$ '}{toBRL(Number(r.amount), r.currency).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          câmbio {rateFor(r.currency, r.debit_note_id).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                          {' = R$ '}{toBRL(Number(r.amount), r.currency, r.debit_note_id).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                       )}
                     </TableCell>
