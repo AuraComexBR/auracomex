@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -97,8 +97,13 @@ export default function Shipments() {
   // tela. O React Router cria uma location.key nova a cada clique no link,
   // mesmo pro mesmo path — usamos isso pra voltar sempre pra lista.
   const location = useLocation();
+  const navigate = useNavigate();
   useEffect(() => {
-    setSelectedId(null);
+    // Links externos (ex: financeiro) abrem um embarque específico via
+    // ?open=<id>, já que /shipments/:id não é uma rota de verdade — o
+    // processo é sempre exibido por estado local dentro desta página.
+    const openId = new URLSearchParams(location.search).get('open');
+    setSelectedId(openId || null);
     // A query da lista continua "montada" o tempo todo (só fica escondida
     // enquanto um processo está aberto), então só resetar o selectedId não
     // busca dados novos — precisa forçar o refetch aqui.
@@ -227,7 +232,7 @@ export default function Shipments() {
   }
 
   if (selectedId) {
-    return <ShipmentDetail id={selectedId} onBack={() => { refetch(); setSelectedId(null); }} />;
+    return <ShipmentDetail id={selectedId} onBack={() => { refetch(); setSelectedId(null); navigate('/shipments', { replace: true }); }} />;
   }
 
   return (

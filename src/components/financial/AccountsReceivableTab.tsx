@@ -15,6 +15,7 @@ import { format, isBefore, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
+import { ColumnSearch } from '@/components/shared/ColumnSearch';
 
 type AR = {
   id: string;
@@ -53,6 +54,12 @@ const SOURCE_LABEL: Record<string, string> = {
 export default function AccountsReceivableTab() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('todos');
+  const [searchDesc, setSearchDesc] = useState('');
+  const [searchDescOpen, setSearchDescOpen] = useState(false);
+  const [searchClient, setSearchClient] = useState('');
+  const [searchClientOpen, setSearchClientOpen] = useState(false);
+  const [searchProcess, setSearchProcess] = useState('');
+  const [searchProcessOpen, setSearchProcessOpen] = useState(false);
   const [target, setTarget] = useState<AR | null>(null);
   const [form, setForm] = useState<{ received_at: string; received_amount: string; receipt_reference: string; file: File | null }>({ received_at: format(new Date(), 'yyyy-MM-dd'), received_amount: '', receipt_reference: '', file: null });
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
@@ -100,7 +107,19 @@ export default function AccountsReceivableTab() {
     return { ...r, status: overdue ? ('atrasado' as const) : r.status };
   });
 
-  const filtered = enriched.filter((r) => statusFilter === 'todos' || r.status === statusFilter);
+  const filtered = enriched.filter((r) => {
+    if (statusFilter !== 'todos' && r.status !== statusFilter) return false;
+    if (searchDesc && !r.description?.toLowerCase().includes(searchDesc.toLowerCase())) return false;
+    if (searchClient) {
+      const name = r.client_id ? clientMap.get(r.client_id) ?? '' : '';
+      if (!name.toLowerCase().includes(searchClient.toLowerCase())) return false;
+    }
+    if (searchProcess) {
+      const ref = (r.quote_id ? quoteMap.get(r.quote_id) : null) || '';
+      if (!ref.toLowerCase().includes(searchProcess.toLowerCase())) return false;
+    }
+    return true;
+  });
 
   // Idem AccountsPayableTab: os KPIs somavam linhas em moedas diferentes
   // (USD/EUR/BRL) direto, exibindo o total como se fosse tudo BRL.
@@ -199,9 +218,24 @@ export default function AccountsReceivableTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Origem</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Cliente/Fornecedor</TableHead>
-                  <TableHead>Processo</TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5">
+                      Descrição
+                      <ColumnSearch value={searchDesc} onChange={setSearchDesc} open={searchDescOpen} onOpenChange={setSearchDescOpen} />
+                    </div>
+                  </TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5">
+                      Cliente/Fornecedor
+                      <ColumnSearch value={searchClient} onChange={setSearchClient} open={searchClientOpen} onOpenChange={setSearchClientOpen} />
+                    </div>
+                  </TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5">
+                      Processo
+                      <ColumnSearch value={searchProcess} onChange={setSearchProcess} open={searchProcessOpen} onOpenChange={setSearchProcessOpen} />
+                    </div>
+                  </TableHead>
                   <TableHead>Vencimento</TableHead>
                   <TableHead className="text-right">Valor Lançado</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
@@ -217,7 +251,7 @@ export default function AccountsReceivableTab() {
                     <TableCell>{r.client_id ? clientMap.get(r.client_id) ?? '—' : '—'}</TableCell>
                     <TableCell>
                       {r.quote_id && quoteMap.get(r.quote_id) ? (
-                        <Link to={`/quotes/${r.quote_id}`} className="text-primary hover:underline font-mono text-xs">
+                        <Link to={`/quotes?open=${r.quote_id}`} className="text-primary hover:underline font-mono text-xs">
                           {quoteMap.get(r.quote_id)}
                         </Link>
                       ) : (
@@ -243,6 +277,15 @@ export default function AccountsReceivableTab() {
                       ) : (
                         <>{r.currency} {Number(r.status === 'recebido' ? (r.received_amount ?? r.amount) : r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
                       )}
+                      {r.currency && r.currency.toUpperCase() !== 'BRL' && (() => {
+                        const shown = Number(r.status === 'recebido' ? (r.received_amount ?? r.amount) : r.amount);
+                        return (
+                          <div className="text-[10px] text-muted-foreground font-normal">
+                            câmbio {r.currency.toUpperCase() === 'USD' ? (usdBrl ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : r.currency.toUpperCase() === 'EUR' ? (eurBrl ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}
+                            {' = R$ '}{toBRL(shown, r.currency).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Badge className={STATUS_COLOR[r.status]} variant="secondary">

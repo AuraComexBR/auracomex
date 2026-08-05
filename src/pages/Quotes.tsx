@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -122,8 +122,13 @@ export default function Quotes() {
   // se está em /quotes não muda de rota, então sem isso a cotação aberta
   // ficava presa na tela.
   const location = useLocation();
+  const navigate = useNavigate();
   useEffect(() => {
-    setSelectedQuoteId(null);
+    // Links externos (ex: financeiro) abrem uma cotação específica via
+    // ?open=<id>, já que /quotes/:id não é uma rota de verdade — a cotação
+    // é sempre exibida por estado local dentro desta página.
+    const openId = new URLSearchParams(location.search).get('open');
+    setSelectedQuoteId(openId || null);
     // A query da lista continua "montada" o tempo todo (só fica escondida
     // enquanto uma cotação está aberta), então só resetar o id não busca
     // dados novos — precisa invalidar/forçar refetch aqui.
@@ -269,6 +274,7 @@ export default function Quotes() {
         quoteId={selectedQuoteId}
         onBack={() => {
           setSelectedQuoteId(null);
+          navigate('/quotes', { replace: true });
           queryClient.invalidateQueries({ queryKey: ['quotes'] });
         }}
       />

@@ -15,6 +15,7 @@ import { format, isBefore, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
+import { ColumnSearch } from '@/components/shared/ColumnSearch';
 
 type AP = {
   id: string;
@@ -50,6 +51,12 @@ const STATUS_COLOR: Record<string, string> = {
 export default function AccountsPayableTab() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('todos');
+  const [searchDesc, setSearchDesc] = useState('');
+  const [searchDescOpen, setSearchDescOpen] = useState(false);
+  const [searchPartner, setSearchPartner] = useState('');
+  const [searchPartnerOpen, setSearchPartnerOpen] = useState(false);
+  const [searchProcess, setSearchProcess] = useState('');
+  const [searchProcessOpen, setSearchProcessOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<AP | null>(null);
   const [payForm, setPayForm] = useState<{ paid_at: string; payment_method: string; file: File | null }>({ paid_at: format(new Date(), 'yyyy-MM-dd'), payment_method: '', file: null });
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
@@ -104,7 +111,19 @@ export default function AccountsPayableTab() {
     return { ...r, status: overdue ? ('atrasado' as const) : r.status };
   });
 
-  const filtered = enriched.filter((r) => statusFilter === 'todos' || r.status === statusFilter);
+  const filtered = enriched.filter((r) => {
+    if (statusFilter !== 'todos' && r.status !== statusFilter) return false;
+    if (searchDesc && !r.description?.toLowerCase().includes(searchDesc.toLowerCase())) return false;
+    if (searchPartner) {
+      const name = r.partner_id ? partnerMap.get(r.partner_id) ?? '' : '';
+      if (!name.toLowerCase().includes(searchPartner.toLowerCase())) return false;
+    }
+    if (searchProcess) {
+      const ref = (r.shipment_id ? shipmentMap.get(r.shipment_id) : null) || (r.quote_id ? quoteMap.get(r.quote_id) : null) || '';
+      if (!ref.toLowerCase().includes(searchProcess.toLowerCase())) return false;
+    }
+    return true;
+  });
 
   // Os KPIs somam linhas em moedas diferentes (USD, EUR, BRL) — sem converter
   // pra uma moeda comum antes de somar, o total exibido como "R$" na verdade
@@ -205,9 +224,24 @@ export default function AccountsPayableTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Origem</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Fornecedor</TableHead>
-                  <TableHead>Processo</TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5">
+                      Descrição
+                      <ColumnSearch value={searchDesc} onChange={setSearchDesc} open={searchDescOpen} onOpenChange={setSearchDescOpen} />
+                    </div>
+                  </TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5">
+                      Fornecedor
+                      <ColumnSearch value={searchPartner} onChange={setSearchPartner} open={searchPartnerOpen} onOpenChange={setSearchPartnerOpen} />
+                    </div>
+                  </TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5">
+                      Processo
+                      <ColumnSearch value={searchProcess} onChange={setSearchProcess} open={searchProcessOpen} onOpenChange={setSearchProcessOpen} />
+                    </div>
+                  </TableHead>
                   <TableHead>Vencimento</TableHead>
                   <TableHead>Pago em</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
@@ -223,11 +257,11 @@ export default function AccountsPayableTab() {
                     <TableCell>{r.partner_id ? partnerMap.get(r.partner_id) ?? '—' : '—'}</TableCell>
                     <TableCell>
                       {r.shipment_id && shipmentMap.get(r.shipment_id) ? (
-                        <Link to={`/shipments/${r.shipment_id}`} className="text-primary hover:underline font-mono text-xs">
+                        <Link to={`/shipments?open=${r.shipment_id}`} className="text-primary hover:underline font-mono text-xs">
                           {shipmentMap.get(r.shipment_id)}
                         </Link>
                       ) : r.quote_id && quoteMap.get(r.quote_id) ? (
-                        <Link to={`/quotes/${r.quote_id}`} className="text-primary hover:underline font-mono text-xs">
+                        <Link to={`/quotes?open=${r.quote_id}`} className="text-primary hover:underline font-mono text-xs">
                           {quoteMap.get(r.quote_id)}
                         </Link>
                       ) : (
@@ -243,7 +277,13 @@ export default function AccountsPayableTab() {
                       )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.currency} {Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <div>{r.currency} {Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      {r.currency && r.currency.toUpperCase() !== 'BRL' && (
+                        <div className="text-[10px] text-muted-foreground font-normal">
+                          câmbio {r.currency.toUpperCase() === 'USD' ? (usdBrl ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : r.currency.toUpperCase() === 'EUR' ? (eurBrl ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}
+                          {' = R$ '}{toBRL(Number(r.amount), r.currency).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge className={STATUS_COLOR[r.status]} variant="secondary">
