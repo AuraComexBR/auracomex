@@ -19,10 +19,11 @@ const allNavItems = [
   { key: 'nav.quotes', icon: FileText, path: '/quotes', permission: 'canAccessQuotes' as const },
   { key: 'nav.shipments', icon: Ship, path: '/shipments', permission: 'canAccessShipments' as const },
   {
-    key: 'nav.financial', icon: DollarSign, path: '/financial/processo', permission: 'canAccessFinancial' as const,
-    // Financeiro por processo (Receber/Pagar) e da empresa (Visão Geral/Despesas
-    // Fixas) são fluxos diferentes — em vez de um item novo solto no menu,
-    // "Financeiro" expande em dois, mantendo um ícone só.
+    // Clicar em "Financeiro" abre direto a Visão Geral (aba padrão de
+    // /financial/empresa) — os dois submenus (Por Processo/Receber-Pagar e
+    // Da Empresa/Despesas Fixas) continuam disponíveis, só não são mais o
+    // destino padrão do item pai.
+    key: 'nav.financial', icon: DollarSign, path: '/financial/empresa', permission: 'canAccessFinancial' as const,
     children: [
       { key: 'nav.financial_process', path: '/financial/processo' },
       { key: 'nav.financial_company', path: '/financial/empresa' },
@@ -190,8 +191,12 @@ export function AppSidebar() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (collapsed) { navigate(item.path); return; }
-                      setFinancialOpen((o) => !o);
+                      // Sempre navega pro destino do item pai (Visão Geral) — o
+                      // menu expande junto (useEffect abaixo já cuida disso pra
+                      // qualquer rota /financial/*), sem precisar de um segundo
+                      // clique só pra abrir os submenus.
+                      navigate(item.path);
+                      if (!collapsed) setFinancialOpen(true);
                     }}
                     className={cn(
                       "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",

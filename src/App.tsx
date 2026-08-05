@@ -119,7 +119,7 @@ function AppRoutes() {
         <Route path="/shipments" element={<ProtectedRoute requiredPermission="canAccessShipments"><Shipments /></ProtectedRoute>} />
         <Route path="/quotes" element={<ProtectedRoute requiredPermission="canAccessQuotes"><Quotes /></ProtectedRoute>} />
         <Route path="/registrations" element={<ProtectedRoute requiredPermission="canAccessRegistrations"><Registrations /></ProtectedRoute>} />
-        <Route path="/financial" element={<Navigate to="/financial/processo" replace />} />
+        <Route path="/financial" element={<Navigate to="/financial/empresa" replace />} />
         <Route path="/financial/processo" element={<ProtectedRoute requiredPermission="canAccessFinancial"><FinancialProcess /></ProtectedRoute>} />
         <Route path="/financial/empresa" element={<ProtectedRoute requiredPermission="canAccessFinancial"><FinancialCompany /></ProtectedRoute>} />
         <Route path="/overhead" element={<Navigate to="/financial/empresa?tab=fixas" replace />} />
