@@ -874,12 +874,31 @@ export function SendSupplierDnDialog({
     }
     setSaving(true);
     try {
+      // Recupera o embarque vinculado (via base_reference da cotação), se houver —
+      // movido pra ANTES do upload/insert pra poder gravar shipment_id junto do
+      // quote_id no documento da DN. Antes só gravava quote_id: funcionava pra
+      // quem abria o processo pela lista de Cotações, mas o documento não batia
+      // com o padrão usado no resto da aba Documentos (que sempre grava os dois
+      // quando disponíveis), então dependia só do OR por quote_id pra aparecer.
+      const { data: qRef } = await supabase.from('quotes').select('base_reference').eq('id', quoteId).maybeSingle();
+      let shipmentId: string | null = null;
+      if (qRef?.base_reference) {
+        const { data: sh } = await supabase.from('shipments').select('id').eq('reference_number', qRef.base_reference).maybeSingle();
+        shipmentId = sh?.id ?? null;
+      }
+
       const path = `${companyId}/${quoteId}/${Date.now()}_${file.name}`;
       const { error: upErr } = await supabase.storage.from('shipment-documents').upload(path, file);
       if (upErr) throw upErr;
 
-      await supabase.from('documents').insert({
+      // IMPORTANTE: o erro deste insert precisa ser checado — antes ele era
+      // ignorado silenciosamente, então se falhasse (RLS, rede, etc.) o fluxo
+      // seguia em frente e criava a Debit Note e a conta a pagar normalmente,
+      // como se tivesse dado tudo certo, só que sem o documento salvo em
+      // Documentos. Se falhar agora, para aqui e avisa o usuário.
+      const { error: docErr } = await supabase.from('documents').insert({
         quote_id: quoteId,
+        shipment_id: shipmentId,
         company_id: companyId,
         name: file.name,
         file_url: path,
@@ -887,6 +906,7 @@ export function SendSupplierDnDialog({
         uploaded_by: user?.id,
         document_type: 'debit_note_supplier' as any,
       } as any);
+      if (docErr) throw docErr;
 
       const { data: numData, error: nErr } = await supabase.rpc('next_dn_number' as any, { p_company_id: companyId });
       if (nErr) throw nErr;
@@ -912,14 +932,6 @@ export function SendSupplierDnDialog({
       }).select('id').single();
       if (dnErr) throw dnErr;
       const dnId = (dnRow as any).id;
-
-      // Recupera o embarque vinculado (via base_reference da cotação), se houver.
-      const { data: qRef } = await supabase.from('quotes').select('base_reference').eq('id', quoteId).maybeSingle();
-      let shipmentId: string | null = null;
-      if (qRef?.base_reference) {
-        const { data: sh } = await supabase.from('shipments').select('id').eq('reference_number', qRef.base_reference).maybeSingle();
-        shipmentId = sh?.id ?? null;
-      }
 
       const { error: apErr } = await supabase.from('accounts_payable' as any).insert({
         company_id: companyId,
