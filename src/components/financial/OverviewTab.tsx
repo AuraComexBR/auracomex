@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TrendingUp, TrendingDown, DollarSign, Receipt, Target, Percent, Wallet } from 'lucide-react';
 import { useOverheadEntries } from '@/hooks/useOverhead';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
@@ -86,74 +84,6 @@ export default function OverviewTab() {
     },
   });
 
-  // Balanço de caixa do mês: diferente dos KPIs acima (que são por
-  // competência — receita/custo do processo liberado no mês, independente
-  // de quando o dinheiro efetivamente entrou ou saiu), aqui é regime de
-  // caixa puro — o que realmente entrou e saiu da conta dentro do mês,
-  // usando as datas de recebimento/pagamento reais.
-  const { data: cashIn = [] } = useQuery({
-    queryKey: ['financial-overview-cash-in', monthStart, monthEnd],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('accounts_receivable' as any)
-        .select('amount, received_amount, currency, received_at')
-        .eq('status', 'recebido')
-        .gte('received_at', monthStart)
-        .lt('received_at', monthEnd);
-      if (error) throw error;
-      return (data || []) as any[];
-    },
-  });
-  const { data: cashOutAp = [] } = useQuery({
-    queryKey: ['financial-overview-cash-out-ap', monthStart, monthEnd],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('accounts_payable' as any)
-        .select('amount, currency, paid_at')
-        .eq('status', 'pago')
-        .gte('paid_at', monthStart)
-        .lt('paid_at', monthEnd);
-      if (error) throw error;
-      return (data || []) as any[];
-    },
-  });
-  const { data: cashOutOverhead = [] } = useQuery({
-    queryKey: ['financial-overview-cash-out-overhead', monthStart, monthEnd],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('overhead_entries')
-        .select('amount, currency, paid_at')
-        .eq('status', 'paid')
-        .gte('paid_at', monthStart)
-        .lt('paid_at', monthEnd);
-      if (error) throw error;
-      return (data || []) as any[];
-    },
-  });
-
-  const cashFlow = useMemo(() => {
-    const entradas = cashIn.reduce((s: number, r: any) => s + toBRL(r.received_amount ?? r.amount, r.currency), 0);
-    const saidas = cashOutAp.reduce((s: number, r: any) => s + toBRL(r.amount, r.currency), 0)
-      + cashOutOverhead.reduce((s: number, r: any) => s + toBRL(r.amount, r.currency), 0);
-    return { entradas, saidas, saldo: entradas - saidas };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cashIn, cashOutAp, cashOutOverhead, usdBrl, eurBrl]);
-
-  // Dados de cada embarque liberado no mês — pra montar o detalhamento por
-  // processo (referência + cliente) ao lado dos totais agregados.
-  const { data: shipmentInfos = [] } = useQuery({
-    queryKey: ['financial-overview-shipment-infos', releasedShipmentIds.join(',')],
-    enabled: releasedShipmentIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('shipments')
-        .select('id, reference_number, clients(name)')
-        .in('id', releasedShipmentIds);
-      if (error) throw error;
-      return (data || []) as any[];
-    },
-  });
-
   // Fluxo previsto 30 dias
   const next30End = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() + 30);
@@ -191,39 +121,6 @@ export default function OverviewTab() {
     const fluxo30 = upcomingPayables.reduce((s: number, p: any) => s + toBRL(p.amount, p.currency), 0);
     return { receita, custoVar, fixas, lucroBruto, lucroLiquido, margemBruta, margemLiquida, pontoEquilibrio, fluxo30 };
   }, [lines, entries.data, payables, upcomingPayables, usdBrl, eurBrl]);
-
-  // Detalhamento por processo — o valor real dentro do mês, embarque a
-  // embarque, em vez de só o total agregado. Mesma base de dados dos KPIs
-  // acima (embarques liberados ao financeiro no mês).
-  const byProcess = useMemo(() => {
-    const receitaMap = new Map<string, number>();
-    lines.forEach((l: any) => {
-      if (l.direction !== 'receivable') return;
-      receitaMap.set(l.shipment_id, (receitaMap.get(l.shipment_id) || 0) + toBRL(l.amount, l.currency));
-    });
-    const custoMap = new Map<string, number>();
-    payables.forEach((p: any) => {
-      custoMap.set(p.shipment_id, (custoMap.get(p.shipment_id) || 0) + toBRL(p.amount, p.currency));
-    });
-    const infoMap = new Map(shipmentInfos.map((s: any) => [s.id, s]));
-    return releasedShipmentIds
-      .map((id) => {
-        const info = infoMap.get(id);
-        const receita = receitaMap.get(id) || 0;
-        const custo = custoMap.get(id) || 0;
-        const lucro = receita - custo;
-        const margem = receita > 0 ? (lucro / receita) * 100 : 0;
-        return {
-          id,
-          reference: info?.reference_number || '—',
-          client: (info as any)?.clients?.name || '—',
-          receita, custo, lucro, margem,
-        };
-      })
-      .filter((r) => r.receita !== 0 || r.custo !== 0)
-      .sort((a, b) => b.receita - a.receita);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines, payables, shipmentInfos, releasedShipmentIds, usdBrl, eurBrl]);
 
   return (
     <div className="space-y-6">
@@ -275,67 +172,6 @@ export default function OverviewTab() {
             <div className="h-px bg-border my-2" />
             <Row label="= Lucro Líquido" value={fmtBRL(totals.lucroLiquido)} bold highlight={totals.lucroLiquido >= 0 ? 'emerald' : 'destructive'} />
           </div>
-        </CardContent>
-      </Card>
-
-      <Card className="glass">
-        <CardHeader>
-          <CardTitle className="text-base">Balanço de caixa do mês</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Diferente do Resultado acima (por competência) — aqui é o que realmente entrou e saiu da conta,
-            pelas datas de recebimento e pagamento.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2 text-sm">
-            <Row label="(+) Entradas (recebido no mês)" value={fmtBRL(cashFlow.entradas)} />
-            <Row label="(-) Saídas (pago no mês)" value={fmtBRL(cashFlow.saidas)} negative />
-            <div className="h-px bg-border my-2" />
-            <Row
-              label={cashFlow.saldo >= 0 ? 'Entrou mais do que saiu' : 'Saiu mais do que entrou'}
-              value={fmtBRL(cashFlow.saldo)}
-              bold
-              highlight={cashFlow.saldo >= 0 ? 'emerald' : 'destructive'}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="glass">
-        <CardHeader><CardTitle className="text-base">Resultado por processo</CardTitle></CardHeader>
-        <CardContent>
-          {byProcess.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Nenhum processo liberado ao financeiro neste mês.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Processo</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right">Receita</TableHead>
-                  <TableHead className="text-right">Custo</TableHead>
-                  <TableHead className="text-right">Lucro</TableHead>
-                  <TableHead className="text-right">Margem</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {byProcess.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>
-                      <Link to={`/shipments?open=${r.id}`} className="text-primary hover:underline font-mono text-xs">
-                        {r.reference}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-sm">{r.client}</TableCell>
-                    <TableCell className="text-right tabular-nums">{fmtBRL(r.receita)}</TableCell>
-                    <TableCell className="text-right tabular-nums text-destructive">{fmtBRL(r.custo)}</TableCell>
-                    <TableCell className={`text-right tabular-nums font-medium ${r.lucro >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{fmtBRL(r.lucro)}</TableCell>
-                    <TableCell className={`text-right tabular-nums text-xs ${r.margem >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>{r.margem.toFixed(1)}%</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
         </CardContent>
       </Card>
     </div>
