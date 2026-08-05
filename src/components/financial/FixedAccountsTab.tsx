@@ -18,8 +18,15 @@ import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
 import { toast } from 'sonner';
 
 function currentMonthISO() {
-  const d = new Date(); d.setDate(1);
-  return d.toISOString().slice(0, 10);
+  // Monta a string a partir do ano/mês LOCAIS, sem passar por toISOString()
+  // (que converte pra UTC). Em fusos atrás de UTC (ex: Brasil, UTC-3), depois
+  // das ~21h locais o toISOString() já cai no dia seguinte em UTC, então o
+  // mês "atual" virava "YYYY-MM-02" em vez de "YYYY-MM-01" — como a busca de
+  // lançamentos filtra por igualdade exata de reference_month, isso fazia a
+  // tela do mês atual carregar vazia (só corrigia ao trocar de mês, porque o
+  // seletor sempre monta a data como "YYYY-MM-01" manualmente).
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 function fmt(n: number, currency = 'BRL') {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);

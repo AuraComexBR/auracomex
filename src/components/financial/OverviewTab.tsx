@@ -12,8 +12,12 @@ function fmtBRL(n: number) {
 }
 
 function currentMonthISO() {
-  const d = new Date(); d.setDate(1);
-  return d.toISOString().slice(0, 10);
+  // Mesmo bug do FixedAccountsTab.tsx: montar a data local e depois usar
+  // toISOString() converte pra UTC, e em fusos atrás de UTC (Brasil, UTC-3)
+  // isso pode empurrar o dia 1 pro dia 2 dependendo da hora local. Monta a
+  // string direto do ano/mês locais pra evitar o desvio.
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
 export default function OverviewTab() {
