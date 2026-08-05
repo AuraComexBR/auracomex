@@ -55,6 +55,11 @@ const SOURCE_LABEL: Record<string, string> = {
 export default function AccountsReceivableTab() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('todos');
+  // Filtro de mês: para contas já recebidas, localiza pela data de
+  // recebimento (received_at) — não pela data de vencimento/lançamento.
+  // Contas ainda em aberto/atrasadas não têm data de recebimento, então
+  // continuam localizadas pelo vencimento.
+  const [monthFilter, setMonthFilter] = useState<string>('');
   const [searchDesc, setSearchDesc] = useState('');
   const [searchDescOpen, setSearchDescOpen] = useState(false);
   const [searchClient, setSearchClient] = useState('');
@@ -132,6 +137,10 @@ export default function AccountsReceivableTab() {
     if (searchProcess) {
       const ref = (r.quote_id ? quoteMap.get(r.quote_id) : null) || '';
       if (!ref.toLowerCase().includes(searchProcess.toLowerCase())) return false;
+    }
+    if (monthFilter) {
+      const relevant = r.status === 'recebido' ? r.received_at : r.due_date;
+      if (!relevant || relevant.slice(0, 7) !== monthFilter) return false;
     }
     return true;
   });
@@ -246,16 +255,28 @@ export default function AccountsReceivableTab() {
       <Card className="glass">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Valores a Receber</CardTitle>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="aberto">Em aberto</SelectItem>
-              <SelectItem value="atrasado">Atrasados</SelectItem>
-              <SelectItem value="recebido">Recebidos</SelectItem>
-              <SelectItem value="cancelado">Cancelados</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Input
+              type="month"
+              className="w-40"
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              title="Filtra recebidos pela data de recebimento; em aberto/atrasados pelo vencimento"
+            />
+            {monthFilter && (
+              <Button variant="ghost" size="sm" onClick={() => setMonthFilter('')}>Limpar</Button>
+            )}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="aberto">Em aberto</SelectItem>
+                <SelectItem value="atrasado">Atrasados</SelectItem>
+                <SelectItem value="recebido">Recebidos</SelectItem>
+                <SelectItem value="cancelado">Cancelados</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           {filtered.length === 0 ? (

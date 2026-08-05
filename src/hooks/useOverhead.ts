@@ -153,13 +153,27 @@ export function useOverheadEntries(referenceMonth: string) {
   const qc = useQueryClient();
   const companyId = profile?.company_id;
 
+  // O mês exibido tem que refletir a data em que o valor foi de fato pago/
+  // recebido, não o mês de referência/lançamento — senão um lançamento pago
+  // com atraso (ex.: gerado em agosto, pago em setembro) continuaria
+  // aparecendo em agosto, quando na prática o caixa só mexeu em setembro.
+  // Lançamentos ainda pendentes não têm paid_at, então continuam localizados
+  // pelo reference_month (mês em que foram gerados/são esperados).
+  const monthStart = referenceMonth;
+  const monthEnd = (() => {
+    if (!referenceMonth) return referenceMonth;
+    const d = new Date(referenceMonth + 'T00:00:00');
+    d.setMonth(d.getMonth() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
   const query = useQuery({
     queryKey: ['overhead_entries', companyId, referenceMonth],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('overhead_entries')
         .select('*')
-        .eq('reference_month', referenceMonth)
+        .or(`and(status.eq.paid,paid_at.gte.${monthStart},paid_at.lt.${monthEnd}),and(status.neq.paid,reference_month.eq.${referenceMonth})`)
         .order('due_date');
       if (error) throw error;
       return (data || []) as OverheadEntry[];

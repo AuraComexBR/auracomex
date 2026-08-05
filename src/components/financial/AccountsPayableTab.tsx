@@ -52,6 +52,11 @@ const STATUS_COLOR: Record<string, string> = {
 export default function AccountsPayableTab() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('todos');
+  // Filtro de mês: para contas já pagas, localiza pela data de pagamento
+  // (paid_at) — não pela data de vencimento/lançamento (due_date). Contas
+  // ainda em aberto/atrasadas não têm data de pagamento, então continuam
+  // localizadas pelo vencimento, já que é a única data que têm.
+  const [monthFilter, setMonthFilter] = useState<string>('');
   const [searchDesc, setSearchDesc] = useState('');
   const [searchDescOpen, setSearchDescOpen] = useState(false);
   const [searchPartner, setSearchPartner] = useState('');
@@ -138,6 +143,10 @@ export default function AccountsPayableTab() {
     if (searchProcess) {
       const ref = (r.shipment_id ? shipmentMap.get(r.shipment_id) : null) || (r.quote_id ? quoteMap.get(r.quote_id) : null) || '';
       if (!ref.toLowerCase().includes(searchProcess.toLowerCase())) return false;
+    }
+    if (monthFilter) {
+      const relevant = r.status === 'pago' ? r.paid_at : r.due_date;
+      if (!relevant || relevant.slice(0, 7) !== monthFilter) return false;
     }
     return true;
   });
@@ -259,16 +268,28 @@ export default function AccountsPayableTab() {
       <Card className="glass">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Valores a Pagar</CardTitle>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="aberto">Em aberto</SelectItem>
-              <SelectItem value="atrasado">Atrasados</SelectItem>
-              <SelectItem value="pago">Pagos</SelectItem>
-              <SelectItem value="cancelado">Cancelados</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Input
+              type="month"
+              className="w-40"
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              title="Filtra pagos pela data de pagamento; em aberto/atrasados pelo vencimento"
+            />
+            {monthFilter && (
+              <Button variant="ghost" size="sm" onClick={() => setMonthFilter('')}>Limpar</Button>
+            )}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="aberto">Em aberto</SelectItem>
+                <SelectItem value="atrasado">Atrasados</SelectItem>
+                <SelectItem value="pago">Pagos</SelectItem>
+                <SelectItem value="cancelado">Cancelados</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           {filtered.length === 0 ? (
