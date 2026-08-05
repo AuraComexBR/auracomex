@@ -34,8 +34,15 @@ export default function OverviewTab() {
   // dentro do mês (accounts_receivable.received_at) e deduz tudo que foi de
   // fato pago dentro do mês (accounts_payable.paid_at + despesas fixas
   // pagas) — não o que foi lançado/competência do processo.
+  // A Visão Geral costumava ficar com dado velho até o usuário dar F5: as
+  // queries seguiam o staleTime global (3 min) e nada em Contas a Pagar/
+  // Receber ou na aba Geral invalidava essas chaves específicas ao lançar
+  // ou pagar/receber algo. `refetchOnMount: 'always'` força buscar de novo
+  // do servidor toda vez que a página é (re)aberta, sem depender de cache.
   const { data: cashIn = [] } = useQuery({
     queryKey: ['financial-overview-cash-in', monthStart, monthEnd],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const { data, error } = await supabase
         .from('accounts_receivable' as any)
@@ -49,6 +56,8 @@ export default function OverviewTab() {
   });
   const { data: cashOutAp = [] } = useQuery({
     queryKey: ['financial-overview-cash-out-ap', monthStart, monthEnd],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const { data, error } = await supabase
         .from('accounts_payable' as any)
@@ -62,6 +71,8 @@ export default function OverviewTab() {
   });
   const { data: cashOutOverhead = [] } = useQuery({
     queryKey: ['financial-overview-cash-out-overhead', monthStart, monthEnd],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('overhead_entries')
@@ -80,6 +91,8 @@ export default function OverviewTab() {
   // saiu", sem distinguir origem.
   const { data: cashInOverhead = [] } = useQuery({
     queryKey: ['financial-overview-cash-in-overhead', monthStart, monthEnd],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('overhead_entries')
@@ -128,6 +141,8 @@ export default function OverviewTab() {
   const today = new Date().toISOString().slice(0, 10);
   const { data: upcomingPayables = [] } = useQuery({
     queryKey: ['financial-upcoming-payables', today, next30End],
+    staleTime: 0,
+    refetchOnMount: 'always',
     queryFn: async () => {
       const { data, error } = await supabase
         .from('accounts_payable' as any)
