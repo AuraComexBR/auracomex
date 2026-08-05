@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash2, Pencil, Play, CheckCircle2, Loader2, Paperclip, TrendingUp, TrendingDown, Repeat, Zap } from 'lucide-react';
+import { Trash2, Pencil, CheckCircle2, Paperclip, TrendingUp, TrendingDown, Repeat, Zap } from 'lucide-react';
 import { useOverheadCategories, useOverheadEntries, useOverheadExpenses, OverheadExpense } from '@/hooks/useOverhead';
 import { TransactionModal } from '@/components/overhead/TransactionModal';
 import { useAuth } from '@/contexts/AuthContext';
@@ -46,6 +46,18 @@ export default function GeneralTab() {
   const expensesById = useMemo(() => new Map((expenses.data || []).map((e) => [e.id, e])), [expenses.data]);
   const categoriesById = useMemo(() => new Map((categories.data || []).map((c) => [c.id, c])), [categories.data]);
 
+  // Regra: uma vez marcado como recorrente, o lançamento tem que aparecer
+  // sozinho nos meses seguintes, sem o usuário precisar clicar em nada. Isso
+  // já roda automaticamente no servidor todo dia 1 (cron), mas também
+  // garante aqui, no cliente, que o mês sendo visualizado (inclusive se o
+  // usuário navegar pra um mês futuro antes do cron rodar, ou logo após
+  // cadastrar uma recorrência nova) já tenha os lançamentos gerados —
+  // idempotente, então rodar de novo não duplica nada.
+  useEffect(() => {
+    if (referenceMonth) entries.generate.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referenceMonth]);
+
   // Lista única — não separa mais avulso de recorrente nem despesa de
   // receita, só ordena por vencimento e sinaliza cada linha com selos.
   const allEntries = useMemo(
@@ -67,10 +79,6 @@ export default function GeneralTab() {
             />
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" onClick={() => entries.generate.mutate()} disabled={entries.generate.isPending}>
-              {entries.generate.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Play className="w-4 h-4 mr-1" />}
-              Gerar recorrentes do mês
-            </Button>
             <Button variant="outline" onClick={() => setAddOpen('despesa')}>
               <TrendingDown className="w-4 h-4 mr-1" /> Adicionar Despesa
             </Button>
@@ -84,7 +92,7 @@ export default function GeneralTab() {
             <div className="py-10 text-center text-muted-foreground">Carregando...</div>
           ) : allEntries.length === 0 ? (
             <div className="py-10 text-center text-muted-foreground text-sm">
-              Nenhum lançamento neste mês. Use "Adicionar Despesa"/"Adicionar Receita" acima, ou "Gerar recorrentes do mês" se já tiver recorrências cadastradas.
+              Nenhum lançamento neste mês. Use "Adicionar Despesa"/"Adicionar Receita" acima — lançamentos recorrentes já cadastrados aparecem aqui automaticamente.
             </div>
           ) : (
             <div className="overflow-x-auto">

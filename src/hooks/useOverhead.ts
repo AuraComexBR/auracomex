@@ -201,7 +201,10 @@ export function useOverheadEntries(referenceMonth: string) {
       if (error) throw error;
       return rows.length;
     },
-    onSuccess: (n) => { qc.invalidateQueries({ queryKey: ['overhead_entries', companyId, referenceMonth] }); toast.success(`${n} lançamento(s) gerados`); },
+    // Roda automaticamente (sem botão, sem ação do usuário) sempre que o mês
+    // visualizado muda — silencioso de propósito, já que passa a rodar o
+    // tempo todo em segundo plano (é idempotente: reexecutar não duplica).
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['overhead_entries', companyId, referenceMonth] }); },
     onError: (e: any) => toast.error(e.message),
   });
 
