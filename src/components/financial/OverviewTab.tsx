@@ -63,14 +63,29 @@ export default function OverviewTab() {
   const { data: cashOutOverhead = [] } = useQuery({
     queryKey: ['financial-overview-cash-out-overhead', monthStart, monthEnd],
     queryFn: async () => {
-      // "Despesas Fixas" do Resultado do mês é só o lado despesa — a aba Geral
-      // agora também aceita receita da empresa (kind='receita'), que não deve
-      // entrar nesse total.
       const { data, error } = await (supabase as any)
         .from('overhead_entries')
         .select('amount, currency, paid_at')
         .eq('status', 'paid')
         .eq('kind', 'despesa')
+        .gte('paid_at', monthStart)
+        .lt('paid_at', monthEnd);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+  // Receita da empresa lançada em "Geral" (kind='receita', ex.: serviços,
+  // comissões) recebida dentro do mês — soma no total junto com o recebido
+  // dos processos, já que a regra agora é "TUDO que entrou menos TUDO que
+  // saiu", sem distinguir origem.
+  const { data: cashInOverhead = [] } = useQuery({
+    queryKey: ['financial-overview-cash-in-overhead', monthStart, monthEnd],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('overhead_entries')
+        .select('amount, currency, paid_at')
+        .eq('status', 'paid')
+        .eq('kind', 'receita')
         .gte('paid_at', monthStart)
         .lt('paid_at', monthEnd);
       if (error) throw error;
@@ -126,7 +141,9 @@ export default function OverviewTab() {
   });
 
   const totals = useMemo(() => {
-    const receita = cashIn.reduce((s: number, r: any) => s + toBRL(r.received_amount ?? r.amount, r.currency, r.debit_note_id), 0);
+    const receitaProcessos = cashIn.reduce((s: number, r: any) => s + toBRL(r.received_amount ?? r.amount, r.currency, r.debit_note_id), 0);
+    const receitaGeral = cashInOverhead.reduce((s: number, r: any) => s + toBRL(r.amount, r.currency), 0);
+    const receita = receitaProcessos + receitaGeral;
     const custoVar = cashOutAp.reduce((s: number, r: any) => s + toBRL(r.amount, r.currency, r.debit_note_id), 0);
     const fixas = cashOutOverhead.reduce((s: number, r: any) => s + toBRL(r.amount, r.currency), 0);
     const lucroBruto = receita - custoVar;
@@ -135,15 +152,16 @@ export default function OverviewTab() {
     const margemLiquida = receita > 0 ? (lucroLiquido / receita) * 100 : 0;
     const pontoEquilibrio = margemBruta > 0 ? (fixas / (margemBruta / 100)) : 0;
     const fluxo30 = upcomingPayables.reduce((s: number, p: any) => s + toBRL(p.amount, p.currency), 0);
-    return { receita, custoVar, fixas, lucroBruto, lucroLiquido, margemBruta, margemLiquida, pontoEquilibrio, fluxo30 };
+    const totalPago = custoVar + fixas;
+    return { receita, receitaProcessos, receitaGeral, custoVar, fixas, totalPago, lucroBruto, lucroLiquido, margemBruta, margemLiquida, pontoEquilibrio, fluxo30 };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cashIn, cashOutAp, cashOutOverhead, upcomingPayables, dnRateMap, usdBrl, eurBrl]);
+  }, [cashIn, cashInOverhead, cashOutAp, cashOutOverhead, upcomingPayables, dnRateMap, usdBrl, eurBrl]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Valores convertidos para BRL {usdBrl ? `(USD ${usdBrl.toFixed(4)} · EUR ${(eurBrl || 0).toFixed(4)})` : ''}. Regime de caixa: receita e custo somam o que foi efetivamente recebido/pago dentro do mês.
+          Valores convertidos para BRL {usdBrl ? `(USD ${usdBrl.toFixed(4)} · EUR ${(eurBrl || 0).toFixed(4)})` : ''}. Regime de caixa: todo valor recebido no mês (processos + Geral), menos todo valor pago no mês (processos + Geral).
           {ratesLoading && ' · atualizando cotações...'}
         </p>
         <Input
@@ -155,9 +173,9 @@ export default function OverviewTab() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPI label="Receita Bruta" value={fmtBRL(totals.receita)} icon={<TrendingUp className="w-5 h-5" />} tone="emerald" hint="Recebido dentro do mês" />
+        <KPI label="Receita Bruta" value={fmtBRL(totals.receita)} icon={<TrendingUp className="w-5 h-5" />} tone="emerald" hint="Recebido no mês: processos + Geral" />
         <KPI label="Custo Variável" value={fmtBRL(totals.custoVar)} icon={<TrendingDown className="w-5 h-5" />} tone="destructive" hint="Pago dentro do mês (processos)" />
-        <KPI label="Despesas Fixas" value={fmtBRL(totals.fixas)} icon={<Receipt className="w-5 h-5" />} tone="amber" hint="Pago dentro do mês (subsistência)" />
+        <KPI label="Despesas Fixas" value={fmtBRL(totals.fixas)} icon={<Receipt className="w-5 h-5" />} tone="amber" hint="Pago dentro do mês (Geral)" />
         <KPI label="Lucro Líquido" value={fmtBRL(totals.lucroLiquido)} icon={<DollarSign className="w-5 h-5" />} tone={totals.lucroLiquido >= 0 ? 'emerald' : 'destructive'} highlight />
       </div>
 
@@ -179,15 +197,21 @@ export default function OverviewTab() {
       </div>
 
       <Card className="glass">
-        <CardHeader><CardTitle className="text-base">Resultado do mês</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Resultado do mês</CardTitle>
+          <p className="text-xs text-muted-foreground">Todo valor recebido no mês, deduzido de todo valor pago no mês.</p>
+        </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm">
-            <Row label="Receita Bruta" value={fmtBRL(totals.receita)} />
-            <Row label="(-) Custo Variável (processos)" value={fmtBRL(totals.custoVar)} negative />
-            <Row label="= Lucro Bruto" value={fmtBRL(totals.lucroBruto)} bold />
-            <Row label="(-) Despesas Fixas (subsistência)" value={fmtBRL(totals.fixas)} negative />
+            <Row label="Recebido — processos" value={fmtBRL(totals.receitaProcessos)} />
+            <Row label="Recebido — Geral" value={fmtBRL(totals.receitaGeral)} />
+            <Row label="= Total Recebido" value={fmtBRL(totals.receita)} bold />
             <div className="h-px bg-border my-2" />
-            <Row label="= Lucro Líquido" value={fmtBRL(totals.lucroLiquido)} bold highlight={totals.lucroLiquido >= 0 ? 'emerald' : 'destructive'} />
+            <Row label="(-) Pago — processos" value={fmtBRL(totals.custoVar)} negative />
+            <Row label="(-) Pago — Geral" value={fmtBRL(totals.fixas)} negative />
+            <Row label="= Total Pago" value={fmtBRL(totals.totalPago)} bold negative />
+            <div className="h-px bg-border my-2" />
+            <Row label="= Saldo do mês" value={fmtBRL(totals.lucroLiquido)} bold highlight={totals.lucroLiquido >= 0 ? 'emerald' : 'destructive'} />
           </div>
         </CardContent>
       </Card>
