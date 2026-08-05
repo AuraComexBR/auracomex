@@ -156,6 +156,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     storage_fee_amount: '',
     storage_fee_currency: 'BRL',
     storage_fee_note: '',
+    pickup_address: '',
+    delivery_address: '',
   });
   const [cargoItems, setCargoItems] = useState<CargoItem[]>([{ ...emptyCargoItem }]);
   const [saving, setSaving] = useState(false);
@@ -468,6 +470,27 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
+  // Resumo em texto da aba Geral, pra colar em e-mail/whatsapp com fornecedores.
+  // Coleta e Entrega só entram na lista se estiverem preenchidos.
+  function handleCopyGeneralSummary() {
+    const modeLabel = t(`mode.${form.transport_mode}`);
+    const clientName = clients.find((c: any) => c.id === form.client_id)?.name || null;
+    const lines: string[] = [
+      `📋 ${quote?.quote_number || 'Cotação'} - ${modeLabel}`,
+      '',
+    ];
+    if (clientName) lines.push(`Cliente: ${clientName}`);
+    if (form.pickup_address) lines.push(`Coleta: ${form.pickup_address}`);
+    lines.push(`Origem: ${form.origin || '-'}`);
+    lines.push(`Destino: ${form.destination || '-'}`);
+    if (form.delivery_address) lines.push(`Entrega: ${form.delivery_address}`);
+    if (form.incoterm && form.incoterm !== 'NONE') lines.push(`Incoterm: ${form.incoterm}`);
+    if (form.transit_time) lines.push(`Transit time: ${form.transit_time} dias`);
+    if (form.free_time) lines.push(`Free time: ${form.free_time} dias`);
+    navigator.clipboard.writeText(lines.join('\n'));
+    toast.success('Resumo copiado');
+  }
+
   useEffect(() => {
     if (quote) {
       setForm({
@@ -488,6 +511,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         storage_fee_amount: (quote as any).storage_fee_amount != null ? String((quote as any).storage_fee_amount) : '',
         storage_fee_currency: (quote as any).storage_fee_currency || 'BRL',
         storage_fee_note: (quote as any).storage_fee_note || '',
+        pickup_address: (quote as any).pickup_address || '',
+        delivery_address: (quote as any).delivery_address || '',
       });
     }
   }, [quote]);
@@ -564,7 +589,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       (form.proposal_notes || '') !== ((quote as any).proposal_notes || '') ||
       (form.storage_fee_amount || '') !== ((quote as any).storage_fee_amount != null ? String((quote as any).storage_fee_amount) : '') ||
       (form.storage_fee_currency || 'BRL') !== ((quote as any).storage_fee_currency || 'BRL') ||
-      (form.storage_fee_note || '') !== ((quote as any).storage_fee_note || '');
+      (form.storage_fee_note || '') !== ((quote as any).storage_fee_note || '') ||
+      (form.pickup_address || '') !== ((quote as any).pickup_address || '') ||
+      (form.delivery_address || '') !== ((quote as any).delivery_address || '');
 
     if (formChanged) return true;
 
@@ -880,6 +907,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         { field: 'incoterm', old: (quote as any)?.incoterm, next: (form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : null },
         { field: 'valid_until', old: (quote as any)?.valid_until ? format(new Date((quote as any).valid_until), 'yyyy-MM-dd') : null, next: form.valid_until || null },
         { field: 'status', old: (quote as any)?.status, next: form.status },
+        { field: 'pickup_address', old: (quote as any)?.pickup_address, next: form.pickup_address || null },
+        { field: 'delivery_address', old: (quote as any)?.delivery_address, next: form.delivery_address || null },
       ];
       const generalChanges = generalFieldChecks
         .filter((c) => String(c.old ?? '') !== String(c.next ?? ''))
@@ -909,6 +938,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         storage_fee_amount: form.storage_fee_amount ? parseFloat(form.storage_fee_amount) : null,
         storage_fee_currency: form.storage_fee_amount ? (form.storage_fee_currency || 'BRL') : null,
         storage_fee_note: form.storage_fee_note || null,
+        pickup_address: form.pickup_address || null,
+        delivery_address: form.delivery_address || null,
       } as any).eq('id', quoteId);
       if (error) throw error;
 
@@ -1895,6 +1926,12 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         {/* General Tab */}
         <TabsContent value="general">
           <Card className="glass">
+            <CardHeader className="flex flex-row items-center justify-between pb-0">
+              <CardTitle className="text-base">Geral</CardTitle>
+              <Button variant="outline" size="sm" onClick={handleCopyGeneralSummary}>
+                <Copy className="w-3.5 h-3.5 mr-1.5" /> {t('common.copy_summary')}
+              </Button>
+            </CardHeader>
             <CardContent className="pt-6 space-y-4">
               {/* Linha 1: Cliente - Modal - Incoterm (+ Status/Validade em cotações) */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -2007,6 +2044,30 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     />
                   </div>
                 )}
+              </div>
+
+              {/* Linha 1.5: Coleta - Entrega — endereços usados pra cotar com fornecedores,
+                  não fazem parte da rota (Origem/Destino) nem viram carga tributária/logística;
+                  só aparecem no resumo copiado se estiverem preenchidos. */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Coleta</Label>
+                  <Input
+                    value={form.pickup_address}
+                    onChange={(e) => setForm({ ...form, pickup_address: e.target.value })}
+                    placeholder="Endereço de coleta (opcional)"
+                    disabled={!canEditGeneral}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Entrega</Label>
+                  <Input
+                    value={form.delivery_address}
+                    onChange={(e) => setForm({ ...form, delivery_address: e.target.value })}
+                    placeholder="Endereço de entrega (opcional)"
+                    disabled={!canEditGeneral}
+                  />
+                </div>
               </div>
 
               {/* Linha 2: Origem - Transbordo - Destino */}

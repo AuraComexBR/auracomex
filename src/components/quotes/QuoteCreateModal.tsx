@@ -400,6 +400,11 @@ export function QuoteCreateModal({ open, onClose, onCreated }: Props) {
         base_reference: baseRef,
         direction: direction,
         incoterm: (form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : null,
+        // Antes só existiam aqui no modal de criação (usados pra montar o resumo
+        // enviado aos fornecedores), mas somem depois — passam a ser salvos na
+        // cotação pra continuarem editáveis/visíveis na aba Geral.
+        pickup_address: form.pickup || null,
+        delivery_address: form.delivery || null,
       }] as any).select('id').single();
 
       if (qErr) throw qErr;
