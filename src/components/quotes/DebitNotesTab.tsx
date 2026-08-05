@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { deleteSupplierDn } from '@/lib/debitNotes';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 
 type DebitNote = {
   id: string;
@@ -856,15 +857,23 @@ export function SendSupplierDnDialog({
 }) {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const { usdBrl, eurBrl } = useExchangeRate();
   const [dueDate, setDueDate] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [exchangeRate, setExchangeRate] = useState('1');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
       setDueDate('');
       setFile(null);
+      // Pré-preenche com a cotação atual pra moeda da DN — o usuário ainda
+      // pode ajustar pra taxa realmente usada na conversão, se for diferente.
+      const cur = (suggestedCurrency || '').toUpperCase();
+      const liveRate = cur === 'USD' ? usdBrl : cur === 'EUR' ? eurBrl : null;
+      setExchangeRate(cur === 'BRL' ? '1' : liveRate ? String(liveRate) : '1');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   async function handleSave() {
@@ -922,7 +931,7 @@ export function SendSupplierDnDialog({
         issue_date: format(new Date(), 'yyyy-MM-dd'),
         due_date: dueDate || null,
         currency: suggestedCurrency,
-        exchange_rate: 1,
+        exchange_rate: Number(exchangeRate) || 1,
         total_amount: suggestedAmount,
         file_url: path,
         created_by: user?.id,
@@ -983,8 +992,20 @@ export function SendSupplierDnDialog({
             <Label>Vencimento</Label>
             <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
           </div>
+          {suggestedCurrency.toUpperCase() !== 'BRL' && (
+            <div>
+              <Label>Taxa de câmbio ({suggestedCurrency} → BRL)</Label>
+              <Input type="number" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Câmbio usado na conversão do fornecedor — ajuste se for diferente da cotação do dia.
+              </p>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             Valor: {suggestedCurrency} {suggestedAmount.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (soma das taxas conferidas)
+            {suggestedCurrency.toUpperCase() !== 'BRL' && (Number(exchangeRate) > 0) && (
+              <> · ≈ R$ {(suggestedAmount * Number(exchangeRate)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+            )}
           </p>
         </div>
         <DialogFooter>
