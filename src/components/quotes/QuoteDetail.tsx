@@ -3903,12 +3903,11 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId, part
     if (result.ok) setReopenConfirmOpen(false);
   };
 
-  // Depois que a conta a pagar dessa DN é quitada, a taxa fica travada de
-  // vez — não dá mais pra reabrir nem editar o cobrado. Se chegar uma
-  // cobrança nova do fornecedor, o usuário cadastra outra taxa (linha nova)
-  // em vez de mexer nesta, que já foi paga.
+  // Mesmo depois de paga, ainda dá pra reabrir se for realmente necessário
+  // (ex.: DN errada, arquivo trocado) — "Reabrir" exclui a DN e a conta a
+  // pagar vinculada (perde o registro do pagamento) e libera a taxa de
+  // novo. O aviso deixa isso claro antes de confirmar.
   const paid = !!charge.buy_paid_at;
-  const locked = sentInDn && paid;
 
   return (
     <TableRow className={confirmed ? 'bg-emerald-500/5' : 'bg-muted/10'}>
@@ -3938,14 +3937,10 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId, part
             </Select>
           )}
           <div className="ml-auto flex items-center gap-1">
-            {locked ? (
-              <Badge variant="outline" className="text-[10px] h-5 bg-primary/10 text-primary border-primary/30 gap-1" title="Taxa já paga — não pode ser reaberta">
-                <CheckCircle className="w-3 h-3" /> Pago
-              </Badge>
-            ) : sentInDn ? (
+            {sentInDn ? (
               <>
-                <Badge variant="outline" className="text-[10px] h-5 bg-primary/15 text-primary border-primary/30 gap-1">
-                  <CheckCircle className="w-3 h-3" /> Enviado em DN
+                <Badge variant="outline" className={`text-[10px] h-5 gap-1 ${paid ? 'bg-primary/10 text-primary border-primary/30' : 'bg-primary/15 text-primary border-primary/30'}`}>
+                  <CheckCircle className="w-3 h-3" /> {paid ? 'Pago' : 'Enviado em DN'}
                 </Badge>
                 <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setReopenConfirmOpen(true)}>
                   Reabrir
@@ -3953,11 +3948,11 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId, part
                 <AlertDialog open={reopenConfirmOpen} onOpenChange={(o) => !reopening && setReopenConfirmOpen(o)}>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Essa taxa já está numa DN enviada</AlertDialogTitle>
+                      <AlertDialogTitle>{paid ? 'Essa taxa já foi paga' : 'Essa taxa já está numa DN enviada'}</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Reabrir vai excluir a Debit Note já enviada ao fornecedor e removê-la de Contas a
-                        Pagar. As taxas incluídas nela voltam a ficar editáveis e precisam ser conferidas
-                        de novo antes de gerar uma nova DN. Deseja continuar?
+                        {paid
+                          ? 'Reabrir vai excluir a Debit Note já enviada ao fornecedor e o registro do pagamento em Contas a Pagar (data, comprovante, etc. são perdidos). As taxas incluídas nela voltam a ficar editáveis e precisam ser conferidas e reenviadas numa nova DN. Deseja continuar?'
+                          : 'Reabrir vai excluir a Debit Note já enviada ao fornecedor e removê-la de Contas a Pagar. As taxas incluídas nela voltam a ficar editáveis e precisam ser conferidas de novo antes de gerar uma nova DN. Deseja continuar?'}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

@@ -6,7 +6,9 @@ import { logAuditEvent } from './auditLog';
  * pra edição todas as taxas que estavam presas nela — usado tanto pelo botão
  * "Excluir" da lista de DNs no Financeiro quanto pelo fluxo de "Reabrir" uma
  * taxa já enviada, na aba Taxas do processo (mesma lógica, dois pontos de
- * entrada). Só permite excluir se a DN ainda não foi paga.
+ * entrada). Pode excluir mesmo já paga — nesse caso o registro do pagamento
+ * (conta a pagar) também é removido, então o chamador deve avisar o usuário
+ * antes de chamar isto com uma DN paga.
  */
 export async function deleteSupplierDn({
   dnId,
@@ -29,9 +31,6 @@ export async function deleteSupplierDn({
     .maybeSingle();
   if (dnErr) return { ok: false, error: dnErr.message };
   if (!dn) return { ok: false, error: 'Debit Note não encontrada.' };
-  if ((dn as any).status === 'paga') {
-    return { ok: false, error: 'Esta DN já foi paga e não pode ser excluída.' };
-  }
 
   await supabase.from('accounts_payable' as any).delete().eq('debit_note_id', dnId);
   const { error: delErr } = await supabase.from('debit_notes' as any).delete().eq('id', dnId);
@@ -39,10 +38,12 @@ export async function deleteSupplierDn({
 
   // Libera as taxas que estavam presas nesta DN: tiram o vínculo e voltam a
   // pedir conferência (o valor "cobrado" já digitado fica, só a confirmação
-  // que é desfeita — evita reenviar sem revisar de novo).
+  // que é desfeita — evita reenviar sem revisar de novo). Também limpa
+  // buy_paid_at, pra caso a DN já estivesse paga a taxa não fique travada
+  // por um pagamento cujo registro acabou de ser excluído.
   await supabase
     .from('quote_charges' as any)
-    .update({ sent_in_debit_note_id: null, buy_actual_confirmed_at: null, buy_actual_confirmed_by: null })
+    .update({ sent_in_debit_note_id: null, buy_actual_confirmed_at: null, buy_actual_confirmed_by: null, buy_paid_at: null })
     .eq('sent_in_debit_note_id', dnId);
 
   const effectiveQuoteId = quoteId || (dn as any).quote_id || null;

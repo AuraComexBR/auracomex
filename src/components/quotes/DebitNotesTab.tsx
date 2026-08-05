@@ -291,9 +291,9 @@ export function DebitNotesTab({ quoteId, companyId, partners, pendingFile, onPen
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir Debit Note?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. A conta a pagar vinculada some junto e as taxas que estavam
-              presas nesta DN voltam a ficar editáveis (é preciso conferir de novo antes de reenviar).
-              Só é possível excluir DNs que ainda não foram pagas.
+              Esta ação não pode ser desfeita. A conta a pagar vinculada some junto (se já estiver paga,
+              o registro do pagamento também é perdido) e as taxas que estavam presas nesta DN voltam a
+              ficar editáveis (é preciso conferir de novo antes de reenviar).
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
