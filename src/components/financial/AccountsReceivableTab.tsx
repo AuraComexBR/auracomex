@@ -182,9 +182,10 @@ export default function AccountsReceivableTab() {
                 <TableRow>
                   <TableHead>Origem</TableHead>
                   <TableHead>Descrição</TableHead>
-                  <TableHead>Cliente</TableHead>
+                  <TableHead>Cliente/Fornecedor</TableHead>
                   <TableHead>Processo</TableHead>
                   <TableHead>Vencimento</TableHead>
+                  <TableHead className="text-right">Valor Lançado</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -208,14 +209,16 @@ export default function AccountsReceivableTab() {
                     <TableCell>
                       {r.due_date ? format(new Date(r.due_date), 'dd/MM/yyyy') : <span className="text-muted-foreground">—</span>}
                     </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {r.currency} {Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {r.status === 'recebido' && r.received_amount != null && Number(r.received_amount) !== Number(r.amount) ? (
-                        <div className="flex flex-col items-end">
-                          <span>{r.currency} {Number(r.received_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                          <span className="text-xs text-muted-foreground line-through">{Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                        </div>
+                        <span className={Number(r.received_amount) < Number(r.amount) ? 'text-amber-500' : 'text-emerald-500'}>
+                          {r.currency} {Number(r.received_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
                       ) : (
-                        <>{r.currency} {Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
+                        <>{r.currency} {Number(r.status === 'recebido' ? (r.received_amount ?? r.amount) : r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>
                       )}
                     </TableCell>
                     <TableCell>
