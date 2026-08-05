@@ -3104,47 +3104,27 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
     setClonePartnerId('');
   }
 
-  const groupedByLegAndPartner = useMemo(() => {
-    const result: Record<string, { partnerId: string; partnerName: string; partnerCategory: string; charges: any[] }[]> = {};
+  // Uma empresa pode ter taxas em mais de um trecho (origem/frete/destino) —
+  // antes cada trecho virava um grupo/cabeçalho separado, repetindo a mesma
+  // empresa várias vezes. Agora agrupa só por empresa (uma linha de cabeçalho
+  // cada), e cada taxa continua mostrando seu próprio trecho na coluna
+  // "Trecho" — então "Enviar DN"/"Gerar ND" já juntam todos os trechos da
+  // empresa de uma vez, sem precisar aparecer mais de uma vez.
+  const groupedByPartner = useMemo(() => {
+    const partnerMap = new Map<string, { partnerId: string; partnerName: string; partnerCategory: string; charges: any[] }>();
     for (const leg of LEGS) {
-      const legCharges = charges.filter((c: any) => c.leg === leg);
-      const partnerMap = new Map<string, { partnerName: string; partnerCategory: string; charges: any[] }>();
-      for (const c of legCharges) {
+      for (const c of charges.filter((c: any) => c.leg === leg)) {
         const pid = c.partner_id || '__none__';
         const pname = c.clients?.name || t('financial.no_partner');
         const pcategory = c.clients?.partner_category || '';
         if (!partnerMap.has(pid)) {
-          partnerMap.set(pid, { partnerName: pname, partnerCategory: pcategory, charges: [] });
+          partnerMap.set(pid, { partnerId: pid, partnerName: pname, partnerCategory: pcategory, charges: [] });
         }
         partnerMap.get(pid)!.charges.push(c);
       }
-      result[leg] = Array.from(partnerMap.entries()).map(([partnerId, data]) => ({
-        partnerId,
-        ...data,
-      }));
     }
-    return result;
+    return Array.from(partnerMap.values());
   }, [charges, t]);
-
-  // Uma empresa pode ter taxas de Venda em mais de um trecho (origem/frete/
-  // destino), cada um possivelmente em moeda diferente — mas o "Gerar ND"
-  // deve juntar TODAS as taxas da empresa (todos os trechos/moedas) numa
-  // única Nota de Débito, convertida pro cliente na moeda de cobrança. Por
-  // isso o botão só aparece uma vez por empresa (no primeiro trecho em que
-  // ela aparece), levando consigo as taxas dos outros trechos também.
-  const { firstLegByPartner, allChargesByPartner } = useMemo(() => {
-    const firstLeg: Record<string, string> = {};
-    const allCharges: Record<string, any[]> = {};
-    for (const leg of LEGS) {
-      for (const c of charges.filter((c: any) => c.leg === leg)) {
-        const pid = c.partner_id || '__none__';
-        if (!(pid in firstLeg)) firstLeg[pid] = leg;
-        if (!allCharges[pid]) allCharges[pid] = [];
-        allCharges[pid].push(c);
-      }
-    }
-    return { firstLegByPartner: firstLeg, allChargesByPartner: allCharges };
-  }, [charges]);
 
   const totalsByLeg = useMemo(() => {
     const result: Record<string, Record<string, number>> = { origin: {}, freight: {}, destination: {} };
@@ -3187,21 +3167,15 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                 <TableCell colSpan={4} className="text-center py-6 text-muted-foreground text-sm">{t('common.no_data')}</TableCell>
               </TableRow>
             ) : (
-              LEGS.map((leg) => {
-                const partnerGroups = groupedByLegAndPartner[leg] || [];
-                if (partnerGroups.length === 0) return null;
+              groupedByPartner.map((group) => {
                 return (
-                  <React.Fragment key={leg}>
-                    {partnerGroups.map((group) => (
-                      <React.Fragment key={`${leg}-${group.partnerId}`}>
-                        {/* Partner sub-header with enhanced styling */}
-                        <TableRow className={`bg-muted/30 border-t border-l-4 ${legBorderLeftColors[leg] || ''}`}>
+                  <React.Fragment key={group.partnerId}>
+                        {/* Partner sub-header — uma linha só por empresa, mesmo que tenha
+                            taxas em mais de um trecho (cada taxa mostra seu trecho embaixo). */}
+                        <TableRow className="bg-muted/30 border-t border-l-4 border-l-muted-foreground/20">
                           <TableCell colSpan={4} className="py-2.5 px-4">
                             <div className="flex items-center justify-between gap-2.5 flex-wrap">
                               <div className="flex items-center gap-2.5">
-                                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${legColors[leg] || ''}`}>
-                                  {legLabels[leg] || leg}
-                                </span>
                                 <div className="flex items-center gap-1.5">
                                   <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
                                   <span className="text-sm font-bold text-foreground">
@@ -3258,10 +3232,10 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   </Button>
                                 );
                               })()}
-                              {onGenerateNd && amountKey === 'sell_amount' && group.partnerId && firstLegByPartner[group.partnerId] === leg && (() => {
+                              {onGenerateNd && amountKey === 'sell_amount' && group.partnerId && (() => {
                                 // Taxas já enviadas numa ND anterior ficam de fora — reentram só
                                 // se a ND antiga for reaberta/excluída primeiro.
-                                const pending = (allChargesByPartner[group.partnerId] || group.charges).filter((c: any) => !c.sent_in_debit_note_id);
+                                const pending = group.charges.filter((c: any) => !c.sent_in_debit_note_id);
                                 return (
                                   <Button
                                     type="button"
@@ -3498,8 +3472,6 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                           </React.Fragment>
                           );
                         })}
-                      </React.Fragment>
-                    ))}
                   </React.Fragment>
                 );
               })
