@@ -471,22 +471,70 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   }
 
   // Resumo em texto da aba Geral, pra colar em e-mail/whatsapp com fornecedores.
-  // Coleta e Entrega só entram na lista se estiverem preenchidos.
+  // Mesmo formato do "Copiar Resumo" do modal de criação (QuoteCreateModal.buildSummaryText)
+  // — Coleta e Entrega só entram na lista se estiverem preenchidos.
   function handleCopyGeneralSummary() {
-    const modeLabel = t(`mode.${form.transport_mode}`);
-    const clientName = clients.find((c: any) => c.id === form.client_id)?.name || null;
-    const lines: string[] = [
-      `📋 ${quote?.quote_number || 'Cotação'} - ${modeLabel}`,
-      '',
-    ];
-    if (clientName) lines.push(`Cliente: ${clientName}`);
+    const mode = form.transport_mode;
+    const modeLabel = t(`mode.${mode}`);
+
+    let totalWeight = 0;
+    let totalVolume = 0;
+    let totalPackages = 0;
+    let totalContainers = 0;
+    cargoItems.forEach((item) => {
+      totalWeight += parseFloat(item.weight_kg) || 0;
+      totalVolume += parseFloat(item.volume_cbm) || 0;
+      totalPackages += parseInt(item.packages) || 0;
+      if (mode === 'ocean_fcl' || mode === 'multimodal') {
+        totalContainers += Number(item.container_qty) || 0;
+      }
+      const l = parseFloat(item.length_cm), w = parseFloat(item.width_cm), h = parseFloat(item.height_cm);
+      if (l && w && h && !item.volume_cbm) {
+        totalVolume += (l * w * h / 1_000_000) * (parseInt(item.packages) || 1);
+      }
+    });
+
+    const lines: string[] = [`📋 Cotação - ${modeLabel}`, ''];
     if (form.pickup_address) lines.push(`Coleta: ${form.pickup_address}`);
     lines.push(`Origem: ${form.origin || '-'}`);
     lines.push(`Destino: ${form.destination || '-'}`);
     if (form.delivery_address) lines.push(`Entrega: ${form.delivery_address}`);
-    if (form.incoterm && form.incoterm !== 'NONE') lines.push(`Incoterm: ${form.incoterm}`);
-    if (form.transit_time) lines.push(`Transit time: ${form.transit_time} dias`);
-    if (form.free_time) lines.push(`Free time: ${form.free_time} dias`);
+    lines.push(`Incoterm: ${(form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : '-'}`);
+    lines.push('');
+    lines.push('📊 Totais da Carga:');
+    if ((mode === 'ocean_fcl' || mode === 'multimodal') && totalContainers > 0) {
+      lines.push(`  Containers: ${totalContainers}`);
+    }
+    if (totalWeight > 0) lines.push(`  Peso Total: ${totalWeight} kg`);
+    if (totalVolume > 0) lines.push(`  Volume Total: ${totalVolume.toFixed(4)} m³`);
+    if (totalPackages > 0) lines.push(`  Total Volumes: ${totalPackages}`);
+
+    lines.push('');
+    lines.push('📦 Detalhamento por Item:');
+    cargoItems.forEach((item, idx) => {
+      lines.push(`  Item ${idx + 1}:`);
+      if (mode === 'ocean_fcl' || mode === 'multimodal') {
+        lines.push(`    Container: ${item.container_type} x ${item.container_qty}`);
+      }
+      if (item.weight_kg) lines.push(`    Peso: ${item.weight_kg} kg`);
+      if (item.volume_cbm) lines.push(`    Volume: ${item.volume_cbm} m³`);
+      const l = parseFloat(item.length_cm), w = parseFloat(item.width_cm), h = parseFloat(item.height_cm);
+      if (l && w && h) {
+        lines.push(`    Dimensões: ${item.length_cm} x ${item.width_cm} x ${item.height_cm} cm`);
+        const cbm = (l * w * h / 1_000_000) * (parseInt(item.packages) || 1);
+        lines.push(`    Volume calc.: ${cbm.toFixed(4)} m³`);
+      }
+      if (item.packages) lines.push(`    Volumes: ${item.packages}`);
+      if (item.commodity) lines.push(`    Mercadoria: ${item.commodity}`);
+      if (item.dangerous_goods) lines.push(`    ⚠️ Carga Perigosa`);
+      if (mode === 'road' && item.vehicle_type) lines.push(`    Veículo: ${item.vehicle_type}`);
+    });
+
+    if (form.notes) {
+      lines.push('');
+      lines.push(`Obs: ${form.notes}`);
+    }
+
     navigator.clipboard.writeText(lines.join('\n'));
     toast.success('Resumo copiado');
   }
