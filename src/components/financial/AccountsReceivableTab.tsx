@@ -82,11 +82,16 @@ export default function AccountsReceivableTab() {
     queryKey: ['ar-quotes', quoteIds.join(',')],
     enabled: quoteIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from('quotes').select('id, base_reference').in('id', quoteIds);
-      return (data ?? []) as Array<{ id: string; base_reference: string | null }>;
+      const { data } = await supabase.from('quotes').select('id, base_reference, storage_fee_amount').in('id', quoteIds);
+      return (data ?? []) as Array<{ id: string; base_reference: string | null; storage_fee_amount: number | null }>;
     },
   });
   const quoteMap = new Map((quotesQ.data ?? []).map((q) => [q.id, q.base_reference]));
+  // Para armazenagem, o "Valor Lançado" tem que ser espelho do campo "Armazenagem no
+  // destino" da aba Geral do processo (quotes.storage_fee_amount) — não o valor
+  // gravado em accounts_receivable.amount, que na verdade é o rebate já calculado
+  // (% do fornecedor Co-loader) e pode ficar desatualizado se o % mudar depois.
+  const storageFeeMap = new Map((quotesQ.data ?? []).map((q) => [q.id, q.storage_fee_amount]));
 
   const today = startOfDay(new Date());
   const enriched = rows.map((r) => {
@@ -210,7 +215,12 @@ export default function AccountsReceivableTab() {
                       {r.due_date ? format(new Date(r.due_date), 'dd/MM/yyyy') : <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {r.currency} {Number(r.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {(() => {
+                        const launched = r.source === 'storage_fee' && r.quote_id && storageFeeMap.get(r.quote_id) != null
+                          ? Number(storageFeeMap.get(r.quote_id))
+                          : Number(r.amount);
+                        return <>{r.currency} {launched.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>;
+                      })()}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {r.status === 'recebido' && r.received_amount != null && Number(r.received_amount) !== Number(r.amount) ? (
