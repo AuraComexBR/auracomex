@@ -15,6 +15,7 @@ import { OneOffExpenseModal } from '@/components/overhead/OneOffExpenseModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { toast } from 'sonner';
 
 function currentMonthISO() {
@@ -52,14 +53,27 @@ export default function FixedAccountsTab() {
   const [payFile, setPayFile] = useState<File | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
+  // Despesas podem ser lançadas em moedas diferentes (BRL/USD/EUR) — os KPIs
+  // do Resumo somam tudo, então precisam converter pra BRL antes de somar,
+  // senão o total exibido como "R$" mistura valores de moedas diferentes.
+  const { usdBrl, eurBrl } = useExchangeRate();
+  function toBRL(amount: number, currency: string): number {
+    const cur = (currency || 'BRL').toUpperCase();
+    if (cur === 'BRL') return amount;
+    if (cur === 'USD') return amount * (usdBrl || 0);
+    if (cur === 'EUR') return amount * (eurBrl || 0);
+    return amount;
+  }
+
   const totals = useMemo(() => {
     const list = entries.data || [];
-    const paid = list.filter(e => e.status === 'paid').reduce((s, e) => s + Number(e.amount), 0);
-    const pending = list.filter(e => e.status === 'pending').reduce((s, e) => s + Number(e.amount), 0);
-    const late = list.filter(e => e.status === 'late').reduce((s, e) => s + Number(e.amount), 0);
+    const paid = list.filter(e => e.status === 'paid').reduce((s, e) => s + toBRL(Number(e.amount), e.currency), 0);
+    const pending = list.filter(e => e.status === 'pending').reduce((s, e) => s + toBRL(Number(e.amount), e.currency), 0);
+    const late = list.filter(e => e.status === 'late').reduce((s, e) => s + toBRL(Number(e.amount), e.currency), 0);
     const total = paid + pending + late;
     return { paid, pending, late, total };
-  }, [entries.data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries.data, usdBrl, eurBrl]);
 
   const expensesById = useMemo(() => new Map((expenses.data || []).map(e => [e.id, e])), [expenses.data]);
   const categoriesById = useMemo(() => new Map((categories.data || []).map(c => [c.id, c])), [categories.data]);

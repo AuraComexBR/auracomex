@@ -14,6 +14,7 @@ import { CheckCircle, Wallet, AlertTriangle, CalendarClock, Paperclip } from 'lu
 import { format, isBefore, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 
 type AR = {
   id: string;
@@ -101,12 +102,23 @@ export default function AccountsReceivableTab() {
 
   const filtered = enriched.filter((r) => statusFilter === 'todos' || r.status === statusFilter);
 
+  // Idem AccountsPayableTab: os KPIs somavam linhas em moedas diferentes
+  // (USD/EUR/BRL) direto, exibindo o total como se fosse tudo BRL.
+  const { usdBrl, eurBrl } = useExchangeRate();
+  function toBRL(amount: number, currency: string): number {
+    const cur = (currency || 'BRL').toUpperCase();
+    if (cur === 'BRL') return amount;
+    if (cur === 'USD') return amount * (usdBrl || 0);
+    if (cur === 'EUR') return amount * (eurBrl || 0);
+    return amount;
+  }
+
   const kpis = useMemo(() => {
     const in7 = addDays(today, 7);
     let vencidos = 0, aVencer = 0, recebidos = 0, aberto = 0;
     for (const r of enriched) {
-      const amt = Number(r.amount) || 0;
-      if (r.status === 'recebido') recebidos += Number(r.received_amount ?? r.amount) || 0;
+      const amt = toBRL(Number(r.amount) || 0, r.currency);
+      if (r.status === 'recebido') recebidos += toBRL(Number(r.received_amount ?? r.amount) || 0, r.currency);
       else if (r.status === 'atrasado') vencidos += amt;
       else if (r.status === 'aberto') {
         aberto += amt;
@@ -114,7 +126,8 @@ export default function AccountsReceivableTab() {
       }
     }
     return { vencidos, aVencer, recebidos, aberto };
-  }, [enriched, today]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enriched, today, usdBrl, eurBrl]);
 
   async function markReceived() {
     if (!target) return;

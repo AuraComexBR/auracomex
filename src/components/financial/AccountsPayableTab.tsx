@@ -14,6 +14,7 @@ import { CheckCircle, Wallet, AlertTriangle, CalendarClock, Paperclip } from 'lu
 import { format, isBefore, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
+import { useExchangeRate } from '@/hooks/useExchangeRate';
 
 type AP = {
   id: string;
@@ -105,11 +106,23 @@ export default function AccountsPayableTab() {
 
   const filtered = enriched.filter((r) => statusFilter === 'todos' || r.status === statusFilter);
 
+  // Os KPIs somam linhas em moedas diferentes (USD, EUR, BRL) — sem converter
+  // pra uma moeda comum antes de somar, o total exibido como "R$" na verdade
+  // misturava valores de moedas diferentes como se fossem a mesma coisa.
+  const { usdBrl, eurBrl } = useExchangeRate();
+  function toBRL(amount: number, currency: string): number {
+    const cur = (currency || 'BRL').toUpperCase();
+    if (cur === 'BRL') return amount;
+    if (cur === 'USD') return amount * (usdBrl || 0);
+    if (cur === 'EUR') return amount * (eurBrl || 0);
+    return amount;
+  }
+
   const kpis = useMemo(() => {
     const in7 = addDays(today, 7);
     let vencidos = 0, aVencer = 0, pagos = 0, aberto = 0;
     for (const r of enriched) {
-      const amt = Number(r.amount) || 0;
+      const amt = toBRL(Number(r.amount) || 0, r.currency);
       if (r.status === 'pago') pagos += amt;
       else if (r.status === 'atrasado') vencidos += amt;
       else if (r.status === 'aberto') {
@@ -118,7 +131,8 @@ export default function AccountsPayableTab() {
       }
     }
     return { vencidos, aVencer, pagos, aberto };
-  }, [enriched, today]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enriched, today, usdBrl, eurBrl]);
 
   async function markPaid() {
     if (!payTarget) return;
