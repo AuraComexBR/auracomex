@@ -19,10 +19,10 @@ const allNavItems = [
   { key: 'nav.quotes', icon: FileText, path: '/quotes', permission: 'canAccessQuotes' as const },
   { key: 'nav.shipments', icon: Ship, path: '/shipments', permission: 'canAccessShipments' as const },
   {
-    // Clicar em "Financeiro" abre direto a Visão Geral (aba padrão de
-    // /financial/empresa — inclui Despesas Fixas como aba interna). O
-    // submenu "Da Empresa" foi removido porque já é o destino do item pai;
-    // só "Por Processo" (Receber/Pagar) continua como submenu.
+    // Clicar em "Financeiro" abre direto a Visão Geral (/financial/empresa,
+    // só os KPIs consolidados). O submenu "Movimentações" reúne os
+    // lançamentos: Despesa/Receita por Processo e Geral (despesas/receitas
+    // da empresa sem vínculo com processo, ex-"Despesas Fixas").
     key: 'nav.financial', icon: DollarSign, path: '/financial/empresa', permission: 'canAccessFinancial' as const,
     children: [
       { key: 'nav.financial_process', path: '/financial/processo' },

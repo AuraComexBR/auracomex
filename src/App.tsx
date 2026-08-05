@@ -122,7 +122,7 @@ function AppRoutes() {
         <Route path="/financial" element={<Navigate to="/financial/empresa" replace />} />
         <Route path="/financial/processo" element={<ProtectedRoute requiredPermission="canAccessFinancial"><FinancialProcess /></ProtectedRoute>} />
         <Route path="/financial/empresa" element={<ProtectedRoute requiredPermission="canAccessFinancial"><FinancialCompany /></ProtectedRoute>} />
-        <Route path="/overhead" element={<Navigate to="/financial/empresa?tab=fixas" replace />} />
+        <Route path="/overhead" element={<Navigate to="/financial/processo?tab=geral" replace />} />
         <Route path="/settings" element={<ProtectedRoute requiredPermission="canAccessSettings"><SettingsPage /></ProtectedRoute>} />
         <Route path="/account" element={<ProtectedRoute><MyAccount /></ProtectedRoute>} />
         <Route path="/billing" element={<Navigate to="/settings#assinatura" replace />} />

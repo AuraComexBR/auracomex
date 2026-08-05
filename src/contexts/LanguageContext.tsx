@@ -15,7 +15,7 @@ const translations: Record<string, Record<Language, string>> = {
   'nav.quotes': { pt: 'Cotações', en: 'Quotes' },
   'nav.registrations': { pt: 'Cadastros', en: 'Registrations' },
   'nav.financial': { pt: 'Financeiro', en: 'Financial' },
-  'nav.financial_process': { pt: 'Por Processo', en: 'By Process' },
+  'nav.financial_process': { pt: 'Movimentações', en: 'Transactions' },
   'nav.financial_company': { pt: 'Da Empresa', en: 'Company' },
   'nav.overhead': { pt: 'Contas Fixas', en: 'Fixed Expenses' },
   'nav.settings': { pt: 'Configurações', en: 'Settings' },
