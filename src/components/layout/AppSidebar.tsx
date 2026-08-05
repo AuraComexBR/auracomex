@@ -20,13 +20,12 @@ const allNavItems = [
   { key: 'nav.shipments', icon: Ship, path: '/shipments', permission: 'canAccessShipments' as const },
   {
     // Clicar em "Financeiro" abre direto a Visão Geral (aba padrão de
-    // /financial/empresa) — os dois submenus (Por Processo/Receber-Pagar e
-    // Da Empresa/Despesas Fixas) continuam disponíveis, só não são mais o
-    // destino padrão do item pai.
+    // /financial/empresa — inclui Despesas Fixas como aba interna). O
+    // submenu "Da Empresa" foi removido porque já é o destino do item pai;
+    // só "Por Processo" (Receber/Pagar) continua como submenu.
     key: 'nav.financial', icon: DollarSign, path: '/financial/empresa', permission: 'canAccessFinancial' as const,
     children: [
       { key: 'nav.financial_process', path: '/financial/processo' },
-      { key: 'nav.financial_company', path: '/financial/empresa' },
     ],
   },
   { key: 'nav.registrations', icon: Database, path: '/registrations', permission: 'canAccessRegistrations' as const },
