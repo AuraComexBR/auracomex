@@ -86,6 +86,59 @@ export default function OverviewTab() {
     },
   });
 
+  // Balanço de caixa do mês: diferente dos KPIs acima (que são por
+  // competência — receita/custo do processo liberado no mês, independente
+  // de quando o dinheiro efetivamente entrou ou saiu), aqui é regime de
+  // caixa puro — o que realmente entrou e saiu da conta dentro do mês,
+  // usando as datas de recebimento/pagamento reais.
+  const { data: cashIn = [] } = useQuery({
+    queryKey: ['financial-overview-cash-in', monthStart, monthEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('accounts_receivable' as any)
+        .select('amount, received_amount, currency, received_at')
+        .eq('status', 'recebido')
+        .gte('received_at', monthStart)
+        .lt('received_at', monthEnd);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+  const { data: cashOutAp = [] } = useQuery({
+    queryKey: ['financial-overview-cash-out-ap', monthStart, monthEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('accounts_payable' as any)
+        .select('amount, currency, paid_at')
+        .eq('status', 'pago')
+        .gte('paid_at', monthStart)
+        .lt('paid_at', monthEnd);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+  const { data: cashOutOverhead = [] } = useQuery({
+    queryKey: ['financial-overview-cash-out-overhead', monthStart, monthEnd],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('overhead_entries')
+        .select('amount, currency, paid_at')
+        .eq('status', 'paid')
+        .gte('paid_at', monthStart)
+        .lt('paid_at', monthEnd);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  const cashFlow = useMemo(() => {
+    const entradas = cashIn.reduce((s: number, r: any) => s + toBRL(r.received_amount ?? r.amount, r.currency), 0);
+    const saidas = cashOutAp.reduce((s: number, r: any) => s + toBRL(r.amount, r.currency), 0)
+      + cashOutOverhead.reduce((s: number, r: any) => s + toBRL(r.amount, r.currency), 0);
+    return { entradas, saidas, saldo: entradas - saidas };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cashIn, cashOutAp, cashOutOverhead, usdBrl, eurBrl]);
+
   // Dados de cada embarque liberado no mês — pra montar o detalhamento por
   // processo (referência + cliente) ao lado dos totais agregados.
   const { data: shipmentInfos = [] } = useQuery({
@@ -221,6 +274,29 @@ export default function OverviewTab() {
             <Row label="(-) Despesas Fixas (subsistência)" value={fmtBRL(totals.fixas)} negative />
             <div className="h-px bg-border my-2" />
             <Row label="= Lucro Líquido" value={fmtBRL(totals.lucroLiquido)} bold highlight={totals.lucroLiquido >= 0 ? 'emerald' : 'destructive'} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="glass">
+        <CardHeader>
+          <CardTitle className="text-base">Balanço de caixa do mês</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Diferente do Resultado acima (por competência) — aqui é o que realmente entrou e saiu da conta,
+            pelas datas de recebimento e pagamento.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 text-sm">
+            <Row label="(+) Entradas (recebido no mês)" value={fmtBRL(cashFlow.entradas)} />
+            <Row label="(-) Saídas (pago no mês)" value={fmtBRL(cashFlow.saidas)} negative />
+            <div className="h-px bg-border my-2" />
+            <Row
+              label={cashFlow.saldo >= 0 ? 'Entrou mais do que saiu' : 'Saiu mais do que entrou'}
+              value={fmtBRL(cashFlow.saldo)}
+              bold
+              highlight={cashFlow.saldo >= 0 ? 'emerald' : 'destructive'}
+            />
           </div>
         </CardContent>
       </Card>
