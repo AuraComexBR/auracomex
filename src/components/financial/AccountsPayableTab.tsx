@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
-import { CheckCircle, Wallet, AlertTriangle, CalendarClock, Paperclip } from 'lucide-react';
+import { CheckCircle, Wallet, AlertTriangle, CalendarClock, Paperclip, Undo2 } from 'lucide-react';
 import { format, isBefore, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
@@ -60,6 +61,8 @@ export default function AccountsPayableTab() {
   const [payTarget, setPayTarget] = useState<AP | null>(null);
   const [payForm, setPayForm] = useState<{ paid_at: string; payment_method: string; file: File | null }>({ paid_at: format(new Date(), 'yyyy-MM-dd'), payment_method: '', file: null });
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [unpayTarget, setUnpayTarget] = useState<AP | null>(null);
+  const [unpaying, setUnpaying] = useState(false);
 
   const { data: rows = [], refetch } = useQuery({
     queryKey: ['accounts_payable'],
@@ -193,6 +196,36 @@ export default function AccountsPayableTab() {
     qc.invalidateQueries({ queryKey: ['debit_notes'] });
   }
 
+  // Desfaz um pagamento já registrado — volta a conta pra "Em aberto" e, se
+  // vier de uma DN, reabre a DN (status 'aprovada') e libera as taxas presas
+  // nela (buy_paid_at) pra edição de novo na aba Taxas.
+  async function unpay() {
+    if (!unpayTarget) return;
+    setUnpaying(true);
+    const { error } = await supabase
+      .from('accounts_payable' as any)
+      .update({ status: 'aberto', paid_at: null, payment_method: null, receipt_url: null })
+      .eq('id', unpayTarget.id);
+    if (error) {
+      setUnpaying(false);
+      return toast.error('Erro ao desfazer pagamento', { description: error.message });
+    }
+
+    if (unpayTarget.debit_note_id) {
+      await supabase.from('debit_notes' as any).update({ status: 'aprovada' }).eq('id', unpayTarget.debit_note_id);
+      await supabase.from('quote_charges' as any)
+        .update({ buy_paid_at: null })
+        .eq('sent_in_debit_note_id', unpayTarget.debit_note_id);
+      qc.invalidateQueries({ queryKey: ['quote-charges'] });
+      qc.invalidateQueries({ queryKey: ['debit_notes'] });
+    }
+
+    setUnpaying(false);
+    toast.success('Pagamento desfeito — conta voltou para "Em aberto"');
+    setUnpayTarget(null);
+    refetch();
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -302,6 +335,11 @@ export default function AccountsPayableTab() {
                             Pagar
                           </Button>
                         )}
+                        {r.status === 'pago' && (
+                          <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setUnpayTarget(r)}>
+                            <Undo2 className="w-3.5 h-3.5 mr-1" /> Desfazer
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -342,6 +380,24 @@ export default function AccountsPayableTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!unpayTarget} onOpenChange={(o) => !unpaying && !o && setUnpayTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desfazer este pagamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A conta volta para "Em aberto" e o registro do pagamento (data, forma, comprovante) é apagado.
+              {unpayTarget?.debit_note_id && ' A Debit Note vinculada volta a ficar "Aprovada" e a taxa correspondente é liberada de novo na aba Taxas.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unpaying}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={unpay} disabled={unpaying}>
+              {unpaying ? 'Desfazendo…' : 'Sim, desfazer'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

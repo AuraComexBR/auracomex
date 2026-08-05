@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
-import { CheckCircle, Wallet, AlertTriangle, CalendarClock, Paperclip } from 'lucide-react';
+import { CheckCircle, Wallet, AlertTriangle, CalendarClock, Paperclip, Undo2 } from 'lucide-react';
 import { format, isBefore, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
@@ -63,6 +64,8 @@ export default function AccountsReceivableTab() {
   const [target, setTarget] = useState<AR | null>(null);
   const [form, setForm] = useState<{ received_at: string; received_amount: string; receipt_reference: string; file: File | null }>({ received_at: format(new Date(), 'yyyy-MM-dd'), received_amount: '', receipt_reference: '', file: null });
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [unreceiveTarget, setUnreceiveTarget] = useState<AR | null>(null);
+  const [unreceiving, setUnreceiving] = useState(false);
 
   const { data: rows = [], refetch } = useQuery({
     queryKey: ['accounts_receivable'],
@@ -187,6 +190,31 @@ export default function AccountsReceivableTab() {
     qc.invalidateQueries({ queryKey: ['client_debit_notes'] });
   }
 
+  // Desfaz um recebimento já registrado — volta a conta pra "Em aberto" e,
+  // se vier de uma ND, reabre a ND (status 'emitida').
+  async function unreceive() {
+    if (!unreceiveTarget) return;
+    setUnreceiving(true);
+    const { error } = await supabase
+      .from('accounts_receivable' as any)
+      .update({ status: 'aberto', received_at: null, received_amount: null, receipt_reference: null, receipt_url: null })
+      .eq('id', unreceiveTarget.id);
+    if (error) {
+      setUnreceiving(false);
+      return toast.error('Erro ao desfazer recebimento', { description: error.message });
+    }
+
+    if (unreceiveTarget.debit_note_id) {
+      await supabase.from('debit_notes' as any).update({ status: 'emitida' }).eq('id', unreceiveTarget.debit_note_id);
+      qc.invalidateQueries({ queryKey: ['client_debit_notes'] });
+    }
+
+    setUnreceiving(false);
+    toast.success('Recebimento desfeito — conta voltou para "Em aberto"');
+    setUnreceiveTarget(null);
+    refetch();
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -304,6 +332,11 @@ export default function AccountsReceivableTab() {
                             Receber
                           </Button>
                         )}
+                        {r.status === 'recebido' && (
+                          <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setUnreceiveTarget(r)}>
+                            <Undo2 className="w-3.5 h-3.5 mr-1" /> Desfazer
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -351,6 +384,25 @@ export default function AccountsReceivableTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!unreceiveTarget} onOpenChange={(o) => !unreceiving && !o && setUnreceiveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desfazer este recebimento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A conta volta para "Em aberto" e o registro do recebimento (data, valor recebido, referência,
+              comprovante) é apagado.
+              {unreceiveTarget?.debit_note_id && ' A Nota de Débito vinculada volta a ficar "Emitida".'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unreceiving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={unreceive} disabled={unreceiving}>
+              {unreceiving ? 'Desfazendo…' : 'Sim, desfazer'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
