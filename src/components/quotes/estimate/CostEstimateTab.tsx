@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,6 @@ import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAuditEvent } from '@/lib/auditLog';
 import { useCostEstimate, computeBreakdown, EstimateItemRow, EstimateExpenseRow, EstimateRow, syncEstimateFromCharges, syncEstimateItemsFromQuote } from '@/hooks/useCostEstimate';
-import { syncGeneralFieldsToEstimate } from '@/lib/estimateHeaderSync';
 import { pct, toBRL } from '@/lib/costEstimate';
 import { toast } from 'sonner';
 import { EstimatePdfDialog } from './EstimatePdfDialog';
@@ -27,13 +26,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Badge } from '@/components/ui/badge';
 import { Info } from 'lucide-react';
 
-export interface CostEstimateTabHandle {
-  enterEdit: () => void;
-  requestCancel: () => void;
-  forceExit: () => void;
-  hasEstimate: boolean;
-}
-
 interface Props {
   quoteId: string;
   quote: any;
@@ -42,7 +34,6 @@ interface Props {
   companyId?: string;
   charges?: ChargeLike[];
   getBillingMultiplier?: (unit: string) => number;
-  onStateChange?: (state: { editMode: boolean; dirtyCount: number; hasEstimate: boolean }) => void;
 }
 
 function fmtUSD(n: number) {
@@ -61,10 +52,9 @@ type DraftEstimate = EstimateRow;
 type DraftItem = EstimateItemRow & { _new?: boolean };
 type DraftExpense = EstimateExpenseRow & { _new?: boolean };
 
-export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function CostEstimateTab(
-  { quoteId, quote, quoteItems, quotePartners = [], companyId, charges, getBillingMultiplier, onStateChange },
-  ref,
-) {
+export function CostEstimateTab({
+  quoteId, quote, quoteItems, quotePartners = [], companyId, charges, getBillingMultiplier,
+}: Props) {
   const { profile } = useAuth();
   const { data, isLoading, createEstimate, deleteEstimate, invalidate } = useCostEstimate(quoteId, companyId);
   const { usdBrl: latestUsdBrl, eurBrl: latestEurBrl, refetch: refetchRates, loading: ratesLoadingQuery } = useExchangeRate();
@@ -83,15 +73,19 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // ===== Modo edição =====
-  const [editMode, setEditMode] = useState(false);
+  // ===== Rascunho (sempre editável — sem alternância manual de "modo edição") =====
+  // Antes só existia um rascunho depois que o usuário clicava em "Editar
+  // Estimativa"; agora a aba fica sempre editável (igual Geral/Carga) e o
+  // rascunho é inicializado/ressincronizado automaticamente a partir do
+  // servidor logo abaixo. `editMode` vira só um derivado de "o rascunho já
+  // carregou" — mantido com esse nome pra não precisar renomear todo o resto
+  // do arquivo que já depende dele.
   const [draftEstimate, setDraftEstimate] = useState<DraftEstimate | null>(null);
   const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
   const [draftExpenses, setDraftExpenses] = useState<DraftExpense[]>([]);
   const [deletedItemIds, setDeletedItemIds] = useState<string[]>([]);
   const [deletedExpenseIds, setDeletedExpenseIds] = useState<string[]>([]);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const [cancelOpen, setCancelOpen] = useState(false);
   const [loadingRates, setLoadingRates] = useState(false);
   const [ncmLookupLoading, setNcmLookupLoading] = useState<string | null>(null);
   const snapshotRef = useRef<{ estimate: any; items: any[]; expenses: any[] } | null>(null);
@@ -101,8 +95,11 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
   const serverItems = data?.items || [];
   const serverExpenses = data?.expenses || [];
 
-  // Quando em modo edição → usa rascunho; senão usa dados do servidor
-  const estimate = editMode ? draftEstimate : serverEstimate;
+  // Sempre editável: uma vez que o rascunho carregou, ele é a fonte de
+  // verdade da tela (e mantido em sincronia com o servidor pelo efeito mais
+  // abaixo, quando não há edição local pendente).
+  const editMode = !!draftEstimate;
+  const estimate = draftEstimate || serverEstimate;
   const items: DraftItem[] = editMode ? draftItems : (serverItems as DraftItem[]);
   const expenses: DraftExpense[] = editMode ? draftExpenses : (serverExpenses as DraftExpense[]);
 
@@ -204,9 +201,27 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
 
   const hasDirty = dirtyCount > 0;
 
-  // ===== Entrar/Sair do modo edição =====
-  const enterEdit = useCallback(() => {
-    if (!serverEstimate) return;
+  // ===== Sincronização automática do rascunho com o servidor =====
+  // Antes só existia um rascunho depois de clicar em "Editar Estimativa"
+  // (enterEdit) e ele sumia ao sair (exitEdit). Agora não há mais esse botão:
+  // o rascunho é aberto sozinho assim que a estimativa do servidor chega, e
+  // ressincronizado sempre que os dados do servidor mudarem (ex.: espelho
+  // automático de Taxas/Carga, ou logo depois de um save) — mas só quando
+  // não há edição local pendente (!hasDirty), pra nunca sobrescrever o que o
+  // usuário ainda está digitando/não confirmou.
+  useEffect(() => {
+    if (!serverEstimate) {
+      if (draftEstimate) {
+        setDraftEstimate(null);
+        setDraftItems([]);
+        setDraftExpenses([]);
+        setDeletedItemIds([]);
+        setDeletedExpenseIds([]);
+        snapshotRef.current = null;
+      }
+      return;
+    }
+    if (hasDirty) return;
     snapshotRef.current = {
       estimate: { ...serverEstimate },
       items: serverItems.map(i => ({ ...i })),
@@ -217,32 +232,8 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
     setDraftExpenses(serverExpenses.map(e => ({ ...e })));
     setDeletedItemIds([]);
     setDeletedExpenseIds([]);
-    setSaveState('idle');
-    setEditMode(true);
-
-  }, [serverEstimate, serverItems, serverExpenses]);
-
-  const exitEdit = useCallback(() => {
-    setEditMode(false);
-    setDraftEstimate(null);
-    setDraftItems([]);
-    setDraftExpenses([]);
-    setDeletedItemIds([]);
-    setDeletedExpenseIds([]);
-    snapshotRef.current = null;
-  }, []);
-
-  // Sincroniza dados da aba geral automaticamente (background)
-  useEffect(() => {
-    if (serverEstimate?.id && quote && !editMode) {
-      // Sincroniza em segundo plano sem disparar re-render imediato no rascunho
-      syncGeneralFieldsToEstimate(serverEstimate.id, quote, quotePartners)
-        .then(() => {
-          // Opcional: invalidar query para atualizar a UI se algo mudou
-          // queryClient.invalidateQueries({ queryKey: ['cost-estimate', quoteId] });
-        });
-    }
-  }, [serverEstimate?.id, quote, quotePartners, editMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverEstimate, serverItems, serverExpenses, hasDirty]);
 
   // Aplica patches ao rascunho ao entrar em modo edição se houver divergência residual
   useEffect(() => {
@@ -278,24 +269,6 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
       }
     }
   }, [editMode, !!draftEstimate, quote, quotePartners]);
-
-  const requestCancel = () => {
-    if (hasDirty) setCancelOpen(true);
-    else exitEdit();
-  };
-
-  // Expor métodos para o pai (QuoteDetail) controlar o modo edição via ref
-  useImperativeHandle(ref, () => ({
-    enterEdit,
-    requestCancel,
-    forceExit: exitEdit,
-    hasEstimate: !!serverEstimate,
-  }), [enterEdit, requestCancel, exitEdit, serverEstimate]);
-
-  // Notifica o pai sobre mudanças de estado
-  useEffect(() => {
-    onStateChange?.({ editMode, dirtyCount, hasEstimate: !!serverEstimate });
-  }, [editMode, dirtyCount, serverEstimate, onStateChange]);
 
   // ===== beforeunload =====
   useEffect(() => {
@@ -522,6 +495,21 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
         queryClient.invalidateQueries({ queryKey: ['quote-items', quoteId] });
       }
 
+      // Rebaseia o snapshot pro estado recém-salvo — sem isso, `hasDirty`
+      // continuaria "true" (comparando contra o snapshot antigo) até o
+      // refetch do servidor chegar, o que bloquearia o efeito de
+      // sincronização automática de rodar. A ressincronização final com os
+      // dados reais do banco (ids novos gerados nos inserts etc.) acontece
+      // sozinha nesse efeito assim que o `invalidate()` abaixo trouxer os
+      // dados atualizados.
+      snapshotRef.current = {
+        estimate: { ...draftEstimate },
+        items: draftItems.map(i => ({ ...i })),
+        expenses: draftExpenses.map(e => ({ ...e })),
+      };
+      setDeletedItemIds([]);
+      setDeletedExpenseIds([]);
+
       setSaveState('saved');
       toast.success(`Estimativa salva (${dirtyCount} alteração${dirtyCount > 1 ? 'ões' : ''}).`);
       if (companyId) {
@@ -535,12 +523,23 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
         });
       }
       invalidate();
-      setTimeout(() => { exitEdit(); }, 900);
+      setTimeout(() => setSaveState('idle'), 900);
     } catch (err: any) {
       setSaveState('idle');
       toast.error(err.message || 'Erro ao salvar estimativa');
     }
-  }, [editMode, draftEstimate, draftItems, draftExpenses, deletedItemIds, deletedExpenseIds, hasDirty, dirtyCount, invalidate, exitEdit, queryClient, quoteId]);
+  }, [editMode, draftEstimate, draftItems, draftExpenses, deletedItemIds, deletedExpenseIds, hasDirty, dirtyCount, invalidate, queryClient, quoteId, companyId, profile?.user_id]);
+
+  // Ref sempre atualizada com a versão mais recente de handleSave — usada
+  // pelo auto-save no blur dos campos (ver handleAutoSaveBlur abaixo), que
+  // precisa esperar um tick pro commit do próprio campo (onBlur do
+  // DebouncedInput) já ter sido aplicado ao rascunho antes de salvar,
+  // senão a última tecla digitada ficaria de fora do lote salvo.
+  const handleSaveRef = useRef(handleSave);
+  useEffect(() => { handleSaveRef.current = handleSave; });
+  const handleAutoSaveBlur = useCallback(() => {
+    setTimeout(() => { handleSaveRef.current(); }, 0);
+  }, []);
 
   // Atalho Ctrl/Cmd + S
   useEffect(() => {
@@ -619,8 +618,11 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
   };
 
   // ===== Auto-sync silencioso: Taxas/Carga → Estimativa =====
-  // Sempre que charges/quoteItems/câmbio mudam e o usuário NÃO está editando,
-  // reprojetamos a estimativa a partir das fontes (espelho automático).
+  // Sempre que charges/quoteItems/câmbio mudam e não há edição local
+  // pendente no rascunho (!hasDirty), reprojetamos a estimativa a partir das
+  // fontes (espelho automático). Antes só rodava fora do "modo edição"; como
+  // a aba é sempre editável agora, o gate correto é "sem alteração local não
+  // salva", não mais "não estar editando".
   const chargesKey = useMemo(() => JSON.stringify(charges || []), [charges]);
   const itemsKey = useMemo(() => JSON.stringify((quoteItems || []).map((q: any) => ({
     id: q.id, commodity: q.commodity, ncm_code: q.ncm_code,
@@ -628,7 +630,7 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
   }))), [quoteItems]);
   const lastSyncedRef = useRef<{ estimateId: string; charges: string; items: string; usd: number; eur: number } | null>(null);
   useEffect(() => {
-    if (!serverEstimate || !companyId || editMode) return;
+    if (!serverEstimate || !companyId || hasDirty) return;
     const last = lastSyncedRef.current;
     if (last
       && last.estimateId === serverEstimate.id
@@ -681,11 +683,14 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverEstimate?.id, editMode, chargesKey, itemsKey, usdBrl, eurBrl, companyId]);
+  }, [serverEstimate?.id, hasDirty, chargesKey, itemsKey, usdBrl, eurBrl, companyId]);
 
+  // Não bloqueia mais por "estar em modo edição" (a aba é sempre editável
+  // agora) — só evita rodar enquanto há uma alteração local ainda não salva,
+  // pra não brigar com o rascunho.
   const guardStructural = (action: () => void) => {
-    if (editMode) {
-      toast.error('Saia do modo edição (Cancelar ou Salvar) antes de sincronizar.');
+    if (hasDirty) {
+      toast.error('Aguarde a alteração atual salvar antes de sincronizar.');
       return;
     }
     action();
@@ -712,12 +717,15 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
 
   const usdRate = estimate.usd_brl || 0;
   const totalUsd = breakdown?.total_usd || 0;
-  const ro = !editMode; // read-only
+  // Só fica read-only no instante entre a estimativa carregar do servidor e
+  // o rascunho ser inicializado pelo efeito de sincronização (ver acima) —
+  // na prática, imperceptível.
+  const ro = !draftEstimate;
 
   return (
     <div className="space-y-4">
       {/* Alertas de Dados Pendentes */}
-      {!editMode && serverEstimate && (
+      {serverEstimate && (
         <div className="space-y-2">
           {(estimate.usd_brl || 0) <= 0 && (
             <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm animate-pulse">
@@ -752,19 +760,23 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <CardTitle className="text-base">Cabeçalho da Estimativa</CardTitle>
-            {editMode && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/30">
-                Modo edição{hasDirty ? ` · ${dirtyCount} alteração${dirtyCount > 1 ? 'ões' : ''}` : ''}
+            {saveState === 'saving' ? (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/30">Salvando…</span>
+            ) : hasDirty ? (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                {dirtyCount} alteração{dirtyCount > 1 ? 'ões' : ''} não salva{dirtyCount > 1 ? 's' : ''}
               </span>
-            )}
+            ) : saveState === 'saved' ? (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">Salvo</span>
+            ) : null}
           </div>
           <div className="flex gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-accent/10 text-accent border border-accent/30" title="Alterações nas abas Taxas e Carga refletem aqui automaticamente. Salvar a estimativa reflete de volta nas taxas e itens vinculados.">
+            <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-accent/10 text-accent border border-accent/30" title="Alterações nas abas Taxas e Carga refletem aqui automaticamente — e qualquer edição aqui salva sozinha ao sair do campo.">
               <Link2 className="w-3 h-3" /> Espelho automático Taxas/Carga
             </span>
             <Button size="sm" variant="outline" onClick={() => guardStructural(refreshRates)}><RefreshCw className="w-3.5 h-3.5 mr-1" /> Atualizar câmbio</Button>
-            <Button size="sm" onClick={() => setPdfOpen(true)} disabled={editMode}><FileDown className="w-3.5 h-3.5 mr-1" /> PDF</Button>
-            {serverEstimate && !editMode && (
+            <Button size="sm" onClick={() => setPdfOpen(true)}><FileDown className="w-3.5 h-3.5 mr-1" /> PDF</Button>
+            {serverEstimate && (
               <Button
                 size="sm"
                 variant="outline"
@@ -776,7 +788,7 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
             )}
           </div>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3" onBlur={handleAutoSaveBlur}>
           <div className="space-y-1"><Label className="text-xs">Incoterm</Label><DebouncedInput disabled value={estimate.incoterm || ''} onCommit={() => {}} className="bg-muted/20" /></div>
           <div className="space-y-1"><Label className="text-xs">Trânsito</Label><DebouncedInput disabled value={estimate.transito || ''} onCommit={() => {}} placeholder="7 A 10 DIAS" className="bg-muted/20" /></div>
           <div className="space-y-1">
@@ -883,7 +895,7 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
           </div>
           <Button size="sm" variant="outline" onClick={addItem} disabled={ro}><Plus className="w-3.5 h-3.5 mr-1" /> Item</Button>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="overflow-x-auto" onBlur={handleAutoSaveBlur}>
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -1302,21 +1314,6 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
         hasInsurance={hasInsurance}
       />
 
-      <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Descartar alterações?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você tem {dirtyCount} alteração{dirtyCount > 1 ? 'ões' : ''} não salva{dirtyCount > 1 ? 's' : ''}. Sair sem salvar irá descartá-las.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setCancelOpen(false); exitEdit(); }}>Descartar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1352,11 +1349,11 @@ export const CostEstimateTab = forwardRef<CostEstimateTabHandle, Props>(function
       </AlertDialog>
 
       <FloatingSaveButton
-        visible={editMode}
+        visible={hasDirty}
         dirtyCount={dirtyCount}
         state={saveState}
         onSave={handleSave}
       />
     </div>
   );
-});
+}

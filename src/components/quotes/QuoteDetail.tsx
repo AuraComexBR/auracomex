@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { groupByCurrency, formatCurrencyMap } from '@/lib/utils';
@@ -7,8 +7,8 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useHasAddon } from '@/hooks/useSubscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, Package, Info, Users, ShoppingCart, Undo2, Calculator, Pencil, X, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History } from 'lucide-react';
-import { CostEstimateTab, type CostEstimateTabHandle } from './estimate/CostEstimateTab';
+import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, Package, Info, Users, ShoppingCart, Undo2, Calculator, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History } from 'lucide-react';
+import { CostEstimateTab } from './estimate/CostEstimateTab';
 import { FloatingSaveButton } from './estimate/FloatingSaveButton';
 import { QuotePdfPreviewDialog } from './QuotePdfPreviewDialog';
 import { SendSupplierDnDialog } from './DebitNotesTab';
@@ -193,14 +193,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const [showChargesOnboarding, setShowChargesOnboarding] = useState(false);
   const [chargesOnboardingStep, setChargesOnboardingStep] = useState(0);
 
-  // Aba ativa controlada + integração com a aba Estimativa
+  // Aba ativa controlada
   const [activeTab, setActiveTab] = useState<string>(isShipmentMode ? 'logistics' : 'general');
-  const [estimateState, setEstimateState] = useState({ editMode: false, dirtyCount: 0, hasEstimate: false });
   const [pendingTab, setPendingTab] = useState<string | null>(null);
-  const [leaveTabOpen, setLeaveTabOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
-  const estimateRef = useRef<CostEstimateTabHandle>(null);
   const [backConfirmOpen, setBackConfirmOpen] = useState(false);
   const [pendingClientChange, setPendingClientChange] = useState<string | null>(null);
   const [clientChangeWarnings, setClientChangeWarnings] = useState<string[]>([]);
@@ -221,16 +218,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   };
 
   const handleTabChange = (next: string) => {
-    // Se estiver editando a estimativa e houver alterações não salvas
-    if (estimateState.editMode && estimateState.dirtyCount > 0 && next !== 'estimate') {
-      setPendingTab(next);
-      setLeaveTabOpen(true);
-      return;
-    }
-    
-    // Geral e Carga salvam sozinhas (auto-save) uma pausa curta depois da
-    // digitação — se o usuário trocar de aba antes disso, o timer é cancelado
-    // e a mudança se perderia sem avisar. Esse confirm cobre essa janela.
+    // Geral e Carga (e agora também Estimativa) salvam sozinhas ao sair do
+    // campo (onBlur) — trocar de aba já blura o campo focado e dispara o
+    // save antes da troca. Esse confirm é só uma rede de segurança extra
+    // pro caso raro de hasChanges ainda estar true nesse instante.
     const autoSavingTab = activeTab === 'cargo' || activeTab === 'general';
     if (autoSavingTab && hasChanges && next !== activeTab) {
       setPendingTab(next);
@@ -1813,26 +1804,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           <History className="w-4 h-4" />
         </Button>
 
-        {activeTab === 'estimate' ? (
-          estimateState.editMode ? (
-            <Button variant="outline" onClick={() => estimateRef.current?.requestCancel()}>
-              <X className="w-4 h-4 mr-1" />
-              Cancelar Edição
-              {estimateState.dirtyCount > 0 && (
-                <span className="ml-2 text-xs opacity-80">({estimateState.dirtyCount})</span>
-              )}
-            </Button>
-          ) : (
-            <Button
-              onClick={() => estimateRef.current?.enterEdit()}
-              disabled={!estimateState.hasEstimate}
-              title={!estimateState.hasEstimate ? 'Crie a estimativa primeiro' : 'Editar Estimativa'}
-            >
-              <Pencil className="w-4 h-4 mr-1" />
-              Editar Estimativa
-            </Button>
-          )
-        ) : null}
       </div>
 
       {/* Tabs */}
@@ -2743,7 +2714,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         {estimateEnabled && (
           <TabsContent value="estimate">
             <CostEstimateTab
-              ref={estimateRef}
               quoteId={quoteId}
               quote={quote}
               quoteItems={cargoItems}
@@ -2751,7 +2721,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               companyId={profile?.company_id}
               charges={charges as any}
               getBillingMultiplier={getChargeMultiplier}
-              onStateChange={setEstimateState}
             />
           </TabsContent>
         )}
@@ -2899,26 +2868,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         quoteId={quoteId}
         shipmentId={isShipmentMode ? shipmentId : null}
       />
-
-      <AlertDialog open={leaveTabOpen} onOpenChange={setLeaveTabOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Sair sem salvar?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você tem {estimateState.dirtyCount} alteração{estimateState.dirtyCount > 1 ? 'ões' : ''} não salva{estimateState.dirtyCount > 1 ? 's' : ''} na Estimativa. Trocar de aba irá descartá-las.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingTab(null)}>Continuar editando</AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
-              estimateRef.current?.forceExit();
-              if (pendingTab) setActiveTab(pendingTab);
-              setPendingTab(null);
-              setLeaveTabOpen(false);
-            }}>Descartar e sair</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={showUnsavedConfirm} onOpenChange={setShowUnsavedConfirm}>
         <AlertDialogContent>

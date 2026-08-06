@@ -8,6 +8,7 @@ interface Props {
   step?: string;
   className?: string;
   placeholder?: string;
+  /** @deprecated não é mais usado — o campo só confirma (commit) ao perder o foco, não mais por um debounce enquanto digita. Mantido só pra não quebrar chamadas existentes. */
   delay?: number;
   title?: string;
   uppercase?: boolean;
@@ -21,7 +22,6 @@ export function DebouncedInput({
   step,
   className,
   placeholder,
-  delay = 600,
   title,
   uppercase = false,
   disabled = false,
@@ -29,7 +29,6 @@ export function DebouncedInput({
   const incoming = value == null ? '' : String(value);
   const [local, setLocal] = useState<string>(incoming);
   const focusedRef = useRef(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Ressincroniza quando dado remoto muda e o input não está focado
   useEffect(() => {
@@ -40,7 +39,6 @@ export function DebouncedInput({
   }, [incoming]);
 
   const commit = (raw: string) => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     if (raw === incoming) return;
     if (type === 'number') {
       const n = parseFloat(raw);
@@ -50,11 +48,13 @@ export function DebouncedInput({
     }
   };
 
+  // Antes confirmava (commit) sozinho 600ms depois da última tecla — o que
+  // também empurrava o auto-save do lote (handleSave) pro meio da digitação.
+  // Agora só atualiza o valor visual local ao digitar; a confirmação (e o
+  // auto-save) só acontece quando o campo perde o foco (onBlur).
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = uppercase && type === 'text' ? e.target.value.toUpperCase() : e.target.value;
     setLocal(v);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => commit(v), delay);
   };
 
   return (
