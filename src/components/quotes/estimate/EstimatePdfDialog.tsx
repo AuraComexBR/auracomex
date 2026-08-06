@@ -309,7 +309,7 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
                     <tr><td style={td}>I.P.I.</td><td style={tdR}>{Number(item.aliq_ipi).toFixed(2)}</td><td style={tdR}>{fmtUSD(b.vmld_usd + b.ii_usd)}</td><td style={tdR}>{fmtBRL((b.vmld_usd + b.ii_usd) * rate)}</td></tr>
                     <tr><td style={td}>P.I.S.</td><td style={tdR}>{Number(item.aliq_pis).toFixed(2)}</td><td style={tdR}>{fmtUSD(b.vmld_usd)}</td><td style={tdR}>{fmtBRL(b.vmld_usd * rate)}</td></tr>
                     <tr><td style={td}>COFINS</td><td style={tdR}>{Number(item.aliq_cofins).toFixed(2)}</td><td style={tdR}>{fmtUSD(b.vmld_usd)}</td><td style={tdR}>{fmtBRL(b.vmld_usd * rate)}</td></tr>
-                    <tr><td style={td}>I.C.M.S.</td><td style={tdR}>{Number(item.aliq_icms).toFixed(2)}</td><td style={tdR}>{fmtUSD(b.icms_usd + b.vmld_usd + b.ii_usd + b.ipi_usd + b.pis_usd + b.cofins_usd)}</td><td style={tdR}>-</td></tr>
+                    <tr><td style={td}>I.C.M.S.</td><td style={tdR}>{Number(item.aliq_icms).toFixed(2)}</td><td style={tdR}>{fmtUSD(b.icms_usd + b.vmld_usd + b.ii_usd + b.ipi_usd + b.pis_usd + b.cofins_usd)}</td><td style={tdR}>{fmtBRL((b.icms_usd + b.vmld_usd + b.ii_usd + b.ipi_usd + b.pis_usd + b.cofins_usd) * rate)}</td></tr>
                   </tbody>
                 </table>
 
