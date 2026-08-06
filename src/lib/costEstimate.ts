@@ -36,7 +36,8 @@ export interface EstimateItemInput {
 export interface EstimateExpenseInput {
   descricao: string;
   valor_brl: number;
-  aduaneira: boolean;
+  /** true/false = override manual do usuário (sempre prevalece); null/undefined = "automático", decide pelo classificador de palavra-chave (isDespesaAduaneira). */
+  aduaneira?: boolean | null;
   category?: 'origin' | 'freight' | 'destination' | 'local' | null;
 }
 
@@ -177,12 +178,16 @@ export function calcEstimativa(input: EstimateInput): EstimateBreakdown {
     .reduce((s, e) => s + e.valor_brl, 0);
   const despesas_nac_brl = despesas_nac_from_charges + taxa_siscomex_brl + afrmm_brl;
 
-  // Aduaneiras (base do ICMS): flag manual `aduaneira` prevalece; se falsa/ausente, aplica
-  // classificação automática por palavras-chave (LC 87/96 art. 13 §1º III + STF Tema 1014).
+  // Aduaneiras (base do ICMS): flag manual `aduaneira` (true OU false) sempre
+  // prevalece, nos dois sentidos — só cai na classificação automática por
+  // palavras-chave (LC 87/96 art. 13 §1º III + STF Tema 1014) quando o campo
+  // está null/undefined (nunca definido manualmente). Usa `??` (nullish), não
+  // `||`, senão um override manual para "não é aduaneira" (false) seria
+  // ignorado e a palavra-chave venceria de qualquer jeito.
   // Sempre soma Siscomex + AFRMM do header.
   const despesas_aduaneiras_brl = expenses
     .filter(e => (e.category === 'destination' || e.category === 'local' || !e.category))
-    .filter(e => e.aduaneira || isDespesaAduaneira(e.descricao, e.category))
+    .filter(e => (e.aduaneira ?? isDespesaAduaneira(e.descricao, e.category)))
     .reduce((s, e) => s + e.valor_brl, 0) + taxa_siscomex_brl + afrmm_brl;
 
   const despesas_nac_usd = usd_brl > 0 ? despesas_nac_brl / usd_brl : 0;

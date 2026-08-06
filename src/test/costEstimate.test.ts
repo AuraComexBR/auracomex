@@ -100,24 +100,24 @@ describe('calcEstimativa', () => {
     expect(out.itemBreakdowns[1].frete_usd).toBeCloseTo(50, 2);
   });
 
-  it('Classificação automática: ARMAZENAGEM ZONA PRIMÁRIA entra na base do ICMS', () => {
+  it('Classificação automática (aduaneira não definida, null): ARMAZENAGEM ZONA PRIMÁRIA entra na base do ICMS', () => {
     const semAdu = calcEstimativa(baseInput({
       items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
     }));
     const comAdu = calcEstimativa(baseInput({
       items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
-      expenses: [{ descricao: 'ARMAZENAGEM ZONA PRIMÁRIA', valor_brl: 500, aduaneira: false, category: 'destination' }],
+      expenses: [{ descricao: 'ARMAZENAGEM ZONA PRIMÁRIA', valor_brl: 500, aduaneira: null, category: 'destination' }],
     }));
     expect(comAdu.icms_usd).toBeGreaterThan(semAdu.icms_usd);
     expect(comAdu.despesas_aduaneiras_brl).toBe(500);
   });
 
-  it('Classificação automática: ARMAZENAGEM ZONA SECUNDÁRIA e FRETE RODOVIÁRIO ficam FORA da base', () => {
+  it('Classificação automática (aduaneira não definida, null): ARMAZENAGEM ZONA SECUNDÁRIA e FRETE RODOVIÁRIO ficam FORA da base', () => {
     const out = calcEstimativa(baseInput({
       items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
       expenses: [
-        { descricao: 'ARMAZENAGEM ZONA SECUNDÁRIA', valor_brl: 500, aduaneira: false, category: 'destination' },
-        { descricao: 'FRETE RODOVIÁRIO NVT X IÇARA', valor_brl: 300, aduaneira: false, category: 'destination' },
+        { descricao: 'ARMAZENAGEM ZONA SECUNDÁRIA', valor_brl: 500, aduaneira: null, category: 'destination' },
+        { descricao: 'FRETE RODOVIÁRIO NVT X IÇARA', valor_brl: 300, aduaneira: null, category: 'destination' },
       ],
     }));
     expect(out.despesas_aduaneiras_brl).toBe(0);
@@ -131,5 +131,16 @@ describe('calcEstimativa', () => {
       expenses: [{ descricao: 'TAXA CUSTOMIZADA', valor_brl: 200, aduaneira: true, category: 'destination' }],
     }));
     expect(out.despesas_aduaneiras_brl).toBe(200);
+  });
+
+  it('Flag manual aduaneira=false força FORA da base mesmo com palavra-chave batendo', () => {
+    const out = calcEstimativa(baseInput({
+      items: [{ nome: 'X', peso: 1, quantidade: 1, vmcv_unit_usd: 1000, aliq_ii: 0, aliq_ipi: 0, aliq_pis: 0, aliq_cofins: 0, aliq_icms: 18 }],
+      expenses: [{ descricao: 'CAPATAZIAS', valor_brl: 200, aduaneira: false, category: 'destination' }],
+    }));
+    // "CAPATAZIA" bateria na palavra-chave e entraria na base automaticamente,
+    // mas o override manual (false) tem que vencer.
+    expect(out.despesas_aduaneiras_brl).toBe(0);
+    expect(out.despesas_nac_brl).toBe(200);
   });
 });

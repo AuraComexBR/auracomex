@@ -3236,6 +3236,30 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                       Selecionar taxas base
                                     </span>
                                   )}
+                                  {/* Só importa pro trecho "destino" — é o que compõe a base do
+                                      ICMS na Estimativa (junto com Siscomex/AFRMM). Clique
+                                      alterna: Automático (decide pela palavra-chave da descrição)
+                                      → Sim → Não → Automático de novo. */}
+                                  {c.leg === 'destination' && !readOnly && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const next = c.aduaneira === true ? false : c.aduaneira === false ? null : true;
+                                        onUpdate(c.id, { aduaneira: next });
+                                      }}
+                                      title="Define se esta taxa entra na base de cálculo do ICMS (Estimativa de Custo). Clique para alternar: Automático → Sim → Não."
+                                      className={`ml-1.5 text-[10px] border rounded px-1 py-0.5 ${
+                                        c.aduaneira === true
+                                          ? 'text-blue-600 border-blue-400/50 bg-blue-500/10'
+                                          : c.aduaneira === false
+                                            ? 'text-muted-foreground border-border'
+                                            : 'text-muted-foreground border-dashed border-border'
+                                      }`}
+                                    >
+                                      Aduaneira: {c.aduaneira === true ? 'Sim' : c.aduaneira === false ? 'Não' : 'Auto'}
+                                    </button>
+                                  )}
                                 </div>
                                 {c.billing_unit === 'percent' ? (
                                   <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
