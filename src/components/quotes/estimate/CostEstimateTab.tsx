@@ -1170,48 +1170,78 @@ export function CostEstimateTab({
         </Card>
 
         {/* Card Destino */}
-        <Card className="glass">
-          <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm font-medium">3. Custos de Destino / Nacionais</CardTitle>
-            <div className="flex flex-col items-end gap-1">
-              <Badge variant="outline" className="text-[10px] uppercase h-fit">Destino</Badge>
-              <div className="text-right">
-                <span className="text-[9px] uppercase text-muted-foreground block leading-none">Subtotal em Reais</span>
-                <span className="font-mono font-bold text-primary text-sm">
-                  R$ {fmtBRL(expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category).reduce((acc, e) => acc + (e.valor_brl || 0), 0))}
-                </span>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="h-8 text-[10px] uppercase">Descrição</TableHead>
-                  <TableHead className="h-8 text-[10px] uppercase text-right w-32">Moeda Orig.</TableHead>
-                  <TableHead className="h-8 text-[10px] uppercase text-right w-32">Conversão BRL</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category).length > 0 ? (
-                  expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category).map(e => (
-                    <TableRow key={e.id}>
-                      <TableCell className="py-2 text-xs">{e.descricao}</TableCell>
-                      <TableCell className="py-2 text-xs text-right font-mono">
-                        {e.moeda_original || 'BRL'} {fmtBRL(e.valor_original || e.valor_brl)}
-                      </TableCell>
-                      <TableCell className="py-2 text-xs text-right font-mono">R$ {fmtBRL(e.valor_brl)}</TableCell>
+        {(() => {
+          const destExpenses = expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category);
+          const taxaSiscomex = Number((estimate as any)?.taxa_siscomex_brl || 0);
+          const afrmm = Number((estimate as any)?.afrmm_brl || 0);
+          const subtotalDestino = destExpenses.reduce((acc, e) => acc + (e.valor_brl || 0), 0) + taxaSiscomex + afrmm;
+          const temAlgumCusto = destExpenses.length > 0 || taxaSiscomex > 0 || afrmm > 0;
+          return (
+            <Card className="glass">
+              <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-medium">3. Custos de Destino / Nacionais</CardTitle>
+                <div className="flex flex-col items-end gap-1">
+                  <Badge variant="outline" className="text-[10px] uppercase h-fit">Destino</Badge>
+                  <div className="text-right">
+                    <span className="text-[9px] uppercase text-muted-foreground block leading-none">Subtotal em Reais</span>
+                    <span className="font-mono font-bold text-primary text-sm">R$ {fmtBRL(subtotalDestino)}</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="h-8 text-[10px] uppercase">Descrição</TableHead>
+                      <TableHead className="h-8 text-[10px] uppercase text-right w-32">Moeda Orig.</TableHead>
+                      <TableHead className="h-8 text-[10px] uppercase text-right w-32">Conversão BRL</TableHead>
                     </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center py-4 text-[10px] text-muted-foreground italic">Sem custos de destino mapeados</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {/* Taxa Siscomex e AFRMM já entram no total de Custos Nacionais/base do
+                        ICMS pelos campos do cabeçalho (taxa_siscomex_brl/afrmm_brl) — antes
+                        ficavam "escondidas" ali, sem aparecer discriminadas junto das demais
+                        taxas nesta lista. Mostradas aqui só quando têm valor. */}
+                    {taxaSiscomex > 0 && (
+                      <TableRow>
+                        <TableCell className="py-2 text-xs">
+                          Taxa Siscomex
+                          {(estimate as any)?.taxa_siscomex_auto && <span className="text-muted-foreground"> (auto)</span>}
+                        </TableCell>
+                        <TableCell className="py-2 text-xs text-right font-mono">BRL {fmtBRL(taxaSiscomex)}</TableCell>
+                        <TableCell className="py-2 text-xs text-right font-mono">R$ {fmtBRL(taxaSiscomex)}</TableCell>
+                      </TableRow>
+                    )}
+                    {afrmm > 0 && (
+                      <TableRow>
+                        <TableCell className="py-2 text-xs">
+                          AFRMM
+                          {(estimate as any)?.afrmm_auto && <span className="text-muted-foreground"> (auto)</span>}
+                        </TableCell>
+                        <TableCell className="py-2 text-xs text-right font-mono">BRL {fmtBRL(afrmm)}</TableCell>
+                        <TableCell className="py-2 text-xs text-right font-mono">R$ {fmtBRL(afrmm)}</TableCell>
+                      </TableRow>
+                    )}
+                    {destExpenses.map(e => (
+                      <TableRow key={e.id}>
+                        <TableCell className="py-2 text-xs">{e.descricao}</TableCell>
+                        <TableCell className="py-2 text-xs text-right font-mono">
+                          {e.moeda_original || 'BRL'} {fmtBRL(e.valor_original || e.valor_brl)}
+                        </TableCell>
+                        <TableCell className="py-2 text-xs text-right font-mono">R$ {fmtBRL(e.valor_brl)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {!temAlgumCusto && (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-4 text-[10px] text-muted-foreground italic">Sem custos de destino mapeados</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Card Impostos */}
         <Card className="glass">
@@ -1299,6 +1329,13 @@ export function CostEstimateTab({
                     ['I.C.M.S.', breakdown.icms_usd, false, false, true],
                     ['SUBTOTAL', breakdown.subtotal_usd, true, false, true]
                   );
+
+                  // Taxa Siscomex e AFRMM (campos do cabeçalho, não itens de `expenses`)
+                  // discriminadas junto das demais despesas nacionais/destino.
+                  const taxaSiscomexUsd = Number((estimate as any)?.taxa_siscomex_brl || 0) / (estimate.usd_brl || 1);
+                  const afrmmUsd = Number((estimate as any)?.afrmm_brl || 0) / (estimate.usd_brl || 1);
+                  if (taxaSiscomexUsd > 0) rows.push(['Taxa Siscomex', taxaSiscomexUsd, false, false, true]);
+                  if (afrmmUsd > 0) rows.push(['AFRMM', afrmmUsd, false, false, true]);
 
                   // Adiciona despesas nacionais/destino mapeadas individualmente
                   expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category).forEach(e => {
