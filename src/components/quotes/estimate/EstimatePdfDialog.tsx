@@ -129,6 +129,14 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
     );
 
     // Nacionais
+    const taxaSiscomexBrl = Number((estimate as any).taxa_siscomex_brl || 0);
+    const afrmmBrl = Number((estimate as any).afrmm_brl || 0);
+    const armazenagemBrl = Number((quote as any)?.storage_fee_amount || 0);
+
+    if (taxaSiscomexBrl > 0) list.push(['Taxa Siscomex', taxaSiscomexBrl / rate, false, false, true]);
+    if (afrmmBrl > 0) list.push(['AFRMM', afrmmBrl / rate, false, false, true]);
+    if (armazenagemBrl > 0) list.push(['Armazenagem no destino', armazenagemBrl / rate, false, false, true]);
+
     expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category).forEach(e => {
       list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true]);
     });
@@ -151,7 +159,7 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
 
         <div ref={ref} style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", color: BRAND, background: '#e5e5e5' }}>
         {/* ============= FOLHA 1: Resumo ============= */}
-        <section className="pdf-avoid-break" style={items.length === 0 && expenses.length <= 12 ? sheetLast : sheet}>
+        <section className="pdf-avoid-break" style={items.length === 0 ? sheetLast : sheet}>
           {/* Header Empresa */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: 10, marginBottom: 15 }}>
             {company?.logo_url ? (
@@ -228,57 +236,7 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
               ))}
             </tbody>
           </table>
-          {expenses.length > 0 && expenses.length <= 12 && (
-            <div className="pdf-avoid-break" style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 10, marginBottom: 6, color: BRAND }}>DETALHAMENTO DE DESPESAS NACIONAIS / ADUANEIRAS</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={{ ...th, fontSize: 8 }}>DESCRIÇÃO</th>
-                    <th style={{ ...th, fontSize: 8, textAlign: 'right' }}>VALOR R$</th>
-                    <th style={{ ...th, fontSize: 8, textAlign: 'center' }}>TIPO</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expenses.map(e => (
-                    <tr key={e.id}>
-                      <td style={{ ...td, fontSize: 8 }}>{e.descricao}</td>
-                      <td style={{ ...tdR, fontSize: 8 }}>{fmtBRL(Number(e.valor_brl))}</td>
-                      <td style={{ ...td, fontSize: 8, textAlign: 'center' }}>{e.aduaneira ? 'ADUANEIRA' : 'LOCAL'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </section>
-
-        {/* ============= FOLHA 2 (opcional): Despesas nacionais longas ============= */}
-        {expenses.length > 12 && (
-          <section className="pdf-avoid-break" style={items.length === 0 ? sheetLast : sheet}>
-            <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 8, color: BRAND, borderLeft: `4px solid ${BRAND}`, paddingLeft: 8, textTransform: 'uppercase' }}>
-              Detalhamento de Despesas Nacionais / Aduaneiras
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ ...th, fontSize: 9 }}>DESCRIÇÃO</th>
-                  <th style={{ ...th, fontSize: 9, textAlign: 'right' }}>VALOR R$</th>
-                  <th style={{ ...th, fontSize: 9, textAlign: 'center' }}>TIPO</th>
-                </tr>
-              </thead>
-              <tbody>
-                {expenses.map(e => (
-                  <tr key={e.id}>
-                    <td style={{ ...td, fontSize: 9 }}>{e.descricao}</td>
-                    <td style={{ ...tdR, fontSize: 9 }}>{fmtBRL(Number(e.valor_brl))}</td>
-                    <td style={{ ...td, fontSize: 9, textAlign: 'center' }}>{e.aduaneira ? 'ADUANEIRA' : 'LOCAL'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
 
         {/* ============= 1 FOLHA POR ITEM ============= */}
         {items.map((item, idx) => {
