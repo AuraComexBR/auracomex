@@ -18,7 +18,6 @@ import { pct, toBRL } from '@/lib/costEstimate';
 import { toast } from 'sonner';
 import { EstimatePdfDialog } from './EstimatePdfDialog';
 import { DebouncedInput } from './DebouncedInput';
-import { FloatingSaveButton } from './FloatingSaveButton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import type { ChargeLike } from '@/lib/estimateSync';
 import { chargesHaveInsurance } from '@/lib/estimateSync';
@@ -1347,13 +1346,6 @@ export function CostEstimateTab({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <FloatingSaveButton
-        visible={hasDirty}
-        dirtyCount={dirtyCount}
-        state={saveState}
-        onSave={handleSave}
-      />
     </div>
   );
 }
