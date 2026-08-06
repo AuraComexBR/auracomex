@@ -24,6 +24,7 @@ export interface EstimateRow {
   frete_intl_usd: number;
   seguro_intl_usd: number;
   taxa_siscomex_brl?: number;
+  taxa_siscomex_auto?: boolean;
   afrmm_brl?: number;
   afrmm_auto?: boolean;
 }

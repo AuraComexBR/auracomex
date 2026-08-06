@@ -14,7 +14,7 @@ import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAuditEvent } from '@/lib/auditLog';
 import { useCostEstimate, computeBreakdown, EstimateItemRow, EstimateExpenseRow, EstimateRow, syncEstimateFromCharges, syncEstimateItemsFromQuote } from '@/hooks/useCostEstimate';
-import { pct, toBRL } from '@/lib/costEstimate';
+import { pct, toBRL, calcSiscomexFee } from '@/lib/costEstimate';
 import { toast } from 'sonner';
 import { EstimatePdfDialog } from './EstimatePdfDialog';
 import { DebouncedInput } from './DebouncedInput';
@@ -386,7 +386,7 @@ export function CostEstimateTab({
         'incoterm', 'frequencia', 'transito', 'carrier', 'rota_origem', 'rota_destino',
         'data_fiscal', 'usd_brl', 'eur_brl', 'rateio_metodo',
         'acrescimos_usd', 'deducoes_usd', 'frete_intl_usd', 'seguro_intl_usd', 'category',
-        'taxa_siscomex_brl', 'afrmm_brl', 'afrmm_auto',
+        'taxa_siscomex_brl', 'taxa_siscomex_auto', 'afrmm_brl', 'afrmm_auto',
       ];
       editableEstKeys.forEach(k => {
         const a = (draftEstimate as any)[k];
@@ -539,6 +539,18 @@ export function CostEstimateTab({
   const handleAutoSaveBlur = useCallback(() => {
     setTimeout(() => { handleSaveRef.current(); }, 0);
   }, []);
+
+  // Taxa Siscomex automática: com "Auto" ligado, recalcula sozinha sempre
+  // que o número de itens (adições) muda — sem isso, adicionar/remover um
+  // item deixaria o valor desatualizado até o usuário reabrir o toggle.
+  useEffect(() => {
+    if (!draftEstimate || !(draftEstimate as any).taxa_siscomex_auto) return;
+    const computed = calcSiscomexFee(draftItems.length);
+    if (Number((draftEstimate as any).taxa_siscomex_brl || 0) !== computed) {
+      setDraftEstimate(prev => (prev ? ({ ...prev, taxa_siscomex_brl: computed } as any) : prev));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(draftEstimate as any)?.taxa_siscomex_auto, draftItems.length]);
 
   // Atalho Ctrl/Cmd + S
   useEffect(() => {
@@ -829,16 +841,38 @@ export function CostEstimateTab({
             <Label className="text-xs flex items-center gap-1">
               Taxa Siscomex (BRL)
               <TooltipProvider><Tooltip><TooltipTrigger asChild><Info className="w-3 h-3 text-muted-foreground" /></TooltipTrigger>
-                <TooltipContent className="max-w-xs">Taxa fixa cobrada por DI. Entra na base do ICMS e compõe o custo total.</TooltipContent>
+                <TooltipContent className="max-w-xs">Taxa fixa cobrada por DI/Duimp. Entra na base do ICMS e compõe o custo total. Auto = R$ 115,67 (DI/Duimp) + valor por adição de mercadoria conforme a Portaria ME nº 4.131/2021 (adição = cada item da tabela abaixo).</TooltipContent>
               </Tooltip></TooltipProvider>
             </Label>
-            <DebouncedInput
-              disabled={ro}
-              type="number"
-              step="0.01"
-              value={(estimate as any).taxa_siscomex_brl || 0}
-              onCommit={(v) => patchEstimate({ taxa_siscomex_brl: v } as any)}
-            />
+            <div className="flex gap-1">
+              <DebouncedInput
+                disabled={ro || !!(estimate as any).taxa_siscomex_auto}
+                type="number"
+                step="0.01"
+                value={
+                  (estimate as any).taxa_siscomex_auto
+                    ? calcSiscomexFee(items.length)
+                    : ((estimate as any).taxa_siscomex_brl || 0)
+                }
+                onCommit={(v) => patchEstimate({ taxa_siscomex_brl: v } as any)}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant={(estimate as any).taxa_siscomex_auto ? 'default' : 'outline'}
+                disabled={ro}
+                onClick={() => {
+                  const next = !(estimate as any).taxa_siscomex_auto;
+                  const patch: any = { taxa_siscomex_auto: next };
+                  if (next) patch.taxa_siscomex_brl = calcSiscomexFee(items.length);
+                  patchEstimate(patch);
+                }}
+                title="Auto = R$ 115,67 (DI/Duimp) + valor por adição de mercadoria (item), por faixa"
+                className="h-9 px-2 text-[10px] shrink-0"
+              >
+                Auto
+              </Button>
+            </div>
           </div>
           <div className="space-y-1">
             <Label className="text-xs flex items-center gap-1">

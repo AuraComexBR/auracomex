@@ -297,3 +297,37 @@ export function pct(part: number, total: number): number {
   if (!total) return 0;
   return round2((part / total) * 100);
 }
+
+// Taxa de Utilização do Siscomex (Portaria ME nº 4.131/2021, valores vigentes
+// desde jun/2021): R$ 115,67 fixos por registro de DI/Duimp, mais um valor
+// por adição de mercadoria que cai por faixa (adição = cada item/NCM da
+// estimativa). Faixas:
+//   até a 2ª adição ......... R$ 38,56 cada
+//   da 3ª à 5ª ............... R$ 30,85 cada
+//   da 6ª à 10ª .............. R$ 23,14 cada
+//   da 11ª à 20ª ............. R$ 15,42 cada
+//   da 21ª à 50ª ............. R$  7,71 cada
+//   a partir da 51ª .......... R$  3,86 cada
+const SISCOMEX_BASE_FEE = 115.67;
+const SISCOMEX_ADDITION_TIERS: Array<{ upTo: number; rate: number }> = [
+  { upTo: 2, rate: 38.56 },
+  { upTo: 5, rate: 30.85 },
+  { upTo: 10, rate: 23.14 },
+  { upTo: 20, rate: 15.42 },
+  { upTo: 50, rate: 7.71 },
+  { upTo: Infinity, rate: 3.86 },
+];
+
+export function calcSiscomexFee(additionCount: number): number {
+  const n = Math.max(0, Math.floor(additionCount || 0));
+  if (n === 0) return 0;
+  let total = SISCOMEX_BASE_FEE;
+  let counted = 0;
+  for (const tier of SISCOMEX_ADDITION_TIERS) {
+    if (counted >= n) break;
+    const inThisTier = Math.min(n, tier.upTo) - counted;
+    total += inThisTier * tier.rate;
+    counted += inThisTier;
+  }
+  return round2(total);
+}
