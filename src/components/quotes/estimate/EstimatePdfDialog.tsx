@@ -27,7 +27,12 @@ const tdR: React.CSSProperties = { ...td, textAlign: 'right', fontFamily: 'monos
 
 const sheet: React.CSSProperties = {
   width: '210mm',
-  minHeight: '297mm',
+  // Levemente menor que 297mm (altura exata do A4): arredondamentos do html2canvas/jsPDF
+  // ao renderizar em scale 2 podem fazer a seção "estourar" a página por frações de mm,
+  // gerando uma folha em branco extra entre as seções. A margem de segurança evita isso
+  // sem cortar conteúdo (não há maxHeight/overflow — se o conteúdo for maior, ele
+  // simplesmente ocupa mais de uma página normalmente).
+  minHeight: '294mm',
   padding: '12mm 14mm',
   boxSizing: 'border-box',
   pageBreakAfter: 'always',
