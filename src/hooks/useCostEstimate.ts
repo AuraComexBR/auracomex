@@ -366,7 +366,9 @@ export function useDebouncedSave<T>(value: T, onSave: (v: T) => Promise<void> | 
 export function computeBreakdown(
   estimate: EstimateRow | null,
   items: EstimateItemRow[],
-  expenses: EstimateExpenseRow[]
+  expenses: EstimateExpenseRow[],
+  /** Armazenagem no destino (BRL) — vem de fora da estimativa (quotes.storage_fee_amount, aba Geral do processo), então precisa ser passada explicitamente. */
+  armazenagemDestinoBrl: number = 0,
 ): EstimateBreakdown | null {
   if (!estimate) return null;
   const input: EstimateInput = {
@@ -380,6 +382,7 @@ export function computeBreakdown(
     afrmm_brl: (estimate as any).afrmm_auto
       ? Number((((estimate.frete_intl_usd || 0) * (estimate.usd_brl || 0) * 0.08) + 20).toFixed(2))
       : Number((estimate as any).afrmm_brl || 0),
+    armazenagem_destino_brl: Number(armazenagemDestinoBrl || 0),
     items: items.map(i => ({
       id: i.id, nome: i.nome, ncm: i.ncm || undefined,
       peso: Number(i.peso), quantidade: Number(i.quantidade),

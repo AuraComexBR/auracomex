@@ -107,9 +107,13 @@ export function CostEstimateTab({
   const usdBrl = Number((estimate as any)?.usd_brl || 0) || frozenUsdBrl || 0;
   const eurBrl = Number((estimate as any)?.eur_brl || 0) || frozenEurBrl || 0;
 
+  // Armazenagem no destino (aba Geral do processo, quotes.storage_fee_amount,
+  // LCL/FCL) — não vem da própria estimativa, mas precisa constar no custo
+  // nacional total dela.
+  const armazenagemDestinoBrl = Number((quote as any)?.storage_fee_amount || 0);
   const breakdown = useMemo(
-    () => computeBreakdown(estimate, items, expenses),
-    [estimate, items, expenses]
+    () => computeBreakdown(estimate, items, expenses, armazenagemDestinoBrl),
+    [estimate, items, expenses, armazenagemDestinoBrl]
   );
 
   const hasInsurance = useMemo(() => chargesHaveInsurance(charges), [charges]);
@@ -1174,8 +1178,8 @@ export function CostEstimateTab({
           const destExpenses = expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category);
           const taxaSiscomex = Number((estimate as any)?.taxa_siscomex_brl || 0);
           const afrmm = Number((estimate as any)?.afrmm_brl || 0);
-          const subtotalDestino = destExpenses.reduce((acc, e) => acc + (e.valor_brl || 0), 0) + taxaSiscomex + afrmm;
-          const temAlgumCusto = destExpenses.length > 0 || taxaSiscomex > 0 || afrmm > 0;
+          const subtotalDestino = destExpenses.reduce((acc, e) => acc + (e.valor_brl || 0), 0) + taxaSiscomex + afrmm + armazenagemDestinoBrl;
+          const temAlgumCusto = destExpenses.length > 0 || taxaSiscomex > 0 || afrmm > 0 || armazenagemDestinoBrl > 0;
           return (
             <Card className="glass">
               <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0">
@@ -1220,6 +1224,16 @@ export function CostEstimateTab({
                         </TableCell>
                         <TableCell className="py-2 text-xs text-right font-mono">BRL {fmtBRL(afrmm)}</TableCell>
                         <TableCell className="py-2 text-xs text-right font-mono">R$ {fmtBRL(afrmm)}</TableCell>
+                      </TableRow>
+                    )}
+                    {armazenagemDestinoBrl > 0 && (
+                      <TableRow>
+                        <TableCell className="py-2 text-xs">
+                          Armazenagem no destino
+                          <span className="text-muted-foreground"> (aba Geral)</span>
+                        </TableCell>
+                        <TableCell className="py-2 text-xs text-right font-mono">BRL {fmtBRL(armazenagemDestinoBrl)}</TableCell>
+                        <TableCell className="py-2 text-xs text-right font-mono">R$ {fmtBRL(armazenagemDestinoBrl)}</TableCell>
                       </TableRow>
                     )}
                     {destExpenses.map(e => (
@@ -1334,8 +1348,10 @@ export function CostEstimateTab({
                   // discriminadas junto das demais despesas nacionais/destino.
                   const taxaSiscomexUsd = Number((estimate as any)?.taxa_siscomex_brl || 0) / (estimate.usd_brl || 1);
                   const afrmmUsd = Number((estimate as any)?.afrmm_brl || 0) / (estimate.usd_brl || 1);
+                  const armazenagemUsd = armazenagemDestinoBrl / (estimate.usd_brl || 1);
                   if (taxaSiscomexUsd > 0) rows.push(['Taxa Siscomex', taxaSiscomexUsd, false, false, true]);
                   if (afrmmUsd > 0) rows.push(['AFRMM', afrmmUsd, false, false, true]);
+                  if (armazenagemUsd > 0) rows.push(['Armazenagem no destino', armazenagemUsd, false, false, true]);
 
                   // Adiciona despesas nacionais/destino mapeadas individualmente
                   expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category).forEach(e => {

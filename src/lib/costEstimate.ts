@@ -54,6 +54,11 @@ export interface EstimateInput {
   taxa_siscomex_brl?: number;
   /** AFRMM em BRL. Entra na base do ICMS e no total do custo. */
   afrmm_brl?: number;
+  /** Armazenagem no destino (BRL) — vem do campo "Armazenagem no destino" da
+   *  aba Geral do processo (quotes.storage_fee_amount, LCL/FCL). Entra no
+   *  total de custos nacionais; não entra na base do ICMS por padrão (não
+   *  há informação de zona primária/secundária nesse campo). */
+  armazenagem_destino_brl?: number;
 }
 
 /**
@@ -166,17 +171,18 @@ export function calcEstimativa(input: EstimateInput): EstimateBreakdown {
   const { items, expenses, frete_intl_usd, seguro_intl_usd, acrescimos_usd, deducoes_usd, usd_brl, rateio_metodo } = input;
   const taxa_siscomex_brl = Number(input.taxa_siscomex_brl || 0);
   const afrmm_brl = Number(input.afrmm_brl || 0);
+  const armazenagem_destino_brl = Number(input.armazenagem_destino_brl || 0);
 
   const totalVmcvUsd = items.reduce((s, i) => s + i.vmcv_unit_usd * i.quantidade, 0);
   const totalPeso = items.reduce((s, i) => s + i.peso * i.quantidade, 0);
   const totalQtd = items.reduce((s, i) => s + i.quantidade, 0);
 
   // Despesas nacionais = tudo que NÃO está embutido no VMLD (origem/frete já estão via frete_intl_usd/acrescimos).
-  // Taxa Siscomex e AFRMM também compõem o custo nacional (e a base de ICMS).
+  // Taxa Siscomex, AFRMM e Armazenagem no destino também compõem o custo nacional.
   const despesas_nac_from_charges = expenses
     .filter(e => e.category === 'destination' || e.category === 'local' || !e.category)
     .reduce((s, e) => s + e.valor_brl, 0);
-  const despesas_nac_brl = despesas_nac_from_charges + taxa_siscomex_brl + afrmm_brl;
+  const despesas_nac_brl = despesas_nac_from_charges + taxa_siscomex_brl + afrmm_brl + armazenagem_destino_brl;
 
   // Aduaneiras (base do ICMS): flag manual `aduaneira` (true OU false) sempre
   // prevalece, nos dois sentidos — só cai na classificação automática por
