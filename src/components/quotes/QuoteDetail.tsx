@@ -676,8 +676,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const dirtyCount = hasChanges ? 1 : 0;
 
   // Auto-save das abas Geral e Resumo da Carga: nenhuma das duas tem mais
-  // botão "Salvar" próprio — qualquer alteração em `form` ou `cargoItems` já
-  // grava no banco sozinha depois de uma pausa curta de digitação.
+  // botão "Salvar" próprio. Antes disparava sozinho 900ms depois de qualquer
+  // tecla digitada — o que salvava no meio da digitação se o usuário parasse
+  // de pensar por menos de um segundo. Agora só salva quando o usuário sai do
+  // campo (onBlur), anexado no container de cada aba (o blur do React
+  // borbulha, então cobre qualquer input dentro dele).
   // OBS: precisa ficar antes do "if (isLoading || !quote) return" lá embaixo,
   // senão o número de hooks muda entre o primeiro render (carregando) e os
   // seguintes, e o React quebra com "Rendered more hooks than during the
@@ -685,14 +688,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // forma independente (com optional chaining), sem usar `canEditCargo`.
   const canEditCargoForAutoSave =
     (!isShipmentMode && form.status !== 'converted') || isFullAccess || (profile?.user_id === quote?.created_by);
-  useEffect(() => {
-    if (!quote || (activeTab !== 'cargo' && activeTab !== 'general') || !canEditCargoForAutoSave || !hasChanges || saving) return;
-    const timer = setTimeout(() => {
-      handleSave();
-    }, 900);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, cargoItems, activeTab, canEditCargoForAutoSave, hasChanges, saving, quote]);
+  function handleAutoSaveBlur(tab: 'general' | 'cargo') {
+    if (!quote || activeTab !== tab || !canEditCargoForAutoSave || !hasChanges || saving) return;
+    handleSave();
+  }
 
   // Se a aba Estimativa estiver desabilitada para a empresa, volta para 'general'.
   useEffect(() => {
@@ -1980,7 +1979,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 <Copy className="w-3.5 h-3.5 mr-1.5" /> {t('common.copy_summary')}
               </Button>
             </CardHeader>
-            <CardContent className="pt-6 space-y-4">
+            <CardContent className="pt-6 space-y-4" onBlur={() => handleAutoSaveBlur('general')}>
               {/* Linha 1: Cliente - Modal - Incoterm (+ Status/Validade em cotações) */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
@@ -2256,7 +2255,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         {/* Cargo Tab */}
         <TabsContent value="cargo">
           <Card className="glass">
-            <CardContent className="pt-6 space-y-4">
+            <CardContent className="pt-6 space-y-4" onBlur={() => handleAutoSaveBlur('cargo')}>
               {hasEstimateOverride && (
                 <div className="rounded-md border border-primary/30 bg-primary/5 text-xs px-3 py-2 flex items-center gap-2">
                   <Info className="w-4 h-4 shrink-0 text-primary" />

@@ -427,17 +427,17 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, containerNumbers, shipment]);
 
-  // Auto-save: nenhum botão "Salvar" próprio — qualquer alteração grava
-  // sozinha depois de uma pausa curta de digitação (status continua salvando
-  // na hora, como já era, pelo próprio Select de status).
-  useEffect(() => {
+  // Auto-save: nenhum botão "Salvar" próprio. Antes disparava sozinho 900ms
+  // depois de qualquer tecla digitada — o que salvava no meio da digitação
+  // se o usuário parasse de pensar por menos de um segundo. Agora só salva
+  // quando o usuário sai do campo (onBlur, anexado no CardContent que
+  // envolve o formulário inteiro — o blur do React borbulha, então cobre
+  // qualquer input dentro dele). Status continua salvando na hora, como já
+  // era, pelo próprio Select de status.
+  function handleAutoSaveBlur() {
     if (!hasChanges || saving) return;
-    const timer = setTimeout(() => {
-      handleSave();
-    }, 900);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, containerNumbers, hasChanges, saving]);
+    handleSave();
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -607,7 +607,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
   return (
     <Card className="glass">
-      <CardContent className="p-6 space-y-6">
+      <CardContent className="p-6 space-y-6" onBlur={handleAutoSaveBlur}>
         {/* Visual route — altura reduzida à metade de novo (largura e fontes seguem originais) */}
         <div className="flex items-center justify-between py-0">
           {stops.map((stop, i) => (
