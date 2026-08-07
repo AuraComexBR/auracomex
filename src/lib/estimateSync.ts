@@ -93,10 +93,15 @@ export function mapChargesToEstimate(
     if (rawAmount === 0) continue;
 
     const isDiscount = desc.toUpperCase().includes('DESCONTO');
+    // Seguro precisa ser checado ANTES do frete: toda taxa com leg='freight' tem
+    // charge_type='freight' (não é uma classificação granular por natureza da taxa),
+    // então "c.charge_type === 'freight'" no fallback do isFrete capturava também o
+    // Seguro Internacional — ele nunca chegava a ser tratado como isSeguro, e
+    // seguro_intl_usd ficava sempre zerado (tudo ia parar em frete_intl_usd).
+    const isSeguro = c.leg === 'freight' && hasKeyword(desc, SEGURO_KEYWORDS);
     // Frete internacional: SOMENTE quando leg === 'freight' (inclui rodoviário internacional/Mercosul).
     // Frete com leg 'origin'/'destination' é doméstico e NÃO entra no VMLD nem no ICMS.
-    const isFrete = c.leg === 'freight' && (hasKeyword(desc, FRETE_KEYWORDS) || c.charge_type === 'freight');
-    const isSeguro = c.leg === 'freight' && hasKeyword(desc, SEGURO_KEYWORDS);
+    const isFrete = !isSeguro && c.leg === 'freight' && (hasKeyword(desc, FRETE_KEYWORDS) || c.charge_type === 'freight');
     const isFreteDomestico = hasKeyword(desc, FRETE_KEYWORDS) && c.leg !== 'freight';
     const isAduaneira = hasKeyword(desc, ADUANEIRA_KEYWORDS);
 
