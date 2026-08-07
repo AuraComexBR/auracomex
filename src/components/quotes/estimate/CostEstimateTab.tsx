@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { logAuditEvent } from '@/lib/auditLog';
 import { useCostEstimate, computeBreakdown, EstimateItemRow, EstimateExpenseRow, EstimateRow, syncEstimateFromCharges, syncEstimateItemsFromQuote } from '@/hooks/useCostEstimate';
 import { pct, toBRL, calcSiscomexFee, countSiscomexAdditions } from '@/lib/costEstimate';
+import { countryCodeToName } from '@/lib/countries';
 import { toast } from 'sonner';
 import { EstimatePdfDialog } from './EstimatePdfDialog';
 import { DebouncedInput } from './DebouncedInput';
@@ -153,6 +154,24 @@ export function CostEstimateTab({
   });
   const clientExchangeSpreadPct = Number((estimateClient as any)?.exchange_spread_pct || 0);
 
+  // País de Origem: mesma fonte que a aba Geral usa pro ícone de bandeira —
+  // busca o country_code do porto de origem (quote.origin) na tabela `ports`.
+  const { data: originPortCountry } = useQuery({
+    queryKey: ['estimate-origin-port-country', quote?.origin],
+    queryFn: async () => {
+      if (!quote?.origin) return null;
+      const { data, error } = await supabase
+        .from('ports')
+        .select('country_code')
+        .eq('code', quote.origin)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!quote?.origin,
+  });
+  const originCountryName = countryCodeToName((originPortCountry as any)?.country_code || '');
+
   const handleNcmLookup = async (itemId: string, ncm: string) => {
     if (!ncm || ncm.length < 4) {
       toast.error('Informe um NCM válido');
@@ -286,13 +305,14 @@ export function CostEstimateTab({
       if (!draftEstimate.incoterm && quote.incoterm) patch.incoterm = quote.incoterm;
       if (!draftEstimate.rota_origem && quote.origin) patch.rota_origem = quote.origin;
       if (!draftEstimate.rota_destino && quote.destination) patch.rota_destino = quote.destination;
+      if (!(draftEstimate as any).pais_origem && originCountryName) (patch as any).pais_origem = originCountryName;
 
       if (Object.keys(patch).length > 0) {
         setDraftEstimate(prev => prev ? { ...prev, ...patch } : prev);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMode, !!draftEstimate, serverEstimate?.id, quote, quotePartners]);
+  }, [editMode, !!draftEstimate, serverEstimate?.id, quote, quotePartners, originCountryName]);
 
   // ===== beforeunload =====
   useEffect(() => {
