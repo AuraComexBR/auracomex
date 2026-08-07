@@ -141,9 +141,12 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
   // 6ª posição = is_prepaid, 7ª = isMerchandise (linha do VMCV — valor da
   // mercadoria, pago direto pelo cliente ao fornecedor, fora do Numerário).
   const rows: Array<[string, number, boolean, boolean, boolean, boolean, boolean]> = (() => {
-    const list: Array<[string, number, boolean, boolean, boolean, boolean, boolean]> = [
-      ['Valor da mercadoria (VMCV)', breakdown.vmcv_usd, true, false, true, false, true],
-    ];
+    const list: Array<[string, number, boolean, boolean, boolean, boolean, boolean]> = [];
+    // VMCV: no Numerário já aparece no cabeçalho (VALOR FOB: R$), não precisa
+    // repetir na descrição dos custos. Na Estimativa continua aparecendo.
+    if (!isNumerario) {
+      list.push(['Valor da mercadoria (VMCV)', breakdown.vmcv_usd, true, false, true, false, true]);
+    }
 
     // Origem
     expenses.filter(e => e.category === 'origin').forEach(e => {
@@ -152,8 +155,10 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
 
     list.push(['Valor no embarque (VMLE)', breakdown.vmle_usd, true, false, true, false, false]);
 
-    // Frete/Seguro
+    // Frete/Seguro: no Numerário, frete Prepaid já aparece no cabeçalho
+    // (FRETE INTL.: USD), não precisa repetir na descrição dos custos.
     expenses.filter(e => e.category === 'freight').forEach(e => {
+      if (isNumerario && (e as any).is_prepaid) return;
       list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid, false]);
     });
 
