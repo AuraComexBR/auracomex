@@ -1804,9 +1804,19 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             value={form.client_reference}
             onChange={(e) => setForm({ ...form, client_reference: e.target.value })}
             onClick={(e) => e.stopPropagation()}
+            // Este campo fica no cabeçalho da página, fora do CardContent da
+            // aba Geral — o auto-save por onBlur de lá (handleAutoSaveBlur)
+            // só dispara quando activeTab === 'general', então editar aqui
+            // estando em qualquer outra aba (Taxas, Logística etc.) nunca
+            // salvava. Salva direto aqui, sem depender da aba ativa.
+            onBlur={() => {
+              if (!quote || saving) return;
+              if ((form.client_reference || '') === ((quote as any).client_reference || '')) return;
+              handleSave();
+            }}
             placeholder="Ref. do Cliente"
             title="Referência do cliente (opcional) — entra na cópia do texto"
-            className="h-6 w-32 shrink-0 text-xs px-2"
+            className="h-6 w-32 shrink-0 text-xs px-2 text-center"
           />
         </div>
         {!isShipmentMode && form.status === 'converted' && (
