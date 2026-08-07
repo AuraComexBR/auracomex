@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { calcSeguroInternacional } from '@/lib/costEstimate';
+import { calcTotalCargoValueUsd, CargoValueLike } from '@/lib/cargoValue';
 
 interface QuotePartnerLike {
   client_id?: string | null;
@@ -19,6 +20,8 @@ interface Props {
   companyId?: string;
   quote: { id: string; seguro_auto?: boolean | null } | null | undefined;
   quotePartners?: QuotePartnerLike[];
+  /** Itens da aba Resumo da Carga — Custo do seguro vem daqui (soma do Valor da Carga em USD). */
+  cargoItems?: CargoValueLike[];
   readOnly?: boolean;
 }
 
@@ -36,28 +39,34 @@ function fmtUSD(n: number) {
  * real em quote_charges, contabilizada no total e na Estimativa de Custo)
  * quando o checkbox "Incluir no processo" está marcado.
  */
-export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [], readOnly }: Props) {
+export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [], cargoItems = [], readOnly }: Props) {
   const qc = useQueryClient();
 
-  // Base de cálculo vem da Estimativa de Custo (Custo/VMCV, Frete Internacional
-  // e Impostos já convertidos para USD). Sem uma estimativa criada ainda não
-  // há base confiável para calcular o seguro.
+  // Frete Internacional e Impostos (II/IPI/PIS/COFINS/ICMS) ainda vêm da
+  // Estimativa de Custo — só o Custo mudou de fonte (ver abaixo).
   const { data: basis } = useQuery({
     queryKey: ['cost-estimate-insurance-basis', quoteId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('cost_estimates')
-        .select('vmcv_usd, frete_intl_usd, ii_usd, ipi_usd, pis_usd, cofins_usd, icms_usd')
+        .select('frete_intl_usd, ii_usd, ipi_usd, pis_usd, cofins_usd, icms_usd')
         .eq('quote_id', quoteId)
         .maybeSingle();
       if (error) throw error;
       return data as {
-        vmcv_usd: number; frete_intl_usd: number;
+        frete_intl_usd: number;
         ii_usd: number; ipi_usd: number; pis_usd: number; cofins_usd: number; icms_usd: number;
       } | null;
     },
     enabled: !!quoteId,
   });
+
+  // Custo = Valor Total da Carga (aba Resumo da Carga), somado em USD — não
+  // depende mais de uma Estimativa de Custo existir.
+  const { totalUsd: custoCargaUsd, hasNonUsd: cargaTemOutraMoeda } = useMemo(
+    () => calcTotalCargoValueUsd(cargoItems),
+    [cargoItems]
+  );
 
   const { data: autoCharge } = useQuery({
     queryKey: ['quote-charge-auto-insurance', quoteId],
@@ -110,14 +119,14 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
   const auto = quote?.seguro_auto !== false; // default true enquanto carrega
 
   const breakdown = useMemo(() => calcSeguroInternacional({
-    custoUsd: Number(basis?.vmcv_usd || 0),
+    custoUsd: custoCargaUsd,
     freteUsd: Number(basis?.frete_intl_usd || 0),
     impostosUsd: Number(basis?.ii_usd || 0) + Number(basis?.ipi_usd || 0) + Number(basis?.pis_usd || 0)
       + Number(basis?.cofins_usd || 0) + Number(basis?.icms_usd || 0),
     taxaPct,
-  }), [basis, taxaPct]);
+  }), [custoCargaUsd, basis, taxaPct]);
 
-  const hasBasis = !!basis && (breakdown.custo > 0 || breakdown.frete > 0);
+  const hasBasis = breakdown.custo > 0 || breakdown.frete > 0;
   const canCalc = hasBasis && hasRate;
 
   const invalidateAll = () => {
@@ -215,12 +224,16 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
           </p>
         ) : !hasBasis ? (
           <p className="text-xs text-muted-foreground italic py-2">
-            Crie a Estimativa de Custo (com valor da mercadoria e frete) para calcular o seguro automaticamente.
+            Informe o Valor da Carga (em USD) na aba Resumo da Carga para calcular o seguro automaticamente.
           </p>
         ) : (
           <div className="space-y-2">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div><span className="text-muted-foreground block">Custo</span><span className="font-mono">US$ {fmtUSD(breakdown.custo)}</span></div>
+              <div>
+                <span className="text-muted-foreground block">Custo</span>
+                <span className="font-mono">US$ {fmtUSD(breakdown.custo)}</span>
+                {cargaTemOutraMoeda && <span className="text-amber-600 text-[10px] block">* há itens de carga em outra moeda, não somados</span>}
+              </div>
               <div><span className="text-muted-foreground block">Frete</span><span className="font-mono">US$ {fmtUSD(breakdown.frete)}</span></div>
               <div><span className="text-muted-foreground block">Despesas (10%)</span><span className="font-mono">US$ {fmtUSD(breakdown.despesas)}</span></div>
               <div><span className="text-muted-foreground block">Lucro Esperado (10%)</span><span className="font-mono">US$ {fmtUSD(breakdown.lucroEsperado)}</span></div>

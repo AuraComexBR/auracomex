@@ -2327,6 +2327,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 companyId={profile.company_id}
                 quote={quote as any}
                 quotePartners={quotePartners}
+                cargoItems={items}
                 readOnly={!canEditCharges}
               />
             )}

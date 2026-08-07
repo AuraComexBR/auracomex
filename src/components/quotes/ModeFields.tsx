@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Package, Pencil, AlertTriangle, ChevronUp, Loader2 } from 'lucide-react';
+import { calcTotalCargoValueUsd } from '@/lib/cargoValue';
 
 // Module-level cache for NCM descriptions (code -> description)
 const ncmDescCache = new Map<string, string>();
@@ -361,6 +362,7 @@ export function ModeFields({ mode, items, onChange, readOnly, saving }: ModeFiel
   const totalCbm = items.reduce((s, i) => s + getEffectiveVolume(i), 0);
   const totalWeight = items.reduce((s, i) => s + calcItemWeight(i), 0);
   const totalChargeable = calcChargeableWeight(items, mode);
+  const { totalUsd: totalCargoValueUsd, hasNonUsd: hasNonUsdCargoValue } = calcTotalCargoValueUsd(items);
 
   // Formulário compacto, renderizado inline dentro da própria linha do item.
   // IMPORTANTE: isso é uma função comum que retorna JSX (não um componente
@@ -540,6 +542,12 @@ export function ModeFields({ mode, items, onChange, readOnly, saving }: ModeFiel
               <span>{t('quotes.total_cbm')}: <strong className="font-mono">{totalCbm.toFixed(4)}</strong> m³</span>
               {(mode === 'air' || mode === 'ocean_lcl') && (
                 <span>{t('quotes.total_chargeable')}: <strong className="font-mono">{totalChargeable.toFixed(2)}</strong> kg</span>
+              )}
+              {totalCargoValueUsd > 0 && (
+                <span title={hasNonUsdCargoValue ? 'Itens em outra moeda não estão somados aqui' : undefined}>
+                  Valor Total da Carga: <strong className="font-mono">US$ {totalCargoValueUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                  {hasNonUsdCargoValue && <span className="text-amber-600">*</span>}
+                </span>
               )}
             </>
           ) : (
