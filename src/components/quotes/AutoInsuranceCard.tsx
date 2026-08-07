@@ -220,13 +220,23 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
         // situação em que o cache estivesse desatualizado), a exclusão
         // podia ser pulada e a(s) taxa(s) ficavam órfãs: o processo
         // marcado como "sem seguro" mas as taxas continuavam lançadas.
-        const { error: delErr } = await (supabase as any)
+        const { data: deleted, error: delErr } = await (supabase as any)
           .from('quote_charges')
           .delete()
           .eq('quote_id', quoteId)
-          .eq('is_auto_insurance', true);
+          .eq('is_auto_insurance', true)
+          .select('id');
         if (delErr) throw delErr;
+        // Remove na hora do cache das duas listas que alimentam a tela —
+        // sem isso a linha de Compra/Venda podia continuar visível na aba
+        // Taxas até o próximo refetch em segundo plano terminar.
         qc.setQueryData(['quote-charge-auto-insurance', quoteId], []);
+        qc.setQueryData(['quote-charges', quoteId], (old: any[] | undefined) =>
+          old ? old.filter((c) => !c.is_auto_insurance) : old
+        );
+        if (!deleted || deleted.length === 0) {
+          console.warn('Nenhuma taxa de seguro automática foi encontrada/apagada para este processo.');
+        }
       }
       // Reflete o novo seguro_auto no cache do quote-detail imediatamente,
       // pelo mesmo motivo acima (evita o efeito ler um valor desatualizado).
