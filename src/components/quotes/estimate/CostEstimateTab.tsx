@@ -240,11 +240,15 @@ export function CostEstimateTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverEstimate, serverItems, serverExpenses, hasDirty]);
 
-  // Aplica patches ao rascunho ao entrar em modo edição se houver divergência residual
+  // Preenche o rascunho com os dados da cotação (Resumo de Carga) SÓ na
+  // primeira vez, quando o campo ainda está vazio. Depois que o usuário
+  // grava um valor (mesmo diferente do que está na cotação), o campo nunca
+  // mais é sobrescrito por essa sincronização — o usuário passa a ser dono
+  // do dado na Estimativa.
   useEffect(() => {
     if (editMode && draftEstimate && quote) {
       const patch: Partial<DraftEstimate> = {};
-      
+
       if (!draftEstimate.carrier) {
         const mode = quote?.transport_mode;
         let suggested = '';
@@ -260,20 +264,17 @@ export function CostEstimateTab({
         if (suggested) patch.carrier = suggested;
       }
 
-      const generalTransit = String(quote.transit_time || '');
-      if (draftEstimate.transito !== generalTransit) patch.transito = generalTransit;
-
-      const generalIncoterm = quote.incoterm || '';
-      if (draftEstimate.incoterm !== generalIncoterm) patch.incoterm = generalIncoterm;
-
-      if (draftEstimate.rota_origem !== (quote.origin || '')) patch.rota_origem = quote.origin || '';
-      if (draftEstimate.rota_destino !== (quote.destination || '')) patch.rota_destino = quote.destination || '';
+      if (!draftEstimate.transito && quote.transit_time) patch.transito = String(quote.transit_time);
+      if (!draftEstimate.incoterm && quote.incoterm) patch.incoterm = quote.incoterm;
+      if (!draftEstimate.rota_origem && quote.origin) patch.rota_origem = quote.origin;
+      if (!draftEstimate.rota_destino && quote.destination) patch.rota_destino = quote.destination;
 
       if (Object.keys(patch).length > 0) {
         setDraftEstimate(prev => prev ? { ...prev, ...patch } : prev);
       }
     }
-  }, [editMode, !!draftEstimate, quote, quotePartners]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode, !!draftEstimate, serverEstimate?.id, quote, quotePartners]);
 
   // ===== beforeunload =====
   useEffect(() => {
@@ -789,8 +790,8 @@ export function CostEstimateTab({
             ) : null}
           </div>
           <div className="flex gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-accent/10 text-accent border border-accent/30" title="Alterações nas abas Taxas e Carga refletem aqui automaticamente — e qualquer edição aqui salva sozinha ao sair do campo.">
-              <Link2 className="w-3 h-3" /> Espelho automático Taxas/Carga
+            <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-accent/10 text-accent border border-accent/30" title="Frete, seguro e despesas continuam sincronizando com a aba Taxas. Incoterm/Trânsito/Carrier/Rota vêm do Resumo de Carga só na primeira vez — depois de editados aqui, ficam sob controle da Estimativa. Qualquer edição salva sozinha ao sair do campo.">
+              <Link2 className="w-3 h-3" /> Espelho automático Taxas/Carga (1ª vez)
             </span>
             <Button size="sm" variant="outline" onClick={() => guardStructural(refreshRates)}><RefreshCw className="w-3.5 h-3.5 mr-1" /> Atualizar câmbio</Button>
             <DropdownMenu>
@@ -819,20 +820,20 @@ export function CostEstimateTab({
           </div>
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3" onBlur={handleAutoSaveBlur}>
-          <div className="space-y-1"><Label className="text-xs">Incoterm</Label><DebouncedInput disabled value={estimate.incoterm || ''} onCommit={() => {}} className="bg-muted/20" /></div>
-          <div className="space-y-1"><Label className="text-xs">Trânsito</Label><DebouncedInput disabled value={estimate.transito || ''} onCommit={() => {}} placeholder="7 A 10 DIAS" className="bg-muted/20" /></div>
+          <div className="space-y-1"><Label className="text-xs">Incoterm</Label><DebouncedInput disabled={ro} value={estimate.incoterm || ''} onCommit={(v) => patchEstimate({ incoterm: v } as any)} className="bg-muted/20" /></div>
+          <div className="space-y-1"><Label className="text-xs">Trânsito</Label><DebouncedInput disabled={ro} value={estimate.transito || ''} onCommit={(v) => patchEstimate({ transito: v } as any)} placeholder="7 A 10 DIAS" className="bg-muted/20" /></div>
           <div className="space-y-1">
             <Label className="text-xs">Cia / Carrier</Label>
-            <DebouncedInput 
-              disabled 
-              value={estimate.carrier || ''} 
-              onCommit={() => {}}
+            <DebouncedInput
+              disabled={ro}
+              value={estimate.carrier || ''}
+              onCommit={(v) => patchEstimate({ carrier: v } as any)}
               className="h-10 text-xs font-semibold bg-muted/20"
               placeholder="Preenchimento automático"
             />
           </div>
-          <div className="space-y-1"><Label className="text-xs">Rota - Origem</Label><DebouncedInput disabled value={estimate.rota_origem || ''} onCommit={() => {}} className="bg-muted/20" /></div>
-          <div className="space-y-1"><Label className="text-xs">Rota - Destino</Label><DebouncedInput disabled value={estimate.rota_destino || ''} onCommit={() => {}} className="bg-muted/20" /></div>
+          <div className="space-y-1"><Label className="text-xs">Rota - Origem</Label><DebouncedInput disabled={ro} value={estimate.rota_origem || ''} onCommit={(v) => patchEstimate({ rota_origem: v } as any)} className="bg-muted/20" /></div>
+          <div className="space-y-1"><Label className="text-xs">Rota - Destino</Label><DebouncedInput disabled={ro} value={estimate.rota_destino || ''} onCommit={(v) => patchEstimate({ rota_destino: v } as any)} className="bg-muted/20" /></div>
           <div className="space-y-1">
             <Label className="text-xs flex items-center gap-1">
               Data Fiscal {loadingRates && <RefreshCw className="w-3 h-3 animate-spin text-primary" />}
