@@ -30,6 +30,7 @@ import { useCostEstimate } from '@/hooks/useCostEstimate';
 import { extractCountryFromPort } from '@/lib/countryFlag';
 import { FlagIcon } from '@/components/shared/FlagIcon';
 import { BenchmarkCard } from '@/components/shared/BenchmarkCard';
+import { AutoInsuranceCard } from '@/components/quotes/AutoInsuranceCard';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
@@ -2318,6 +2319,17 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 )}
               </div>
             </div>
+            {/* Seguro Internacional — calculado automaticamente pela fórmula padrão;
+                só entra como taxa real do processo quando o checkbox está marcado. */}
+            {profile?.company_id && (
+              <AutoInsuranceCard
+                quoteId={quoteId}
+                companyId={profile.company_id}
+                quote={quote as any}
+                readOnly={!canEditCharges}
+              />
+            )}
+
             {/* Benchmarks - only in quote mode, not shipment mode */}
             {!shipmentId && profile && form.origin && form.destination && (
               <BenchmarkCard

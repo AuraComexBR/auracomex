@@ -342,3 +342,43 @@ export function calcSiscomexFee(additionCount: number): number {
   }
   return round2(total);
 }
+
+// ===== Seguro Internacional (cálculo automático) =====
+// Fórmula padrão de mercado para embarques de importação:
+//   Verba 1: Custo (VMCV)
+//   Verba 2: Frete Internacional
+//   Verba 3: Despesas (10% sobre Custo + Frete)
+//   Verba 4: Lucro Esperado (10% sobre Custo + Frete + Despesas)
+//   Verba 5: Impostos (II + IPI + PIS + COFINS + ICMS)
+//   Soma das Verbas x Taxa da seguradora (%) = Valor do Seguro (USD)
+export interface SeguroInternacionalInput {
+  custoUsd: number;
+  freteUsd: number;
+  impostosUsd: number;
+  taxaPct: number; // ex.: 0.16 representa 0,16%
+}
+
+export interface SeguroInternacionalBreakdown {
+  custo: number;
+  frete: number;
+  despesas: number;
+  lucroEsperado: number;
+  impostos: number;
+  somaVerbas: number;
+  taxaPct: number;
+  valorSeguro: number;
+}
+
+export function calcSeguroInternacional(input: SeguroInternacionalInput): SeguroInternacionalBreakdown {
+  const custo = Math.max(0, input.custoUsd || 0);
+  const frete = Math.max(0, input.freteUsd || 0);
+  const impostos = Math.max(0, input.impostosUsd || 0);
+  const taxaPct = Math.max(0, input.taxaPct || 0);
+
+  const despesas = round2((custo + frete) * 0.10);
+  const lucroEsperado = round2((custo + frete + despesas) * 0.10);
+  const somaVerbas = round2(custo + frete + despesas + lucroEsperado + impostos);
+  const valorSeguro = round2(somaVerbas * (taxaPct / 100));
+
+  return { custo, frete, despesas, lucroEsperado, impostos, somaVerbas, taxaPct, valorSeguro };
+}

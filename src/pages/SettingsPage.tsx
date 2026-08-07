@@ -57,6 +57,7 @@ export default function SettingsPage() {
     brandPrimary: '#1a1a2e',
     brandSecondary: '#1e40af',
     documentAlertEmail: '',
+    seguroTaxaPctDefault: '0.16',
   });
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
@@ -113,6 +114,7 @@ export default function SettingsPage() {
         brandPrimary: c.brand_primary_color || '#1a1a2e',
         brandSecondary: c.brand_secondary_color || '#1e40af',
         documentAlertEmail: c.document_alert_email || '',
+        seguroTaxaPctDefault: String(c.seguro_taxa_pct_default ?? 0.16),
       });
     }
   }, [company]);
@@ -171,6 +173,7 @@ export default function SettingsPage() {
           brand_primary_color: form.brandPrimary,
           brand_secondary_color: form.brandSecondary,
           document_alert_email: form.documentAlertEmail.trim() || null,
+          seguro_taxa_pct_default: Math.max(0, parseFloat(form.seguroTaxaPctDefault.replace(',', '.')) || 0),
         } as any)
         .eq('id', profile.company_id);
       if (error) throw error;
@@ -501,6 +504,22 @@ export default function SettingsPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Recebe um aviso quando um documento cadastrado num cliente/fornecedor estiver a 7 dias do vencimento.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Taxa padrão do Seguro Internacional (%)</Label>
+                <Input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  className="max-w-[160px]"
+                  placeholder="0.16"
+                  value={form.seguroTaxaPctDefault}
+                  onChange={(e) => setForm({ ...form, seguroTaxaPctDefault: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Usada no cálculo automático do seguro na aba Taxas de todo processo novo (ex.: 0,16 = 0,16%). Pode ser ajustada em cada processo individualmente.
                 </p>
               </div>
 
