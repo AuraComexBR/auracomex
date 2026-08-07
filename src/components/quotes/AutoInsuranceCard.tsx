@@ -53,6 +53,18 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
 
+  // Override local do checkbox — a FONTE DA VERDADE pro gate do efeito de
+  // sincronização abaixo, em vez de `quote?.seguro_auto` vindo do cache do
+  // React Query. Setado de forma síncrona no clique (handleToggle), antes
+  // de qualquer chamada ao banco: garante que o efeito de sincronização
+  // "veja" o desmarque na hora, sem depender do timing de nenhum
+  // refetch/invalidate — eliminando de vez a corrida em que a taxa era
+  // apagada e, no mesmo instante, recriada pelo efeito com o valor antigo
+  // de `auto` ainda em cache. Reseta pra null (segue o servidor) sempre
+  // que o usuário troca de processo.
+  const [localAuto, setLocalAuto] = useState<boolean | null>(null);
+  useEffect(() => { setLocalAuto(null); }, [quoteId]);
+
   // Frete Internacional ainda vem da Estimativa de Custo — Custo vem da carga
   // (abaixo) e Impostos é derivado de Custo+Frete (ver calcSeguroInternacional).
   const { data: basis } = useQuery({
@@ -131,7 +143,9 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
 
   const hasRate = taxaResolved != null;
   const taxaPct = taxaResolved ?? 0;
-  const auto = quote?.seguro_auto !== false; // default true enquanto carrega
+  // `localAuto` manda enquanto não for resetado (troca de processo) — só cai
+  // pro valor vindo do servidor/cache quando ainda não houve clique local.
+  const auto = localAuto !== null ? localAuto : quote?.seguro_auto !== false; // default true enquanto carrega
 
   const breakdown = useMemo(() => calcSeguroInternacional({
     custoUsd: custoCargaUsd,
@@ -208,6 +222,11 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
 
   const handleToggle = async (checked: boolean) => {
     if (readOnly) return;
+    // Seta o override local ANTES de qualquer await: o efeito de sincronização
+    // acima passa a ler `auto=false` já no próximo render, então não existe
+    // mais janela de tempo em que ele possa recriar a(s) taxa(s) recém
+    // apagada(s) com base num `quote?.seguro_auto` do cache ainda desatualizado.
+    setLocalAuto(checked);
     try {
       const { error: qErr } = await (supabase as any).from('quotes').update({ seguro_auto: checked }).eq('id', quoteId);
       if (qErr) throw qErr;
@@ -245,6 +264,7 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
       invalidateAll();
       toast.success(checked ? 'Seguro incluído no processo (compra e venda).' : 'Seguro removido do processo.');
     } catch (err: any) {
+      setLocalAuto(!checked); // reverte o override local em caso de falha
       toast.error(err.message || 'Erro ao atualizar o seguro do processo.');
     }
   };
