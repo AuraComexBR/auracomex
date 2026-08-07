@@ -163,11 +163,15 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
       ['I.P.I.', breakdown.ipi_usd, false, false, true, false, false],
       ['P.I.S.', breakdown.pis_usd, false, false, true, false, false],
       ['COFINS', breakdown.cofins_usd, false, false, true, false, false],
-      ['I.C.M.S.', breakdown.icms_usd, false, false, true, false, false],
-      ['SUBTOTAL', breakdown.subtotal_usd, true, false, true, false, false]
+      ['I.C.M.S.', breakdown.icms_usd, false, false, true, false, false]
     );
-
+    // Taxa Siscomex fica junto com os impostos (logo após I.C.M.S., antes do
+    // SUBTOTAL) — mesmo não entrando na fórmula do subtotal (que é só
+    // II+IPI+PIS+COFINS+ICMS), ela é exibida ao lado deles pra ficar clara a
+    // carga tributária total num bloco só.
     if (taxaSiscomexBrl > 0) list.push(['Taxa Siscomex', taxaSiscomexUsd, false, false, true, false, false]);
+    list.push(['SUBTOTAL', breakdown.subtotal_usd, true, false, true, false, false]);
+
     if (afrmmBrl > 0) list.push(['AFRMM', afrmmUsd, false, false, true, false, false]);
     if (armazenagemBrl > 0) list.push(['Armazenagem no destino', armazenagemUsd, false, false, true, false, false]);
 
