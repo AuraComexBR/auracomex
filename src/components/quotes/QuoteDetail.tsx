@@ -159,6 +159,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     storage_fee_note: '',
     pickup_address: '',
     delivery_address: '',
+    client_reference: '',
   });
   const [cargoItems, setCargoItems] = useState<CargoItem[]>([{ ...emptyCargoItem }]);
   const [saving, setSaving] = useState(false);
@@ -492,6 +493,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     lines.push(`Destino: ${form.destination || '-'}`);
     if (form.delivery_address) lines.push(`Entrega: ${form.delivery_address}`);
     lines.push(`Incoterm: ${(form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : '-'}`);
+    if (form.client_reference) lines.push(`Ref. do Cliente: ${form.client_reference}`);
     lines.push('');
     lines.push('📊 Totais da Carga:');
     if ((mode === 'ocean_fcl' || mode === 'multimodal') && totalContainers > 0) {
@@ -553,6 +555,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         storage_fee_note: (quote as any).storage_fee_note || '',
         pickup_address: (quote as any).pickup_address || '',
         delivery_address: (quote as any).delivery_address || '',
+        client_reference: (quote as any).client_reference || '',
       });
     }
   }, [quote]);
@@ -631,7 +634,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       (form.storage_fee_currency || 'BRL') !== ((quote as any).storage_fee_currency || 'BRL') ||
       (form.storage_fee_note || '') !== ((quote as any).storage_fee_note || '') ||
       (form.pickup_address || '') !== ((quote as any).pickup_address || '') ||
-      (form.delivery_address || '') !== ((quote as any).delivery_address || '');
+      (form.delivery_address || '') !== ((quote as any).delivery_address || '') ||
+      (form.client_reference || '') !== ((quote as any).client_reference || '');
 
     if (formChanged) return true;
 
@@ -948,6 +952,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         { field: 'status', old: (quote as any)?.status, next: form.status },
         { field: 'pickup_address', old: (quote as any)?.pickup_address, next: form.pickup_address || null },
         { field: 'delivery_address', old: (quote as any)?.delivery_address, next: form.delivery_address || null },
+        { field: 'client_reference', old: (quote as any)?.client_reference, next: form.client_reference || null },
       ];
       const generalChanges = generalFieldChecks
         .filter((c) => String(c.old ?? '') !== String(c.next ?? ''))
@@ -979,6 +984,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         storage_fee_note: form.storage_fee_note || null,
         pickup_address: form.pickup_address || null,
         delivery_address: form.delivery_address || null,
+        client_reference: form.client_reference || null,
       } as any).eq('id', quoteId);
       if (error) throw error;
 
@@ -1774,7 +1780,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               const modeLabel = modeShortLabels[form.transport_mode] || form.transport_mode;
               const clientFirstName = (clients.find((c: any) => c.id === form.client_id)?.name || '-').split(' ')[0];
               const routeText = `${form.origin || '?'}/${form.destination || '?'}`;
-              const descText = [quote.quote_number, modeLabel, clientFirstName, routeText, form.incoterm || null].filter(Boolean).join(' - ');
+              const descText = [
+                quote.quote_number,
+                modeLabel,
+                clientFirstName,
+                routeText,
+                form.incoterm || null,
+                form.client_reference ? `Ref. Cliente: ${form.client_reference}` : null,
+              ].filter(Boolean).join(' - ');
               navigator.clipboard.writeText(descText);
               toast.success('Texto copiado');
             }}
@@ -1787,6 +1800,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             {form.destination || '?'}
             {form.incoterm ? ` - ${form.incoterm}` : ''}
           </span>
+          <Input
+            value={form.client_reference}
+            onChange={(e) => setForm({ ...form, client_reference: e.target.value })}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Ref. do Cliente"
+            title="Referência do cliente (opcional) — entra na cópia do texto"
+            className="h-6 w-32 shrink-0 text-xs px-2"
+          />
         </div>
         {!isShipmentMode && form.status === 'converted' && (
           <div className="flex items-center gap-1.5 text-green-600 font-semibold text-sm shrink-0">
