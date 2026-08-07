@@ -45,6 +45,12 @@ const sheet: React.CSSProperties = {
   position: 'relative',
 };
 const sheetLast: React.CSSProperties = { ...sheet, pageBreakAfter: 'auto', breakAfter: 'auto' };
+// Numerário tem bem mais conteúdo empilhado numa folha só (cabeçalho da empresa +
+// banner + grid de dados do embarque + tabela de custos + box de valores +
+// dados bancários) do que a Estimativa (que reparte por item), e por pouco
+// estourava pra uma 2ª página. Margens levemente menores recuperam o espaço
+// sem cortar nada.
+const sheetNumerario: React.CSSProperties = { ...sheetLast, padding: '8mm 14mm' };
 const avoidBreak: React.CSSProperties = { pageBreakInside: 'avoid', breakInside: 'avoid' };
 
 export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expenses, breakdown, hasInsurance = true, mode = 'estimativa' }: Props) {
@@ -221,9 +227,9 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
 
         <div ref={ref} style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", color: BRAND, background: '#e5e5e5' }}>
         {/* ============= FOLHA 1: Resumo ============= */}
-        <section className="pdf-avoid-break" style={isNumerario || items.length === 0 ? sheetLast : sheet}>
+        <section className="pdf-avoid-break" style={isNumerario ? sheetNumerario : (items.length === 0 ? sheetLast : sheet)}>
           {/* Header Empresa */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: 10, marginBottom: 15 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: isNumerario ? 6 : 10, marginBottom: isNumerario ? 10 : 15 }}>
             {company?.logo_url ? (
               <img src={company.logo_url} alt={company?.name || 'Logo'} crossOrigin="anonymous" style={{ maxHeight: 36, maxWidth: 180, objectFit: 'contain' }} />
             ) : (
@@ -239,7 +245,7 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
           </div>
 
           {/* Header Estimativa */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', background: BRAND, color: '#fff', padding: '10px 15px', borderRadius: 4, marginBottom: 15 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', background: BRAND, color: '#fff', padding: isNumerario ? '8px 15px' : '10px 15px', borderRadius: 4, marginBottom: isNumerario ? 10 : 15 }}>
             <div style={{ fontSize: 10 }}>
               <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>
                 {isNumerario ? 'NUMERÁRIO' : 'ESTIMATIVA DE CUSTOS DE IMPORTAÇÃO'}
@@ -287,16 +293,16 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
               ['TAXA DE CÂMBIO FISCAL', `R$ ${fmtBRL(rate)}`, 'TAXA CÂMBIO AGÊNCIA', rateAgencia ? `R$ ${fmtBRL(rateAgencia)}` : '-'],
             ];
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginBottom: 15, border: '1px solid #ccc', width: '100%' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginBottom: 10, border: '1px solid #ccc', width: '100%' }}>
                 {pairs.map(([l1, v1, l2, v2], idx) => (
                   <React.Fragment key={idx}>
                     <div style={{ display: 'flex', minWidth: 0, borderBottom: idx === pairs.length - 1 ? 'none' : '1px solid #ccc', borderRight: '1px solid #ccc' }}>
-                      <div style={{ fontSize: 7.5, fontWeight: 700, color: '#fff', background: BRAND, padding: '5px 6px', width: '38%', flexShrink: 0, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l1}</div>
-                      <div style={{ fontSize: 8.5, padding: '5px 6px', display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v1}</div>
+                      <div style={{ fontSize: 7.5, fontWeight: 700, color: '#fff', background: BRAND, padding: '3px 6px', width: '38%', flexShrink: 0, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l1}</div>
+                      <div style={{ fontSize: 8.5, padding: '3px 6px', display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v1}</div>
                     </div>
                     <div style={{ display: 'flex', minWidth: 0, borderBottom: idx === pairs.length - 1 ? 'none' : '1px solid #ccc' }}>
-                      <div style={{ fontSize: 7.5, fontWeight: 700, color: '#fff', background: BRAND, padding: '5px 6px', width: '38%', flexShrink: 0, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l2}</div>
-                      <div style={{ fontSize: 8.5, padding: '5px 6px', display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v2}</div>
+                      <div style={{ fontSize: 7.5, fontWeight: 700, color: '#fff', background: BRAND, padding: '3px 6px', width: '38%', flexShrink: 0, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l2}</div>
+                      <div style={{ fontSize: 8.5, padding: '3px 6px', display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v2}</div>
                     </div>
                   </React.Fragment>
                 ))}
@@ -319,7 +325,7 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
             </div>
           )}
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: isNumerario ? 10 : 20 }}>
             <thead>
               <tr>
                 <th style={{ ...th, background: BRAND, color: '#fff' }}>DESCRIÇÃO DOS CUSTOS</th>
@@ -361,27 +367,27 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
               e outras despesas não-Prepaid. NÃO inclui o valor da mercadoria
               (pago direto ao fornecedor) nem taxas Prepaid (já pagas na origem). */}
           {isNumerario && (
-            <div style={{ border: `2px solid ${BRAND}`, marginBottom: 15 }}>
-              <div style={{ background: BRAND, color: '#fff', padding: '6px 12px', fontSize: 10, fontWeight: 700 }}>
+            <div style={{ border: `2px solid ${BRAND}`, marginBottom: 10 }}>
+              <div style={{ background: BRAND, color: '#fff', padding: '4px 12px', fontSize: 10, fontWeight: 700 }}>
                 VALORES PARA DEPÓSITO (NUMERÁRIO)
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
                   {numerarioCategorias.map(([label, val]) => (
                     <tr key={label}>
-                      <td style={{ ...td, fontSize: 9.5 }}>{label}</td>
-                      <td style={{ ...tdR, fontSize: 9.5 }}>R$ {fmtBRL(val * rate)}</td>
+                      <td style={{ ...td, fontSize: 9.5, padding: '3px 8px' }}>{label}</td>
+                      <td style={{ ...tdR, fontSize: 9.5, padding: '3px 8px' }}>R$ {fmtBRL(val * rate)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${BRAND}` }}>
+              <div style={{ padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${BRAND}` }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: BRAND }}>TOTAL DO NUMERÁRIO A DEPOSITAR *</div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: BRAND }}>R$ {fmtBRL(numerarioTotalUsd * rate)}</div>
                 </div>
               </div>
-              <div style={{ padding: '0 12px 8px', fontSize: 8, color: '#888', fontStyle: 'italic' }}>
+              <div style={{ padding: '0 12px 6px', fontSize: 8, color: '#888', fontStyle: 'italic' }}>
                 * Podem ocorrer divergências, que serão apresentadas no momento da prestação de contas.
               </div>
             </div>
@@ -390,7 +396,7 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
           {/* Numerário: dados bancários da empresa pra pagamento, no lugar
               das folhas por item (que só existem na Estimativa completa). */}
           {isNumerario && bank && (
-            <div style={{ border: `2px solid ${BRAND}`, padding: 12, marginTop: 10 }}>
+            <div style={{ border: `2px solid ${BRAND}`, padding: '8px 12px', marginTop: 0 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: BRAND, marginBottom: 6 }}>DADOS BANCÁRIOS PARA PAGAMENTO</div>
               <table style={{ width: '100%', fontSize: 10 }}>
                 <tbody>
