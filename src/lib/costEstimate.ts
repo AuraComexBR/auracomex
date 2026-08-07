@@ -329,6 +329,26 @@ const SISCOMEX_ADDITION_TIERS: Array<{ upTo: number; rate: number }> = [
   { upTo: Infinity, rate: 3.86 },
 ];
 
+/**
+ * Cada "adição" no Siscomex/DI/DUIMP é uma classificação fiscal (NCM)
+ * distinta na declaração — não uma linha de item. Se dois ou mais itens da
+ * estimativa compartilham o mesmo NCM, eles contam como UMA adição só, não
+ * uma por item. Itens sem NCM preenchido não têm como ser agrupados, então
+ * cada um conta como sua própria adição (mesma contagem de antes pra esses casos).
+ */
+export function countSiscomexAdditions(items: Array<{ ncm?: string | null }>): number {
+  const seen = new Set<string>();
+  let count = 0;
+  for (const it of items) {
+    const ncm = (it.ncm || '').trim().toUpperCase();
+    if (!ncm) { count += 1; continue; }
+    if (seen.has(ncm)) continue;
+    seen.add(ncm);
+    count += 1;
+  }
+  return count;
+}
+
 export function calcSiscomexFee(additionCount: number): number {
   const n = Math.max(0, Math.floor(additionCount || 0));
   if (n === 0) return 0;

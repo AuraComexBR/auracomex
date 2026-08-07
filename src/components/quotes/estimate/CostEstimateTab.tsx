@@ -14,7 +14,7 @@ import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAuditEvent } from '@/lib/auditLog';
 import { useCostEstimate, computeBreakdown, EstimateItemRow, EstimateExpenseRow, EstimateRow, syncEstimateFromCharges, syncEstimateItemsFromQuote } from '@/hooks/useCostEstimate';
-import { pct, toBRL, calcSiscomexFee } from '@/lib/costEstimate';
+import { pct, toBRL, calcSiscomexFee, countSiscomexAdditions } from '@/lib/costEstimate';
 import { toast } from 'sonner';
 import { EstimatePdfDialog } from './EstimatePdfDialog';
 import { DebouncedInput } from './DebouncedInput';
@@ -567,16 +567,19 @@ export function CostEstimateTab({
   }, []);
 
   // Taxa Siscomex automática: com "Auto" ligado, recalcula sozinha sempre
-  // que o número de itens (adições) muda — sem isso, adicionar/remover um
-  // item deixaria o valor desatualizado até o usuário reabrir o toggle.
+  // que o número de adições (NCMs distintos, não linhas de item) muda — sem
+  // isso, adicionar/remover um item ou editar um NCM deixaria o valor
+  // desatualizado até o usuário reabrir o toggle. Itens com o mesmo NCM
+  // contam como UMA adição só.
+  const siscomexAdditionCount = useMemo(() => countSiscomexAdditions(draftItems), [draftItems]);
   useEffect(() => {
     if (!draftEstimate || !(draftEstimate as any).taxa_siscomex_auto) return;
-    const computed = calcSiscomexFee(draftItems.length);
+    const computed = calcSiscomexFee(siscomexAdditionCount);
     if (Number((draftEstimate as any).taxa_siscomex_brl || 0) !== computed) {
       setDraftEstimate(prev => (prev ? ({ ...prev, taxa_siscomex_brl: computed } as any) : prev));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(draftEstimate as any)?.taxa_siscomex_auto, draftItems.length]);
+  }, [(draftEstimate as any)?.taxa_siscomex_auto, siscomexAdditionCount]);
 
   // Atalho Ctrl/Cmd + S
   useEffect(() => {
@@ -889,7 +892,7 @@ export function CostEstimateTab({
                 step="0.01"
                 value={
                   (estimate as any).taxa_siscomex_auto
-                    ? calcSiscomexFee(items.length)
+                    ? calcSiscomexFee(countSiscomexAdditions(items))
                     : ((estimate as any).taxa_siscomex_brl || 0)
                 }
                 onCommit={(v) => patchEstimate({ taxa_siscomex_brl: v } as any)}
@@ -902,10 +905,10 @@ export function CostEstimateTab({
                 onClick={() => {
                   const next = !(estimate as any).taxa_siscomex_auto;
                   const patch: any = { taxa_siscomex_auto: next };
-                  if (next) patch.taxa_siscomex_brl = calcSiscomexFee(items.length);
+                  if (next) patch.taxa_siscomex_brl = calcSiscomexFee(countSiscomexAdditions(items));
                   patchEstimate(patch);
                 }}
-                title="Auto = R$ 115,67 (DI/Duimp) + valor por adição de mercadoria (item), por faixa"
+                title="Auto = R$ 115,67 (DI/Duimp) + valor por adição (NCM distinto), por faixa — itens com o mesmo NCM contam como uma adição só"
                 className="h-9 px-2 text-[10px] shrink-0"
               >
                 Auto
