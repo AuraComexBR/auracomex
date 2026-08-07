@@ -36,6 +36,8 @@ export interface EstimateRow {
   /** Taxa de câmbio da agência de câmbio (paga de fato pelo cliente),
    *  diferente da taxa fiscal (usd_brl) usada nos cálculos de impostos. */
   usd_brl_agencia?: number | null;
+  /** Auto = usd_brl_agencia calculado como usd_brl + clients.exchange_spread_pct do cliente. */
+  usd_brl_agencia_auto?: boolean | null;
 }
 
 export interface EstimateItemRow {

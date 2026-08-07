@@ -79,6 +79,7 @@ export default function Registrations() {
     partner_category: '',
     storage_rebate_percent: '',
     insurance_rate_pct: '',
+    exchange_spread_pct: '',
   });
 
   function getClientTrackingLink(taxId: string | null) {
@@ -203,6 +204,9 @@ export default function Registrations() {
         insurance_rate_pct: form.partner_category === 'insurance' && form.insurance_rate_pct
           ? parseFloat(form.insurance_rate_pct)
           : null,
+        exchange_spread_pct: form.type === 'client' && form.exchange_spread_pct
+          ? parseFloat(form.exchange_spread_pct)
+          : null,
       };
 
       if (editingId) {
@@ -273,6 +277,7 @@ export default function Registrations() {
       partner_category: client.partner_category || '',
       storage_rebate_percent: client.storage_rebate_percent != null ? String(client.storage_rebate_percent) : '',
       insurance_rate_pct: client.insurance_rate_pct != null ? String(client.insurance_rate_pct) : '',
+      exchange_spread_pct: (client as any).exchange_spread_pct != null ? String((client as any).exchange_spread_pct) : '',
     });
     setEditingId(client.id);
     setShowAdd(true);
@@ -295,6 +300,7 @@ export default function Registrations() {
       partner_category: '',
       storage_rebate_percent: '',
       insurance_rate_pct: '',
+      exchange_spread_pct: '',
     });
   }
 
@@ -815,6 +821,28 @@ export default function Registrations() {
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
                 </div>
+              </div>
+            )}
+
+            {/* Spread cambial - só para clientes */}
+            {form.type === 'client' && (
+              <div className="space-y-2">
+                <Label>Spread Cambial (%)</Label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0"
+                    value={form.exchange_spread_pct}
+                    onChange={(e) => setForm({ ...form, exchange_spread_pct: e.target.value })}
+                    className="pr-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Percentual somado sobre a taxa de câmbio fiscal para calcular a Taxa Câmbio Agência na Estimativa deste cliente.
+                </p>
               </div>
             )}
 

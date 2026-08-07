@@ -135,6 +135,24 @@ export function CostEstimateTab({
     enabled: !!companyId,
   });
 
+  // Cliente da cotação — usado pro spread cambial (Taxa Câmbio Agência = Câmbio
+  // fiscal + spread% do cadastro do cliente).
+  const { data: estimateClient } = useQuery({
+    queryKey: ['estimate-client-spread', quote?.client_id],
+    queryFn: async () => {
+      if (!quote?.client_id) return null;
+      const { data, error } = await supabase
+        .from('clients')
+        .select('exchange_spread_pct')
+        .eq('id', quote.client_id)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!quote?.client_id,
+  });
+  const clientExchangeSpreadPct = Number((estimateClient as any)?.exchange_spread_pct || 0);
+
   const handleNcmLookup = async (itemId: string, ncm: string) => {
     if (!ncm || ncm.length < 4) {
       toast.error('Informe um NCM válido');
@@ -394,7 +412,7 @@ export function CostEstimateTab({
         'data_fiscal', 'usd_brl', 'eur_brl', 'rateio_metodo',
         'acrescimos_usd', 'deducoes_usd', 'frete_intl_usd', 'seguro_intl_usd', 'category',
         'taxa_siscomex_brl', 'taxa_siscomex_auto', 'afrmm_brl', 'afrmm_auto',
-        'pais_origem', 'armazem', 'peso_liquido_kg', 'cbm_total', 'usd_brl_agencia',
+        'pais_origem', 'armazem', 'peso_liquido_kg', 'cbm_total', 'usd_brl_agencia', 'usd_brl_agencia_auto',
       ];
       editableEstKeys.forEach(k => {
         const a = (draftEstimate as any)[k];
@@ -953,10 +971,41 @@ export function CostEstimateTab({
             <Label className="text-xs flex items-center gap-1">
               Taxa Câmbio Agência
               <TooltipProvider><Tooltip><TooltipTrigger asChild><Info className="w-3 h-3 text-muted-foreground" /></TooltipTrigger>
-                <TooltipContent className="max-w-xs">Taxa de câmbio efetivamente paga pelo cliente na agência de câmbio, usada no cabeçalho do PDF de Numerário. Diferente da Câmbio USD/BRL (taxa fiscal usada nos cálculos de impostos).</TooltipContent>
+                <TooltipContent className="max-w-xs">Taxa de câmbio efetivamente paga pelo cliente na agência de câmbio, usada no cabeçalho do PDF de Numerário. Auto = Câmbio USD/BRL (fiscal) + Spread Cambial (%) cadastrado no cliente.</TooltipContent>
               </Tooltip></TooltipProvider>
             </Label>
-            <DebouncedInput disabled={ro} type="number" step="0.0001" value={(estimate as any).usd_brl_agencia || 0} onCommit={(v) => patchEstimate({ usd_brl_agencia: v } as any)} />
+            <div className="flex gap-1">
+              <DebouncedInput
+                disabled={ro || !!(estimate as any).usd_brl_agencia_auto}
+                type="number"
+                step="0.0001"
+                value={
+                  (estimate as any).usd_brl_agencia_auto
+                    ? Number(((estimate.usd_brl || 0) * (1 + clientExchangeSpreadPct / 100)).toFixed(4))
+                    : ((estimate as any).usd_brl_agencia || 0)
+                }
+                onCommit={(v) => patchEstimate({ usd_brl_agencia: v } as any)}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant={(estimate as any).usd_brl_agencia_auto ? 'default' : 'outline'}
+                disabled={ro}
+                onClick={() => {
+                  const next = !(estimate as any).usd_brl_agencia_auto;
+                  const patch: any = { usd_brl_agencia_auto: next };
+                  if (next) patch.usd_brl_agencia = Number(((estimate.usd_brl || 0) * (1 + clientExchangeSpreadPct / 100)).toFixed(4));
+                  patchEstimate(patch);
+                }}
+                title="Auto = Câmbio USD/BRL fiscal + Spread Cambial (%) do cliente"
+                className="h-9 px-2 text-[10px] shrink-0"
+              >
+                Auto
+              </Button>
+            </div>
+            {(estimate as any).usd_brl_agencia_auto && !clientExchangeSpreadPct && (
+              <p className="text-[10px] text-amber-600">Cliente sem Spread Cambial cadastrado (0%). Configure em Cadastros &gt; Clientes.</p>
+            )}
           </div>
         </CardContent>
       </Card>
