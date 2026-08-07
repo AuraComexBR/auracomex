@@ -176,14 +176,19 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
       const { error: qErr } = await (supabase as any).from('quotes').update({ seguro_auto: checked }).eq('id', quoteId);
       if (qErr) throw qErr;
 
-      if (!checked && autoCharge) {
-        const { error: delErr } = await (supabase as any).from('quote_charges').delete().eq('id', autoCharge.id);
+      if (!checked) {
+        // Apaga pela combinação quote_id + is_auto_insurance direto no banco
+        // — NÃO depende do `autoCharge` já ter carregado no cache local.
+        // Antes, se o usuário desmarcasse antes dessa consulta terminar (ou
+        // em qualquer situação em que autoCharge estivesse desatualizado),
+        // `!checked && autoCharge` dava falso e a taxa ficava órfã: o
+        // processo marcado como "sem seguro" mas a taxa continuava cobrada.
+        const { error: delErr } = await (supabase as any)
+          .from('quote_charges')
+          .delete()
+          .eq('quote_id', quoteId)
+          .eq('is_auto_insurance', true);
         if (delErr) throw delErr;
-        // Atualiza o cache na hora — sem isso, o refetch de ['quote-detail']
-        // (seguro_auto=false) e o de ['quote-charge-auto-insurance'] (null)
-        // podem chegar em momentos diferentes; se o efeito de sincronização
-        // rodar entre um e outro com auto ainda "true" (stale) e a taxa já
-        // null, ele recria a taxa sozinho — o checkbox parecia "não travar".
         qc.setQueryData(['quote-charge-auto-insurance', quoteId], null);
       }
       // Reflete o novo seguro_auto no cache do quote-detail imediatamente,
