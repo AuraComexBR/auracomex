@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useCallback, useState } from 'react';
+import { DOC_TYPE_LABELS } from '@/lib/documentCategory';
 
 // Valor especial do Select que abre o campo de texto para digitar uma
 // categoria nova (não confundir com o document_type "other" salvo no banco).
@@ -349,14 +350,3 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
     </Card>
   );
 }
-
-const DOC_TYPE_LABELS: Record<string, string> = {
-  bl: 'BL',
-  invoice: 'Invoice',
-  packing_list: 'Packing List',
-  certificate_origin: 'Certificado de Origem',
-  customs_declaration: 'Declaração Aduaneira',
-  insurance: 'Seguro',
-  other: 'Outro',
-  debit_note_supplier: 'DN Fornecedor',
-};

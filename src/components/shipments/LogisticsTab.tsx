@@ -19,6 +19,9 @@ import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { getCourierTrackingUrl } from '@/lib/courierTracking';
+import { CARRIER_LABEL_BY_MODE } from '@/lib/carrierLabel';
+import { STATUS_CATEGORY_OPTIONS, DEFAULT_STATUS_OPTIONS, type StatusCategory } from '@/lib/shipmentStatusCategory';
+import { parseContainerNumbers } from '@/lib/containerNumbers';
 
 interface Props {
   shipment: any;
@@ -44,29 +47,12 @@ const INCOTERMS_BY_MODE: Record<string, string[]> = {
 // "mudança" que não existe e trava o auto-save num loop infinito.
 const DATE_FIELDS = new Set(['etd', 'eta', 'atd', 'ata']);
 
-// Rótulo do "Carrier" muda de acordo com o modal — o dado salvo é o mesmo
-// campo (carrier), só muda como ele é chamado na tela.
-const CARRIER_LABEL_BY_MODE: Record<string, string> = {
-  ocean_fcl: 'Armador',
-  ocean_lcl: 'Co-Loader',
-  air: 'Cia Aérea',
-  road: 'Transportadora',
-  multimodal: 'Armador',
-};
-
 // Ordem alfabética por padrão (pedido do usuário) — o usuário ainda pode
 // reordenar arrastando na tela de Gerenciar Status, ou clicar em "Ordenar
 // A-Z" pra voltar pra essa ordem a qualquer momento.
-const DEFAULT_STATUSES = [
-  { label: 'Aprovado', value: 'approved', position: 0 },
-  { label: 'Atracou', value: 'arrived', position: 1 },
-  { label: 'Cancelado', value: 'cancelled', position: 2 },
-  { label: 'Coletado', value: 'collected_at_origin', position: 3 },
-  { label: 'Docs', value: 'docs_at_origin', position: 4 },
-  { label: 'Entregue', value: 'delivered', position: 5 },
-  { label: 'Reservado', value: 'booked', position: 6 },
-  { label: 'Trânsito', value: 'in_transit', position: 7 },
-];
+// Category (booking/origin/transit/customs/delivered/cancelled) orienta a
+// linha do tempo genérica do tracking do cliente — ver lib/shipmentStatusCategory.ts.
+const DEFAULT_STATUSES = DEFAULT_STATUS_OPTIONS;
 
 export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   const { t } = useLanguage();
@@ -84,7 +70,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         .eq('company_id', profile?.company_id)
         .order('position');
       if (error) throw error;
-      return data as { id: string; label: string; value: string; position: number }[];
+      return data as { id: string; label: string; value: string; position: number; category: string }[];
     },
     enabled: !!profile?.company_id,
   });
@@ -95,6 +81,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   const [showStatusManager, setShowStatusManager] = useState(false);
   const [newStatusLabel, setNewStatusLabel] = useState('');
   const [newStatusValue, setNewStatusValue] = useState('');
+  const [newStatusCategory, setNewStatusCategory] = useState<StatusCategory>('transit');
   const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   async function seedDefaults() {
@@ -105,6 +92,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         label: s.label,
         value: s.value,
         position: s.position,
+        category: s.category,
       }))
     );
     queryClient.invalidateQueries({ queryKey: ['shipment-status-options'] });
@@ -139,6 +127,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
       label: newStatusLabel.trim(),
       value,
       position: nextPosition,
+      category: newStatusCategory,
     });
     if (error) {
       toast.error(error.message);
@@ -147,6 +136,20 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     toast.success('Status adicionado');
     setNewStatusLabel('');
     setNewStatusValue('');
+    setNewStatusCategory('transit');
+    queryClient.invalidateQueries({ queryKey: ['shipment-status-options'] });
+  }
+
+  // Categoria orienta em qual marco da linha do tempo (Reservado/Origem/
+  // Trânsito/Desembaraço/Entregue) o status cai no tracking do cliente.
+  async function handleUpdateCategory(id: string, category: StatusCategory) {
+    const { error } = await (supabase.from('shipment_status_options') as any)
+      .update({ category })
+      .eq('id', id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: ['shipment-status-options'] });
   }
 
@@ -274,16 +277,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
   const isFCL = shipment.transport_mode === 'ocean_fcl' || shipment.transport_mode === 'multimodal';
   const containerCount = isFCL ? Math.max(quoteItems.length, 1) : 0;
-
-  // Parse existing container_number as JSON array or comma-separated
-  const parseContainerNumbers = (raw: string | null): string[] => {
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {}
-    return raw.split(',').map(s => s.trim()).filter(Boolean);
-  };
 
   const [form, setForm] = useState({
     origin_city: shipment.origin_city || '',
@@ -721,6 +714,9 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
                   <ArrowDownAZ className="w-3.5 h-3.5 mr-1.5" /> Ordenar A-Z
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                A categoria define em qual marco da linha do tempo (Reservado / Origem / Trânsito / Desembaraço / Entregue) o status aparece no tracking do cliente.
+              </p>
               <div className="space-y-1">
                 {statusOptions.map((s, idx) => (
                   <div
@@ -731,19 +727,37 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
                     onDrop={() => { if (dragIdx !== null) { handleReorder(dragIdx, idx); setDragIdx(null); } }}
                     onDragEnd={() => setDragIdx(null)}
                     className={cn(
-                      "flex items-center justify-between py-1.5 px-2 rounded bg-secondary/50 cursor-grab active:cursor-grabbing transition-opacity",
+                      "flex items-center justify-between py-1.5 px-2 rounded bg-secondary/50 cursor-grab active:cursor-grabbing transition-opacity gap-2",
                       dragIdx === idx && "opacity-50"
                     )}
                   >
-                    <div className="flex items-center gap-2">
-                      <GripVertical className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-sm">{s.label} <span className="text-xs text-muted-foreground">({s.value})</span></span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <GripVertical className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-sm truncate">{s.label} <span className="text-xs text-muted-foreground">({s.value})</span></span>
                     </div>
-                    {dbStatusOptions.length > 0 && 'id' in s && (
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteStatus((s as any).id)}>
-                        <Trash2 className="w-3 h-3 text-destructive" />
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {dbStatusOptions.length > 0 && 'id' in s ? (
+                        <Select value={(s as any).category || 'transit'} onValueChange={(v) => handleUpdateCategory((s as any).id, v as StatusCategory)}>
+                          <SelectTrigger className="h-7 w-[130px] text-xs cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {STATUS_CATEGORY_OPTIONS.map((c) => (
+                              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-xs text-muted-foreground w-[130px] text-right pr-1">
+                          {STATUS_CATEGORY_OPTIONS.find((c) => c.value === (s as any).category)?.label || '—'}
+                        </span>
+                      )}
+                      {dbStatusOptions.length > 0 && 'id' in s && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteStatus((s as any).id)}>
+                          <Trash2 className="w-3 h-3 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -754,6 +768,14 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
                   onChange={e => setNewStatusLabel(e.target.value)}
                   className="flex-1"
                 />
+                <Select value={newStatusCategory} onValueChange={(v) => setNewStatusCategory(v as StatusCategory)}>
+                  <SelectTrigger className="w-[130px] text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {STATUS_CATEGORY_OPTIONS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button onClick={handleAddStatus} disabled={!newStatusLabel.trim()}>
                   <Plus className="w-4 h-4 mr-1" /> Adicionar
                 </Button>

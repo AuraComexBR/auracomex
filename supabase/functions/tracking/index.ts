@@ -116,16 +116,64 @@ Deno.serve(async (req) => {
 
       let query = adminClient
         .from("shipments")
-        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, next_update, courier_provider, courier_tracking_number")
+        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, transshipment, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, next_update, courier_provider, courier_tracking_number, company_id")
         .eq("client_id", client_id);
 
       query = filter === "active"
         ? query.not("status", "in", `(${excludedFromActive.join(",")})`)
         : query.in("status", finishedStatuses);
 
-      const { data } = await query.order("created_at", { ascending: false });
+      const { data: shipmentsData } = await query.order("created_at", { ascending: false });
+      const shipments = shipmentsData || [];
 
-      return jsonResponse({ shipments: data || [] });
+      // Categoria de cada status (fixo ou personalizado) da empresa — orienta
+      // a linha do tempo genérica de 5 marcos no front (Reservado/Origem/
+      // Trânsito/Desembaraço/Entregue), já que não dá mais pra assumir uma
+      // lista fixa de status.
+      const companyId = shipments[0]?.company_id;
+      let statusOptions: any[] = [];
+      if (companyId) {
+        const { data: opts } = await adminClient
+          .from("shipment_status_options")
+          .select("value, label, category")
+          .eq("company_id", companyId)
+          .order("position");
+        statusOptions = opts || [];
+      }
+
+      // Referência do cliente vive na cotação de origem (quotes.client_reference),
+      // não no embarque — busca em lote pelos shipment_id.
+      const shipmentIds = shipments.map((s: any) => s.id);
+      const refMap = new Map<string, string>();
+      if (shipmentIds.length > 0) {
+        const { data: qs } = await adminClient
+          .from("quotes")
+          .select("shipment_id, client_reference")
+          .in("shipment_id", shipmentIds);
+        for (const q of qs || []) {
+          if (q.shipment_id && q.client_reference) refMap.set(q.shipment_id, q.client_reference);
+        }
+      }
+
+      // Transbordo é salvo só como código de porto — resolve o nome pra
+      // exibição em lote pelos códigos usados.
+      const transshipCodes = [...new Set(shipments.map((s: any) => s.transshipment).filter(Boolean))];
+      const portMap = new Map<string, { code: string; name: string; city: string | null; country_code: string }>();
+      if (transshipCodes.length > 0) {
+        const { data: ports } = await adminClient
+          .from("ports")
+          .select("code, name, city, country_code")
+          .in("code", transshipCodes);
+        for (const p of ports || []) portMap.set(p.code, p);
+      }
+
+      const enrichedShipments = shipments.map((s: any) => ({
+        ...s,
+        client_reference: refMap.get(s.id) || null,
+        transshipment_info: s.transshipment ? (portMap.get(s.transshipment) || { code: s.transshipment, name: s.transshipment, city: null, country_code: "" }) : null,
+      }));
+
+      return jsonResponse({ shipments: enrichedShipments, status_options: statusOptions });
     }
 
     if (action === "quotes") {
@@ -166,7 +214,7 @@ Deno.serve(async (req) => {
 
         const { data } = await adminClient
           .from("documents")
-          .select("id, name, file_url, shipment_id, quote_id")
+          .select("id, name, file_url, shipment_id, quote_id, document_type, custom_category")
           .or(orParts.join(","))
           .eq("visible_tracking", true);
 
@@ -178,7 +226,7 @@ Deno.serve(async (req) => {
       } else if (quote_ids && quote_ids.length > 0) {
         const { data } = await adminClient
           .from("documents")
-          .select("id, name, file_url, shipment_id, quote_id")
+          .select("id, name, file_url, shipment_id, quote_id, document_type, custom_category")
           .in("quote_id", quote_ids)
           .eq("visible_tracking", true);
         docs = data || [];

@@ -7,23 +7,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ModeIcon } from '@/components/shared/ModeIcon';
-import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink } from 'lucide-react';
+import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusTimeline } from '@/components/tracking/StatusTimeline';
 import { buildTimeline } from '@/lib/shipmentTimeline';
 import { FlagIcon } from '@/components/shared/FlagIcon';
 import { usePlatformSettings } from '@/hooks/usePlatformSettings';
-import { buildCourierTrackingUrl } from '@/lib/utils';
+import { buildCourierTrackingUrl, cn } from '@/lib/utils';
+import { CARRIER_LABEL_BY_MODE } from '@/lib/carrierLabel';
+import { STATUS_CATEGORY_COLORS, DEFAULT_STATUS_OPTIONS, resolveStatusCategory, type StatusOption } from '@/lib/shipmentStatusCategory';
+import { parseContainerNumbers } from '@/lib/containerNumbers';
+import { DOC_TYPE_LABELS } from '@/lib/documentCategory';
 
-const statusLabels: Record<string, string> = {
-  approved: 'Aprovado',
-  booked: 'Reservado',
-  collected_at_origin: 'Coletado',
-  docs_at_origin: 'Docs',
-  in_transit: 'Trânsito',
-  arrived: 'Chegou',
-  delivered: 'Entregue',
-  cancelled: 'Cancelado',
+const quoteStatusLabels: Record<string, string> = {
   draft: 'Rascunho',
   quoting: 'Cotando',
   sent: 'Enviada',
@@ -31,15 +27,7 @@ const statusLabels: Record<string, string> = {
   converted: 'Convertida',
 };
 
-const statusColors: Record<string, string> = {
-  approved: 'bg-emerald-500/10 text-emerald-600',
-  booked: 'bg-indigo-500/10 text-indigo-600',
-  collected_at_origin: 'bg-indigo-500/10 text-indigo-600',
-  docs_at_origin: 'bg-indigo-500/10 text-indigo-600',
-  in_transit: 'bg-amber-500/10 text-amber-600',
-  arrived: 'bg-emerald-500/10 text-emerald-600',
-  delivered: 'bg-green-500/10 text-green-600',
-  cancelled: 'bg-red-500/10 text-red-600',
+const quoteStatusColors: Record<string, string> = {
   draft: 'bg-gray-500/10 text-gray-600',
   quoting: 'bg-yellow-500/10 text-yellow-600',
   sent: 'bg-blue-500/10 text-blue-600',
@@ -81,15 +69,18 @@ export default function Tracking() {
     retry: false,
   });
 
-  // Shipments query via edge function
-  const { data: shipments = [] } = useQuery({
+  // Shipments query via edge function — vem junto a categoria de cada status
+  // da empresa (statusOptions), usada pra orientar a linha do tempo genérica.
+  const { data: shipmentsResult } = useQuery({
     queryKey: ['tracking-shipments', clientId, filter],
     queryFn: async () => {
       const result = await callTracking({ action: 'shipments', client_id: clientId, filter });
-      return result.shipments || [];
+      return { shipments: result.shipments || [], statusOptions: (result.status_options || []) as StatusOption[] };
     },
     enabled: !!clientId && authenticated && filter !== 'quotes',
   });
+  const shipments = shipmentsResult?.shipments ?? [];
+  const statusOptions = shipmentsResult?.statusOptions?.length ? shipmentsResult.statusOptions : DEFAULT_STATUS_OPTIONS;
 
   // Quotes query via edge function
   const { data: quotes = [] } = useQuery({
@@ -255,8 +246,14 @@ export default function Tracking() {
               </Card>
             ) : (
               <div className="grid gap-4">
-                {shipments.map((s: any) => (
-                  <ShipmentCard key={s.id} shipment={s} docs={trackingDocs.filter((d: any) => d.shipment_id === s.id)} />
+                {shipments.map((s: any, idx: number) => (
+                  <ShipmentCard
+                    key={s.id}
+                    shipment={s}
+                    docs={trackingDocs.filter((d: any) => d.shipment_id === s.id)}
+                    statusOptions={statusOptions}
+                    defaultExpanded={shipments.length === 1 || idx === 0}
+                  />
                 ))}
               </div>
             )}
@@ -286,131 +283,190 @@ export default function Tracking() {
   );
 }
 
-function ShipmentCard({ shipment: s, docs }: { shipment: any; docs: any[] }) {
-  const { steps, kpis } = buildTimeline(s);
+function ShipmentCard({ shipment: s, docs, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const { steps, kpis } = buildTimeline(s, statusOptions);
+  const category = resolveStatusCategory(s.status, statusOptions);
+  const statusMeta = statusOptions.find((o) => o.value === s.status);
+  const statusLabel = statusMeta?.label || s.status;
+  const statusBadgeClass = STATUS_CATEGORY_COLORS[category] || '';
+  const containers = parseContainerNumbers(s.container_number);
+  const carrierLabel = CARRIER_LABEL_BY_MODE[s.transport_mode] || 'Armador';
 
   return (
     <Card className="glass hover:shadow-md transition-shadow">
-      <CardContent className="p-5">
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="font-mono font-bold text-lg">{s.reference_number}</span>
-            <Badge className={statusColors[s.status] || ''}>
-              {statusLabels[s.status] || s.status}
-            </Badge>
-            <ModeIcon mode={s.transport_mode} showLabel />
-            {s.incoterm && <Badge variant="outline">{s.incoterm}</Badge>}
-          </div>
-
-          {/* Rota */}
-          <div className="flex items-center gap-2 text-sm flex-wrap">
-            <FlagIcon country={s.origin_country} className="text-lg" />
-            <span className="font-medium">
-              {s.origin_city || s.origin_port || '—'}
-              {s.origin_country ? `, ${s.origin_country}` : ''}
-            </span>
-            <ArrowRight className="w-4 h-4 text-muted-foreground" />
-            <FlagIcon country={s.destination_country} className="text-lg" />
-            <span className="font-medium">
-              {s.destination_city || s.destination_port || '—'}
-              {s.destination_country ? `, ${s.destination_country}` : ''}
-            </span>
-          </div>
-
-          {/* KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 rounded-lg bg-muted/30">
-            <Kpi label="ETD" value={s.etd ? format(new Date(s.etd), 'dd/MM/yyyy') : '—'} />
-            <Kpi label="ETA" value={s.eta ? format(new Date(s.eta), 'dd/MM/yyyy') : '—'} />
-            <Kpi
-              label="Transit Time"
-              value={kpis.transitTime !== null ? `${kpis.transitTime} dias` : '—'}
-            />
-            <Kpi
-              label={kpis.isDelayed ? 'Atraso' : kpis.isFinished ? 'Status' : 'Restam'}
-              value={
-                kpis.isCancelled
-                  ? 'Cancelado'
-                  : kpis.isFinished
-                  ? 'Concluído'
-                  : kpis.isDelayed && kpis.daysRemaining !== null
-                  ? `${Math.abs(kpis.daysRemaining)} dias`
-                  : kpis.daysRemaining !== null
-                  ? `${kpis.daysRemaining} dias`
-                  : '—'
-              }
-              tone={kpis.isDelayed ? 'danger' : kpis.arrivingSoon ? 'warning' : 'default'}
-            />
-          </div>
-
-          {/* Timeline */}
-          {!kpis.isCancelled && <StatusTimeline steps={steps} />}
-
-          {/* Detalhes */}
-          {(s.carrier || s.vessel_flight || s.master_bl || s.house_bl || s.booking_number || s.container_number) && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs pt-2 border-t border-border">
-              {s.carrier && <DetailItem label="Cia/Armador" value={s.carrier} />}
-              {s.vessel_flight && <DetailItem label="Navio/Voo" value={s.vessel_flight} />}
-              {s.booking_number && <DetailItem label="Booking" value={s.booking_number} />}
-              {s.master_bl && <DetailItem label="Master BL/AWB" value={s.master_bl} />}
-              {s.house_bl && <DetailItem label="House BL/AWB" value={s.house_bl} />}
-              {s.container_number && <DetailItem label="Contêiner" value={s.container_number} />}
-            </div>
+      {/* Cabeçalho — sempre visível, clicável pra expandir/colapsar */}
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full text-left p-5 flex items-center justify-between gap-3"
+      >
+        <div className="flex items-center gap-3 flex-wrap min-w-0">
+          <span className="font-mono font-bold text-lg shrink-0">{s.reference_number}</span>
+          {s.client_reference && (
+            <Badge variant="outline" className="font-mono font-normal shrink-0">{s.client_reference}</Badge>
           )}
-
-          {/* Courier tracking */}
-          {s.courier_tracking_number && (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-2">
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Rastreio Courier{s.courier_provider ? ` — ${s.courier_provider}` : ''}
-                </span>
-                <span className="font-mono text-sm font-semibold">{s.courier_tracking_number}</span>
-              </div>
-              {buildCourierTrackingUrl(s.courier_provider, s.courier_tracking_number) && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    window.open(
-                      buildCourierTrackingUrl(s.courier_provider, s.courier_tracking_number)!,
-                      '_blank',
-                      'noopener,noreferrer'
-                    )
-                  }
-                >
-                  <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                  Rastrear
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* Alertas */}
-          {kpis.isDelayed && (
-            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-500/10 rounded-md px-3 py-2">
-              <AlertTriangle className="w-4 h-4" />
-              <span>
-                Atraso: ETA em {format(new Date(s.eta), 'dd/MM/yyyy')} já passou.
-              </span>
-            </div>
-          )}
-          {!kpis.isDelayed && kpis.arrivingSoon && (
-            <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-500/10 rounded-md px-3 py-2">
-              <BellRing className="w-4 h-4" />
-              <span>Chegada prevista em {kpis.daysRemaining} dia(s).</span>
-            </div>
-          )}
-          {s.next_update && (
-            <div className="text-xs text-muted-foreground">
-              Próxima atualização: {format(new Date(s.next_update), 'dd/MM/yyyy')}
-            </div>
-          )}
-
-          <DocsSection docs={docs} />
+          <span className="flex items-center gap-1.5 text-sm min-w-0">
+            <FlagIcon country={s.origin_country} />
+            <span className="truncate">{s.origin_city || s.origin_port || '—'}</span>
+            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <FlagIcon country={s.destination_country} />
+            <span className="truncate">{s.destination_city || s.destination_port || '—'}</span>
+          </span>
+          <Badge className={cn(statusBadgeClass, 'shrink-0')}>{statusLabel}</Badge>
         </div>
-      </CardContent>
+        <ChevronDown className={cn('w-5 h-5 text-muted-foreground shrink-0 transition-transform', expanded && 'rotate-180')} />
+      </button>
+
+      {expanded && (
+        <CardContent className="pt-0">
+          <div className="space-y-4 border-t border-border pt-4">
+            {/* Referência Aura - Status - Modal - Origem - Transbordo(se houver) - Destino - Incoterm */}
+            <div className="flex items-center gap-2 text-sm flex-wrap">
+              <span className="font-mono font-bold text-lg">{s.reference_number}</span>
+              <Badge className={statusBadgeClass}>{statusLabel}</Badge>
+              <ModeIcon mode={s.transport_mode} showLabel />
+              <span className="flex items-center gap-1.5 font-medium">
+                <FlagIcon country={s.origin_country} />
+                {s.origin_city || countryFallback(s.origin_country) || '—'}
+              </span>
+              {s.transshipment_info && (
+                <>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    Transbordo: {s.transshipment_info.name || s.transshipment_info.code}
+                  </span>
+                </>
+              )}
+              <ArrowRight className="w-4 h-4 text-muted-foreground" />
+              <span className="flex items-center gap-1.5 font-medium">
+                <FlagIcon country={s.destination_country} />
+                {s.destination_city || countryFallback(s.destination_country) || '—'}
+              </span>
+              {s.incoterm && <Badge variant="outline">{s.incoterm}</Badge>}
+            </div>
+
+            {/* ETD - ETA - Transit Time - Restam */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 rounded-lg bg-muted/30">
+              <Kpi label="ETD" value={s.etd ? format(new Date(s.etd), 'dd/MM/yyyy') : '—'} />
+              <Kpi label="ETA" value={s.eta ? format(new Date(s.eta), 'dd/MM/yyyy') : '—'} />
+              <Kpi
+                label="Transit Time"
+                value={kpis.transitTime !== null ? `${kpis.transitTime} dias` : '—'}
+              />
+              <Kpi
+                label={kpis.isDelayed ? 'Atraso' : kpis.isFinished ? 'Status' : 'Restam'}
+                value={
+                  kpis.isCancelled
+                    ? 'Cancelado'
+                    : kpis.isFinished
+                    ? 'Concluído'
+                    : kpis.isDelayed && kpis.daysRemaining !== null
+                    ? `${Math.abs(kpis.daysRemaining)} dias`
+                    : kpis.daysRemaining !== null
+                    ? `${kpis.daysRemaining} dias`
+                    : '—'
+                }
+                tone={kpis.isDelayed ? 'danger' : kpis.arrivingSoon ? 'warning' : 'default'}
+              />
+            </div>
+
+            {/* Linha do tempo — 5 marcos genéricos, orientados pela categoria do status */}
+            {!kpis.isCancelled ? (
+              <StatusTimeline steps={steps} />
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-red-600 bg-red-500/10 rounded-md px-3 py-2">
+                <AlertTriangle className="w-4 h-4" />
+                <span>Processo cancelado.</span>
+              </div>
+            )}
+
+            {/* Armador - Navio - Nº Master */}
+            {(s.carrier || s.vessel_flight || s.master_bl) && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-1 text-xs pt-2 border-t border-border">
+                <DetailItem label={carrierLabel} value={s.carrier || '—'} />
+                <DetailItem label="Navio/Voo" value={s.vessel_flight || '—'} />
+                <DetailItem label="Nº Master (BL/AWB)" value={s.master_bl || '—'} />
+              </div>
+            )}
+
+            {/* Containers — sempre 3 por linha */}
+            {containers.length > 0 && (
+              <div className="pt-2 border-t border-border space-y-1.5">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Containers</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {containers.map((c, i) => (
+                    <div
+                      key={i}
+                      className="rounded-md border border-border bg-muted/30 px-2 py-1.5 text-center font-mono text-xs font-semibold"
+                    >
+                      {c}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Courier tracking */}
+            {s.courier_tracking_number && (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-2">
+                <div className="flex flex-col">
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Rastreio Courier{s.courier_provider ? ` — ${s.courier_provider}` : ''}
+                  </span>
+                  <span className="font-mono text-sm font-semibold">{s.courier_tracking_number}</span>
+                </div>
+                {buildCourierTrackingUrl(s.courier_provider, s.courier_tracking_number) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      window.open(
+                        buildCourierTrackingUrl(s.courier_provider, s.courier_tracking_number)!,
+                        '_blank',
+                        'noopener,noreferrer'
+                      )
+                    }
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                    Rastrear
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Alertas */}
+            {kpis.isDelayed && (
+              <div className="flex items-center gap-2 text-xs text-red-600 bg-red-500/10 rounded-md px-3 py-2">
+                <AlertTriangle className="w-4 h-4" />
+                <span>
+                  Atraso: ETA em {format(new Date(s.eta), 'dd/MM/yyyy')} já passou.
+                </span>
+              </div>
+            )}
+            {!kpis.isDelayed && kpis.arrivingSoon && (
+              <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-500/10 rounded-md px-3 py-2">
+                <BellRing className="w-4 h-4" />
+                <span>Chegada prevista em {kpis.daysRemaining} dia(s).</span>
+              </div>
+            )}
+            {s.next_update && (
+              <div className="text-xs text-muted-foreground">
+                Próxima atualização: {format(new Date(s.next_update), 'dd/MM/yyyy')}
+              </div>
+            )}
+
+            {/* Lista de documentos */}
+            <DocsSection docs={docs} />
+          </div>
+        </CardContent>
+      )}
     </Card>
   );
+}
+
+function countryFallback(code?: string | null) {
+  return code || '';
 }
 
 function Kpi({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'warning' | 'danger' }) {
@@ -440,8 +496,8 @@ function QuoteCard({ quote: q, docs }: { quote: any; docs: any[] }) {
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <span className="font-mono font-bold text-lg">{q.quote_number}</span>
-            <Badge className={statusColors[q.status] || ''}>
-              {statusLabels[q.status] || q.status}
+            <Badge className={quoteStatusColors[q.status] || ''}>
+              {quoteStatusLabels[q.status] || q.status}
             </Badge>
             <ModeIcon mode={q.transport_mode} showLabel />
           </div>
@@ -481,12 +537,15 @@ function DocsSection({ docs }: { docs: any[] }) {
       <p className="text-xs font-medium text-muted-foreground mb-1">Documentos</p>
       {docs.map((doc: any) => (
         <div key={doc.id} className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-muted-foreground" />
-            <span>{doc.name}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+            <span className="truncate">{doc.name}</span>
+            <span className="text-xs text-muted-foreground shrink-0">
+              {doc.custom_category || DOC_TYPE_LABELS[doc.document_type] || ''}
+            </span>
           </div>
           {doc.file_url && (
-            <div className="flex gap-1">
+            <div className="flex gap-1 shrink-0">
               <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="p-1 hover:bg-accent rounded">
                 <Eye className="w-4 h-4 text-muted-foreground" />
               </a>
