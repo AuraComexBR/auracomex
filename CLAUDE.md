@@ -3,6 +3,12 @@
 SaaS de gestão de frete internacional (comex), em português. Usuário: Marcos Martini
 (marcos.f.martini@gmail.com), superadmin da plataforma. Responder sempre em português.
 
+## Acesso ao código (fazer isso primeiro, sempre)
+
+Antes de qualquer tarefa que envolva ler ou editar código, pedir/conectar a pasta local
+do projeto (`C:\auracomex\auracomex`, via `request_cowork_directory` com esse path) logo
+no início da conversa — não esperar o usuário pedir. Sem isso não há acesso ao repo.
+
 ## Stack e referências
 
 - React 18 + TypeScript + Vite + shadcn/ui (Radix) + Tailwind + TanStack React Query + React Router
