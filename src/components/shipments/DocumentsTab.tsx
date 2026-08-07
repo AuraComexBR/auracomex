@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useCallback, useState } from 'react';
 import { DOC_TYPE_LABELS } from '@/lib/documentCategory';
+import { sanitizeStorageFileName } from '@/lib/sanitizeFileName';
 
 // Valor especial do Select que abre o campo de texto para digitar uma
 // categoria nova (não confundir com o document_type "other" salvo no banco).
@@ -155,7 +156,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
       }
 
       for (const file of pendingUploadFiles) {
-        const path = `${companyId}/${shipmentId}/${Date.now()}_${file.name}`;
+        const path = `${companyId}/${shipmentId}/${Date.now()}_${sanitizeStorageFileName(file.name)}`;
         const { error: uploadError } = await supabase.storage.from('shipment-documents').upload(path, file);
         if (uploadError) { toast.error(uploadError.message); continue; }
         await supabase.from('documents').insert({

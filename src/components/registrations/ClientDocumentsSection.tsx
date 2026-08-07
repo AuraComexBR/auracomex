@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { openSignedDoc, DOCS_BUCKET } from '@/lib/storage';
+import { sanitizeStorageFileName } from '@/lib/sanitizeFileName';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format, differenceInCalendarDays } from 'date-fns';
@@ -57,7 +58,7 @@ export function ClientDocumentsSection({ clientId, companyId }: Props) {
     setUploading(true);
     try {
       for (const file of files) {
-        const path = `${companyId}/clients/${clientId}/${Date.now()}_${file.name}`;
+        const path = `${companyId}/clients/${clientId}/${Date.now()}_${sanitizeStorageFileName(file.name)}`;
         const { error: uploadError } = await supabase.storage.from(DOCS_BUCKET).upload(path, file);
         if (uploadError) {
           toast.error(uploadError.message);

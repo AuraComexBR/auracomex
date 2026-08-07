@@ -15,6 +15,7 @@ import { CheckCircle, Wallet, AlertTriangle, CalendarClock, Paperclip, Undo2 } f
 import { format, isBefore, addDays, startOfDay } from 'date-fns';
 import { toast } from 'sonner';
 import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
+import { sanitizeStorageFileName } from '@/lib/sanitizeFileName';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { ColumnSearch } from '@/components/shared/ColumnSearch';
 
@@ -191,7 +192,7 @@ export default function AccountsPayableTab() {
     let receipt_url: string | null = null;
     if (payForm.file) {
       setUploadingReceipt(true);
-      const path = `${payTarget.company_id}/receipts/${payTarget.id}/${Date.now()}_${payForm.file.name}`;
+      const path = `${payTarget.company_id}/receipts/${payTarget.id}/${Date.now()}_${sanitizeStorageFileName(payForm.file.name)}`;
       const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, payForm.file);
       setUploadingReceipt(false);
       if (upErr) return toast.error('Erro ao anexar comprovante', { description: upErr.message });

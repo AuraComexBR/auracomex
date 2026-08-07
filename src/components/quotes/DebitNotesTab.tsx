@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { openSignedDoc } from '@/lib/storage';
+import { sanitizeStorageFileName } from '@/lib/sanitizeFileName';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -367,7 +368,7 @@ function CreateDnDialog({
     try {
       let file_url: string | null = presetFile?.path ?? null;
       if (!presetFile && file) {
-        const path = `debit-notes/${quoteId}/${Date.now()}_${file.name}`;
+        const path = `debit-notes/${quoteId}/${Date.now()}_${sanitizeStorageFileName(file.name)}`;
         const { error: upErr } = await supabase.storage.from('shipment-documents').upload(path, file);
         if (upErr) throw upErr;
         file_url = path;
@@ -896,7 +897,7 @@ export function SendSupplierDnDialog({
         shipmentId = sh?.id ?? null;
       }
 
-      const path = `${companyId}/${quoteId}/${Date.now()}_${file.name}`;
+      const path = `${companyId}/${quoteId}/${Date.now()}_${sanitizeStorageFileName(file.name)}`;
       const { error: upErr } = await supabase.storage.from('shipment-documents').upload(path, file);
       if (upErr) throw upErr;
 

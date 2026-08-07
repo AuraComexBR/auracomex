@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Sparkles, Upload, FileText, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { addDays, format } from 'date-fns';
+import { sanitizeStorageFileName } from '@/lib/sanitizeFileName';
 
 const MODE_LETTER: Record<string, string> = { ocean_fcl: 'F', ocean_lcl: 'L', air: 'A', road: 'R' };
 const DIRECTION_LETTER: Record<string, string> = { IMP: 'I', EXP: 'E' };
@@ -240,7 +241,7 @@ export function AiImportQuoteModal({ open, onClose, onCreated }: Props) {
       // Upload files as documents linked to quote
       try {
         for (const f of files) {
-          const path = `${profile.company_id}/${quote.id}/${Date.now()}-${f.file.name}`;
+          const path = `${profile.company_id}/${quote.id}/${Date.now()}-${sanitizeStorageFileName(f.file.name)}`;
           const { error: upErr } = await supabase.storage
             .from('shipment-documents')
             .upload(path, f.file, { contentType: f.file.type, upsert: false });

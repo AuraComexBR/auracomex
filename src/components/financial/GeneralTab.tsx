@@ -11,6 +11,7 @@ import { TransactionModal } from '@/components/overhead/TransactionModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { DOCS_BUCKET, openSignedDoc } from '@/lib/storage';
+import { sanitizeStorageFileName } from '@/lib/sanitizeFileName';
 import { toast } from 'sonner';
 
 // "Geral" — despesas e receitas da empresa sem vínculo com processo/cotação
@@ -229,7 +230,7 @@ export default function GeneralTab() {
                 let payment_proof_url: string | null = null;
                 if (payFile) {
                   setUploadingReceipt(true);
-                  const path = `${companyId}/receipts/overhead/${payTarget.id}/${Date.now()}_${payFile.name}`;
+                  const path = `${companyId}/receipts/overhead/${payTarget.id}/${Date.now()}_${sanitizeStorageFileName(payFile.name)}`;
                   const { error: upErr } = await supabase.storage.from(DOCS_BUCKET).upload(path, payFile);
                   setUploadingReceipt(false);
                   if (upErr) return toast.error('Erro ao anexar comprovante', { description: upErr.message });
