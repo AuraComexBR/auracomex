@@ -3305,6 +3305,28 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                       Aduaneira: {c.aduaneira === true ? 'Sim' : c.aduaneira === false ? 'Não' : 'Auto'}
                                     </button>
                                   )}
+                                  {/* Prepaid = já pago na origem, não entra no total que o cliente
+                                      precisa depositar via Numerário (mas continua aparecendo na
+                                      Estimativa e no Numerário, só de fora do total a cobrar).
+                                      Collect (padrão) = cobrado do cliente no destino. */}
+                                  {!readOnly && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const next = c.payment_term === 'prepaid' ? 'collect' : 'prepaid';
+                                        onUpdate(c.id, { payment_term: next });
+                                      }}
+                                      title="Prepaid = já pago na origem, não entra no total do Numerário (mas continua aparecendo na Estimativa/Numerário). Collect = cobrado do cliente no destino. Clique para alternar."
+                                      className={`ml-1.5 text-[10px] border rounded px-1 py-0.5 ${
+                                        c.payment_term === 'prepaid'
+                                          ? 'text-amber-600 border-amber-400/50 bg-amber-500/10'
+                                          : 'text-muted-foreground border-border'
+                                      }`}
+                                    >
+                                      {c.payment_term === 'prepaid' ? 'Prepaid' : 'Collect'}
+                                    </button>
+                                  )}
                                 </div>
                                 {c.billing_unit === 'percent' ? (
                                   <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">

@@ -129,31 +129,34 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
     }
   }
 
-  const rows: Array<[string, number, boolean, boolean, boolean]> = (() => {
-    const list: Array<[string, number, boolean, boolean, boolean]> = [
-      ['Valor da mercadoria (VMCV)', breakdown.vmcv_usd, true, false, true],
+  // 6ª posição = is_prepaid: taxa já paga na origem (ex.: frete Prepaid). Continua
+  // aparecendo na Estimativa/Numerário pra transparência, mas fica de fora do
+  // "Total do Numerário a Depositar" (o cliente não precisa mandar esse valor).
+  const rows: Array<[string, number, boolean, boolean, boolean, boolean]> = (() => {
+    const list: Array<[string, number, boolean, boolean, boolean, boolean]> = [
+      ['Valor da mercadoria (VMCV)', breakdown.vmcv_usd, true, false, true, false],
     ];
 
     // Origem
     expenses.filter(e => e.category === 'origin').forEach(e => {
-      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true]);
+      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid]);
     });
 
-    list.push(['Valor no embarque (VMLE)', breakdown.vmle_usd, true, false, true]);
+    list.push(['Valor no embarque (VMLE)', breakdown.vmle_usd, true, false, true, false]);
 
     // Frete/Seguro
     expenses.filter(e => e.category === 'freight').forEach(e => {
-      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true]);
+      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid]);
     });
 
     list.push(
-      ['Valor desembaraçado (VMLD)', breakdown.vmld_usd, true, false, true],
-      ['I.I.', breakdown.ii_usd, false, false, true],
-      ['I.P.I.', breakdown.ipi_usd, false, false, true],
-      ['P.I.S.', breakdown.pis_usd, false, false, true],
-      ['COFINS', breakdown.cofins_usd, false, false, true],
-      ['I.C.M.S.', breakdown.icms_usd, false, false, true],
-      ['SUBTOTAL', breakdown.subtotal_usd, true, false, true]
+      ['Valor desembaraçado (VMLD)', breakdown.vmld_usd, true, false, true, false],
+      ['I.I.', breakdown.ii_usd, false, false, true, false],
+      ['I.P.I.', breakdown.ipi_usd, false, false, true, false],
+      ['P.I.S.', breakdown.pis_usd, false, false, true, false],
+      ['COFINS', breakdown.cofins_usd, false, false, true, false],
+      ['I.C.M.S.', breakdown.icms_usd, false, false, true, false],
+      ['SUBTOTAL', breakdown.subtotal_usd, true, false, true, false]
     );
 
     // Nacionais
@@ -161,17 +164,24 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
     const afrmmBrl = Number((estimate as any).afrmm_brl || 0);
     const armazenagemBrl = Number((quote as any)?.storage_fee_amount || 0);
 
-    if (taxaSiscomexBrl > 0) list.push(['Taxa Siscomex', taxaSiscomexBrl / rate, false, false, true]);
-    if (afrmmBrl > 0) list.push(['AFRMM', afrmmBrl / rate, false, false, true]);
-    if (armazenagemBrl > 0) list.push(['Armazenagem no destino', armazenagemBrl / rate, false, false, true]);
+    if (taxaSiscomexBrl > 0) list.push(['Taxa Siscomex', taxaSiscomexBrl / rate, false, false, true, false]);
+    if (afrmmBrl > 0) list.push(['AFRMM', afrmmBrl / rate, false, false, true, false]);
+    if (armazenagemBrl > 0) list.push(['Armazenagem no destino', armazenagemBrl / rate, false, false, true, false]);
 
     expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category).forEach(e => {
-      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true]);
+      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid]);
     });
 
-    list.push(['TOTAL', breakdown.total_usd, true, false, true]);
+    list.push(['TOTAL', breakdown.total_usd, true, false, true, false]);
     return list;
   })();
+
+  // Soma (em USD) de todas as despesas marcadas como Prepaid — precisa sair do
+  // total que vai pro cliente no Numerário (já foi pago na origem).
+  const prepaidTotalUsd = expenses
+    .filter(e => (e as any).is_prepaid)
+    .reduce((s, e) => s + (e.valor_brl || 0) / rate, 0);
+  const numerarioTotalUsd = breakdown.total_usd - prepaidTotalUsd;
 
   const BRAND = (company as any)?.brand_primary_color || '#1a1a2e';
 
@@ -295,9 +305,12 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
               </tr>
             </thead>
             <tbody>
-              {rows.map(([label, val, bold, notContracted, showPct]) => (
-                <tr key={label} style={bold ? { background: '#f5f5f5', fontWeight: 700 } : {}}>
-                  <td style={td}>{label}</td>
+              {rows.map(([label, val, bold, notContracted, showPct, isPrepaid], idx) => (
+                <tr key={`${label}-${idx}`} style={bold ? { background: '#f5f5f5', fontWeight: 700 } : {}}>
+                  <td style={{ ...td, ...(isPrepaid ? { color: '#888', fontStyle: 'italic' } : {}) }}>
+                    {label}
+                    {isPrepaid && <span style={{ marginLeft: 5, fontSize: 8, fontWeight: 700, color: '#b45309', fontStyle: 'normal' }}>(PREPAID)</span>}
+                  </td>
                   {notContracted ? (
                     <>
                       <td colSpan={2} style={{ ...tdR, fontStyle: 'italic', color: '#888' }}>Seguro não contratado</td>
@@ -305,8 +318,8 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
                     </>
                   ) : (
                     <>
-                      <td style={tdR}>{fmtUSD(val)}</td>
-                      <td style={tdR}>{fmtBRL(val * rate)}</td>
+                      <td style={{ ...tdR, ...(isPrepaid ? { color: '#888', fontStyle: 'italic' } : {}) }}>{fmtUSD(val)}</td>
+                      <td style={{ ...tdR, ...(isPrepaid ? { color: '#888', fontStyle: 'italic' } : {}) }}>{fmtBRL(val * rate)}</td>
                       <td style={tdR}>{showPct && Math.abs(val) > 0 ? pct(val, totalUsd).toFixed(2) : '—'}</td>
                     </>
                   )}
@@ -314,6 +327,21 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
               ))}
             </tbody>
           </table>
+
+          {/* Numerário: total efetivo a depositar, descontando taxas Prepaid
+              (já pagas na origem — não entram no valor cobrado do cliente). */}
+          {isNumerario && prepaidTotalUsd > 0 && (
+            <div style={{ background: BRAND, color: '#fff', padding: '10px 15px', borderRadius: 4, marginBottom: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 12 }}>TOTAL DO NUMERÁRIO A DEPOSITAR</div>
+                <div style={{ opacity: 0.85, fontSize: 9 }}>Total ({fmtUSD(breakdown.total_usd)}) menos taxas Prepaid ({fmtUSD(prepaidTotalUsd)}, já pagas na origem)</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>USD {fmtUSD(numerarioTotalUsd)}</div>
+                <div style={{ fontSize: 11 }}>R$ {fmtBRL(numerarioTotalUsd * rate)}</div>
+              </div>
+            </div>
+          )}
 
           {/* Numerário: dados bancários da empresa pra pagamento, no lugar
               das folhas por item (que só existem na Estimativa completa). */}

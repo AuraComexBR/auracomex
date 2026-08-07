@@ -13,6 +13,8 @@ export interface ChargeLike {
   sell_amount: number | null;
   buy_amount: number | null;
   aduaneira?: boolean | null;
+  /** 'prepaid' = já pago na origem (não entra no Numerário). 'collect'/null = cobrado do cliente (entra no Numerário). */
+  payment_term?: string | null;
 }
 
 export interface FxRates {
@@ -28,6 +30,8 @@ export interface MappedExpense {
   aduaneira: boolean;
   source_charge_id: string;
   category: 'origin' | 'freight' | 'destination' | 'local';
+  /** true = prepaid (já pago na origem) — aparece na Estimativa/Numerário mas não entra no total a depositar. */
+  is_prepaid: boolean;
 }
 
 export interface MappedEstimate {
@@ -104,6 +108,7 @@ export function mapChargesToEstimate(
     const isFrete = !isSeguro && c.leg === 'freight' && (hasKeyword(desc, FRETE_KEYWORDS) || c.charge_type === 'freight');
     const isFreteDomestico = hasKeyword(desc, FRETE_KEYWORDS) && c.leg !== 'freight';
     const isAduaneira = hasKeyword(desc, ADUANEIRA_KEYWORDS);
+    const isPrepaid = c.payment_term === 'prepaid';
 
     // Calculamos o valor em BRL para exibição e armazenamento
     const brl = toBRL(rawAmount, cur, fx);
@@ -128,7 +133,8 @@ export function mapChargesToEstimate(
           moeda_original: cur,
           aduaneira: typeof c.aduaneira === 'boolean' ? c.aduaneira : false,
           source_charge_id: c.id,
-          category: 'freight'
+          category: 'freight',
+          is_prepaid: isPrepaid,
         });
       }
       continue;
@@ -147,7 +153,8 @@ export function mapChargesToEstimate(
           moeda_original: cur,
           aduaneira: typeof c.aduaneira === 'boolean' ? c.aduaneira : false,
           source_charge_id: c.id,
-          category: 'freight' // Seguro entra no card de Frete
+          category: 'freight', // Seguro entra no card de Frete
+          is_prepaid: isPrepaid,
         });
       }
       continue;
@@ -163,9 +170,10 @@ export function mapChargesToEstimate(
           valor_brl: brl,
           valor_original: rawAmount,
           moeda_original: cur,
-          aduaneira: typeof c.aduaneira === 'boolean' ? c.aduaneira : false, 
+          aduaneira: typeof c.aduaneira === 'boolean' ? c.aduaneira : false,
           source_charge_id: c.id,
-          category: 'origin'
+          category: 'origin',
+          is_prepaid: isPrepaid,
         });
       } else {
         out.ignored.push({ description: desc, currency: cur, amount: rawAmount });
@@ -184,7 +192,8 @@ export function mapChargesToEstimate(
           ? false
           : (typeof c.aduaneira === 'boolean' ? c.aduaneira : isAduaneira),
         source_charge_id: c.id,
-        category: 'destination'
+        category: 'destination',
+        is_prepaid: isPrepaid,
       });
       continue;
     }
@@ -200,7 +209,8 @@ export function mapChargesToEstimate(
         ? false
         : (typeof c.aduaneira === 'boolean' ? c.aduaneira : isAduaneira),
       source_charge_id: c.id,
-      category: 'local'
+      category: 'local',
+      is_prepaid: isPrepaid,
     });
   }
 

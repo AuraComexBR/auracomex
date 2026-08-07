@@ -73,6 +73,8 @@ export interface EstimateExpenseRow {
       ordem: number;
       source_charge_id?: string | null;
       category?: 'origin' | 'freight' | 'destination' | 'local' | null;
+      /** true = prepaid (já pago na origem) — aparece na Estimativa/Numerário mas não entra no total a depositar. */
+      is_prepaid?: boolean | null;
 }
 
 export function useCostEstimate(quoteId: string, companyId: string | undefined) {
@@ -205,6 +207,7 @@ export async function syncEstimateFromCharges(
       aduaneira: e.aduaneira,
       source_charge_id: e.source_charge_id,
       category: e.category,
+      is_prepaid: e.is_prepaid,
       ordem: 1000 + idx, // após despesas manuais
     }));
     const { error: insErr } = await (supabase as any).from('cost_estimate_expenses').insert(payload);
