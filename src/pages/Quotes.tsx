@@ -75,6 +75,7 @@ function computeQuoteProfitBrl(q: any, usdBrl: number, eurBrl: number): number {
       case 'per_cw': return totalChargeable;
       case 'per_ton': return totalWeight / 1000;
       case 'per_cbm': return totalCbm;
+      case 'per_wm': return Math.max(totalWeight / 1000, totalCbm);
       case 'per_container': return totalContainers;
       case 'per_container_20': return totalContainers20;
       case 'per_container_40': return totalContainers40;
