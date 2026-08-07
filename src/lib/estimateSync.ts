@@ -282,10 +282,16 @@ export function mergeItemsWithQuoteItems(existing: ExistingItem[], qItems: Quote
         usedFallbackIds.add(fb.id);
       }
     }
-    const nome = qi.commodity || prev?.nome || 'Item';
-    const ncm = qi.ncm_code || prev?.ncm || null;
-    const peso = Number(qi.weight_kg) || prev?.peso || 0;
-    const quantidade = Number(qi.packages) || Number(qi.container_qty) || prev?.quantidade || 1;
+    // Mercadoria/NCM/Peso/Quantidade vêm do Resumo de Carga (quote_items) só
+    // na primeira vez (quando o item da Estimativa ainda não existe ou está
+    // zerado/vazio). Depois que o usuário edita esses campos na Estimativa,
+    // eles passam a ser a fonte de verdade e não voltam a ser sobrescritos
+    // por mudanças posteriores na Carga — mesmo padrão já aplicado ao
+    // cabeçalho (Incoterm/Trânsito/Carrier/Rota).
+    const nome = prev?.nome || qi.commodity || 'Item';
+    const ncm = prev?.ncm || qi.ncm_code || null;
+    const peso = (prev && Number(prev.peso) > 0) ? Number(prev.peso) : (Number(qi.weight_kg) || 0);
+    const quantidade = (prev && Number(prev.quantidade) > 0) ? Number(prev.quantidade) : (Number(qi.packages) || Number(qi.container_qty) || 1);
     if (prev) {
       merged.push({
         action: 'update',
