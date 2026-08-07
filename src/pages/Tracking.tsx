@@ -295,35 +295,44 @@ function ShipmentCard({ shipment: s, docs, statusOptions, defaultExpanded }: { s
 
   return (
     <Card className="glass hover:shadow-md transition-shadow">
-      {/* Cabeçalho — sempre visível, clicável pra expandir/colapsar */}
+      {/* Cabeçalho — sempre visível, clicável pra expandir/colapsar. Colapsado
+          mostra o resumo completo (ref Aura, ref cliente, origem, destino,
+          status); expandido mostra só a referência, pra não repetir a linha
+          de baixo (que já traz tudo isso, mais completo). */}
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
         className="w-full text-left p-5 flex items-center justify-between gap-3"
       >
-        <div className="flex items-center gap-3 flex-wrap min-w-0">
-          <span className="font-mono font-bold text-lg shrink-0">{s.reference_number}</span>
-          {s.client_reference && (
-            <Badge variant="outline" className="font-mono font-normal shrink-0">{s.client_reference}</Badge>
-          )}
-          <span className="flex items-center gap-1.5 text-sm min-w-0">
-            <FlagIcon country={s.origin_country} />
-            <span className="truncate">{s.origin_city || s.origin_port || '—'}</span>
-            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            <FlagIcon country={s.destination_country} />
-            <span className="truncate">{s.destination_city || s.destination_port || '—'}</span>
-          </span>
-          <Badge className={cn(statusBadgeClass, 'shrink-0')}>{statusLabel}</Badge>
-        </div>
+        {expanded ? (
+          <span className="font-mono font-bold text-lg">{s.reference_number}</span>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap min-w-0">
+            <span className="font-mono font-bold text-lg shrink-0">{s.reference_number}</span>
+            {s.client_reference && (
+              <Badge variant="outline" className="font-mono font-normal shrink-0">{s.client_reference}</Badge>
+            )}
+            <span className="flex items-center gap-1.5 text-sm min-w-0">
+              <FlagIcon country={s.origin_country} />
+              <span className="truncate">{s.origin_city || s.origin_port || '—'}</span>
+              <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <FlagIcon country={s.destination_country} />
+              <span className="truncate">{s.destination_city || s.destination_port || '—'}</span>
+            </span>
+            <Badge className={cn(statusBadgeClass, 'shrink-0')}>{statusLabel}</Badge>
+          </div>
+        )}
         <ChevronDown className={cn('w-5 h-5 text-muted-foreground shrink-0 transition-transform', expanded && 'rotate-180')} />
       </button>
 
       {expanded && (
         <CardContent className="pt-0">
           <div className="space-y-4 border-t border-border pt-4">
-            {/* Referência Aura - Status - Modal - Origem - Transbordo(se houver) - Destino - Incoterm */}
+            {/* Status - Modal - Origem - Transbordo(se houver) - Destino - Incoterm */}
             <div className="flex items-center gap-2 text-sm flex-wrap">
-              <span className="font-mono font-bold text-lg">{s.reference_number}</span>
+              {s.client_reference && (
+                <Badge variant="outline" className="font-mono font-normal">{s.client_reference}</Badge>
+              )}
               <Badge className={statusBadgeClass}>{statusLabel}</Badge>
               <ModeIcon mode={s.transport_mode} showLabel />
               <span className="flex items-center gap-1.5 font-medium">
