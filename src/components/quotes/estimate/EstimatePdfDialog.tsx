@@ -361,18 +361,19 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
                   {numerarioCategorias.map(([label, val]) => (
                     <tr key={label}>
                       <td style={{ ...td, fontSize: 9.5 }}>{label}</td>
-                      <td style={{ ...tdR, fontSize: 9.5 }}>{fmtUSD(val)}</td>
-                      <td style={{ ...tdR, fontSize: 9.5 }}>{fmtBRL(val * rate)}</td>
+                      <td style={{ ...tdR, fontSize: 9.5 }}>R$ {fmtBRL(val * rate)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${BRAND}` }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: BRAND }}>TOTAL DO NUMERÁRIO A DEPOSITAR</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: BRAND }}>TOTAL DO NUMERÁRIO A DEPOSITAR *</div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: BRAND }}>USD {fmtUSD(numerarioTotalUsd)}</div>
-                  <div style={{ fontSize: 11, color: BRAND }}>R$ {fmtBRL(numerarioTotalUsd * rate)}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: BRAND }}>R$ {fmtBRL(numerarioTotalUsd * rate)}</div>
                 </div>
+              </div>
+              <div style={{ padding: '0 12px 8px', fontSize: 8, color: '#888', fontStyle: 'italic' }}>
+                * Podem ocorrer divergências, que serão apresentadas no momento da prestação de contas.
               </div>
             </div>
           )}
