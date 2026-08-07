@@ -62,10 +62,12 @@ export function AppSidebar() {
   const permissions = usePermissions();
   const queryClient = useQueryClient();
   const { usdBrl, eurBrl, source: ratesSource, loading: ratesLoading, refetch: refetchRates } = useExchangeRate();
-  // Puxa direto da última versão cadastrada em Novidades (app_releases),
-  // em vez de um número fixo no código — nunca mais fica desatualizado.
-  const { releases } = useReleases();
-  const appVersion = releases[0]?.version;
+  // Puxa a versão de BUILD (app_build_version) — atualizada em todo deploy,
+  // inclusive os intermediários com letra (26.8.64b), não só quando um
+  // assunto fecha em Novidades (app_releases). Assim dá pra conferir na
+  // hora se o último deploy já subiu.
+  const { buildVersion } = useReleases();
+  const appVersion = buildVersion;
 
   const { data: company } = useQuery({
     queryKey: ['company', profile?.company_id],

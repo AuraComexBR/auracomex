@@ -43,9 +43,28 @@ export function useReleases() {
     },
   });
 
+  // Versão de BUILD (app_build_version) — atualizada em TODO deploy, mesmo os
+  // intermediários com letra (ex.: 26.8.64b) que não geram linha em
+  // app_releases. É o que a sidebar mostra, pra dar pra conferir se o último
+  // deploy já subiu sem esperar o assunto fechar. Cai pra releases[0].version
+  // se por algum motivo a tabela ainda não tiver linha.
+  const buildVersionQ = useQuery({
+    queryKey: ['app_build_version'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('app_build_version' as any)
+        .select('version')
+        .eq('id', 1)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as any)?.version as string | undefined;
+    },
+  });
+
   const releases = releasesQ.data ?? [];
   const readIds = readsQ.data ?? new Set<string>();
   const unread = releases.filter(r => !readIds.has(r.id));
+  const buildVersion = buildVersionQ.data || releases[0]?.version;
 
   async function markRead(releaseId: string) {
     if (!user?.id) return;
@@ -61,5 +80,5 @@ export function useReleases() {
     qc.invalidateQueries({ queryKey: ['user_release_reads', user.id] });
   }
 
-  return { releases, unread, loading: releasesQ.isLoading || readsQ.isLoading, markRead, markAllRead };
+  return { releases, unread, buildVersion, loading: releasesQ.isLoading || readsQ.isLoading, markRead, markAllRead };
 }

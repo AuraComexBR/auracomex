@@ -34,10 +34,16 @@ SaaS de gestão de frete internacional (comex), em português. Usuário: Marcos 
    Colunas de `app_releases`: `version`, `title`, `summary`, `highlights` (jsonb array de strings),
    `is_major` (bool). Consultar a última versão ANTES de fechar um assunto:
    `SELECT version FROM app_releases ORDER BY created_at DESC LIMIT 1`.
-   ATENÇÃO: a versão exibida na sidebar do app vem SÓ dessa tabela — não prova que o bundle novo
-   está no ar. Confirmar deploys pela API do Vercel (`list_deployments`) e pelos valores reais na tela.
+   A versão exibida na sidebar do app vem da tabela `app_build_version` (linha única, id=1),
+   NÃO de `app_releases` — essa é atualizada em TODO deploy (com ou sem letra), pra dar pra
+   conferir na hora se o último deploy já subiu, sem esperar o assunto fechar. Fazer o UPDATE
+   dela em TODO deploy, como parte do fluxo (ver passo 4).
 4. **Confirmar o deploy**: após push, checar via `list_deployments` (Vercel MCP) que apareceu um
    deployment novo com o SHA do commit e estado READY.
+5. **Atualizar a versão de build (TODO deploy, com ou sem letra)**: `UPDATE app_build_version
+   SET version = 'AA.M.NNletra', updated_at = now() WHERE id = 1` — é o que aparece na sidebar
+   (`v26.8.64b`). Diferente do passo 3 (`app_releases`, só no fechamento do assunto), este UPDATE
+   roda em TODO deploy, sempre com a versão exata (com a letra do momento).
 
 ## Git no ambiente sandbox (FUSE) — workaround obrigatório
 
