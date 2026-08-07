@@ -16,10 +16,17 @@ interface QuotePartnerLike {
   clients?: { id?: string; name?: string; partner_category?: string | null; insurance_rate_pct?: number | null } | null;
 }
 
+interface AutoChargeRow {
+  id: string;
+  buy_amount: number;
+  sell_amount: number;
+  partner_id: string | null;
+}
+
 interface Props {
   quoteId: string;
   companyId?: string;
-  quote: { id: string; seguro_auto?: boolean | null } | null | undefined;
+  quote: { id: string; client_id?: string | null; seguro_auto?: boolean | null } | null | undefined;
   quotePartners?: QuotePartnerLike[];
   /** Itens da aba Resumo da Carga — Custo do seguro vem daqui (soma do Valor da Carga em USD). */
   cargoItems?: CargoValueLike[];
@@ -36,9 +43,11 @@ function fmtUSD(n: number) {
  * A taxa NÃO é editável aqui — ela vem do cadastro da Seguradora (Cadastros >
  * Parceiros, categoria "Seguradora") vinculada ao processo na aba Parceiros.
  * Sem seguradora vinculada, cai no padrão da empresa (Configurações >
- * Empresa). O valor calculado só passa a compor o processo (vira uma taxa
- * real em quote_charges, contabilizada no total e na Estimativa de Custo)
- * quando o checkbox "Incluir no processo" está marcado.
+ * Empresa). O valor calculado só passa a compor o processo (viram DUAS taxas
+ * reais em quote_charges — uma de Compra com a Seguradora como parceiro, uma
+ * de Venda com o Cliente do processo — contabilizadas no total e na
+ * Estimativa de Custo) quando o checkbox "Incluir no processo" está
+ * marcado. Desmarcando, as duas taxas são removidas.
  */
 export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [], cargoItems = [], readOnly }: Props) {
   const qc = useQueryClient();
@@ -67,27 +76,34 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
     [cargoItems]
   );
 
-  const { data: autoCharge } = useQuery({
+  // Taxas automáticas já lançadas no processo — pode haver até 2 linhas
+  // (Compra com a Seguradora, Venda com o Cliente).
+  const { data: autoCharges = [] } = useQuery({
     queryKey: ['quote-charge-auto-insurance', quoteId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('quote_charges')
-        .select('id, buy_amount, sell_amount, currency')
+        .select('id, buy_amount, sell_amount, partner_id')
         .eq('quote_id', quoteId)
-        .eq('is_auto_insurance', true)
-        .maybeSingle();
+        .eq('is_auto_insurance', true);
       if (error) throw error;
-      return data as { id: string; buy_amount: number; sell_amount: number; currency: string } | null;
+      return (data || []) as AutoChargeRow[];
     },
     enabled: !!quoteId,
   });
 
+  const buyCharge = useMemo(() => autoCharges.find((c) => Number(c.buy_amount) > 0) || null, [autoCharges]);
+  const sellCharge = useMemo(() => autoCharges.find((c) => Number(c.sell_amount) > 0) || null, [autoCharges]);
+
   // Seguradora vinculada ao processo (aba Parceiros) — mesma fonte usada pra
-  // Cia Aérea/Armador no Cabeçalho da Estimativa.
+  // Cia Aérea/Armador no Cabeçalho da Estimativa. É o parceiro da Compra.
   const insurer = useMemo(
     () => quotePartners.find((qp) => qp.clients?.partner_category === 'insurance') || null,
     [quotePartners]
   );
+  const insurerClientId = insurer?.clients?.id || null;
+  // Cliente do processo — é o parceiro da Venda.
+  const sellClientId = quote?.client_id || null;
 
   // Sem seguradora vinculada, cai no padrão cadastrado na empresa.
   const { data: companyDefault } = useQuery({
@@ -133,42 +149,62 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
     qc.invalidateQueries({ queryKey: ['cost-estimate', quoteId] });
   };
 
-  // Mantém a taxa automática sincronizada com o valor calculado sempre que o
-  // checkbox estiver marcado (ex.: mudou o câmbio, os impostos, o frete, a
-  // seguradora vinculada etc.).
+  // Mantém as duas taxas automáticas (Compra com a Seguradora, Venda com o
+  // Cliente) sincronizadas com o valor calculado e com os parceiros certos
+  // sempre que o checkbox estiver marcado (ex.: mudou o câmbio, o frete, a
+  // seguradora ou o cliente do processo etc.).
   const syncedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!auto || !canCalc || readOnly) return;
-    const key = `${autoCharge?.id || ''}:${breakdown.valorSeguro}`;
+    if (!auto || !canCalc || readOnly || !companyId) return;
+    const key = `${buyCharge?.id || ''}:${sellCharge?.id || ''}:${breakdown.valorSeguro}:${insurerClientId || ''}:${sellClientId || ''}`;
     if (syncedRef.current === key) return;
-    if (autoCharge && Number(autoCharge.sell_amount) === breakdown.valorSeguro && Number(autoCharge.buy_amount) === breakdown.valorSeguro) {
+
+    const buyOk = buyCharge
+      && Number(buyCharge.buy_amount) === breakdown.valorSeguro
+      && (buyCharge.partner_id || null) === insurerClientId;
+    const sellOk = sellCharge
+      && Number(sellCharge.sell_amount) === breakdown.valorSeguro
+      && (sellCharge.partner_id || null) === sellClientId;
+    if (buyOk && sellOk) {
       syncedRef.current = key;
       return;
     }
     syncedRef.current = key;
     (async () => {
-      if (autoCharge) {
-        await (supabase as any).from('quote_charges')
-          .update({ buy_amount: breakdown.valorSeguro, sell_amount: breakdown.valorSeguro })
-          .eq('id', autoCharge.id);
-      } else if (!autoCharge && companyId) {
-        await (supabase as any).from('quote_charges').insert({
-          quote_id: quoteId,
-          company_id: companyId,
-          description: 'SEGURO INTERNACIONAL (CÁLCULO AUTOMÁTICO)',
-          charge_type: 'freight',
-          leg: 'freight',
-          currency: 'USD',
-          billing_unit: 'fixed',
-          buy_amount: breakdown.valorSeguro,
-          sell_amount: breakdown.valorSeguro,
-          is_auto_insurance: true,
-        });
+      const baseRow = {
+        quote_id: quoteId,
+        company_id: companyId,
+        description: 'SEGURO INTERNACIONAL (CÁLCULO AUTOMÁTICO)',
+        charge_type: 'freight',
+        leg: 'freight',
+        currency: 'USD',
+        billing_unit: 'fixed',
+        is_auto_insurance: true,
+      };
+      const ops: Promise<any>[] = [];
+      if (buyCharge) {
+        ops.push((supabase as any).from('quote_charges')
+          .update({ buy_amount: breakdown.valorSeguro, sell_amount: 0, partner_id: insurerClientId })
+          .eq('id', buyCharge.id));
+      } else {
+        ops.push((supabase as any).from('quote_charges').insert({
+          ...baseRow, buy_amount: breakdown.valorSeguro, sell_amount: 0, partner_id: insurerClientId,
+        }));
       }
+      if (sellCharge) {
+        ops.push((supabase as any).from('quote_charges')
+          .update({ sell_amount: breakdown.valorSeguro, buy_amount: 0, partner_id: sellClientId })
+          .eq('id', sellCharge.id));
+      } else {
+        ops.push((supabase as any).from('quote_charges').insert({
+          ...baseRow, sell_amount: breakdown.valorSeguro, buy_amount: 0, partner_id: sellClientId,
+        }));
+      }
+      await Promise.all(ops);
       invalidateAll();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, canCalc, readOnly, breakdown.valorSeguro, autoCharge?.id, companyId]);
+  }, [auto, canCalc, readOnly, breakdown.valorSeguro, buyCharge?.id, sellCharge?.id, insurerClientId, sellClientId, companyId]);
 
   const handleToggle = async (checked: boolean) => {
     if (readOnly) return;
@@ -177,26 +213,27 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
       if (qErr) throw qErr;
 
       if (!checked) {
-        // Apaga pela combinação quote_id + is_auto_insurance direto no banco
-        // — NÃO depende do `autoCharge` já ter carregado no cache local.
-        // Antes, se o usuário desmarcasse antes dessa consulta terminar (ou
-        // em qualquer situação em que autoCharge estivesse desatualizado),
-        // `!checked && autoCharge` dava falso e a taxa ficava órfã: o
-        // processo marcado como "sem seguro" mas a taxa continuava cobrada.
+        // Apaga as duas linhas (Compra e Venda) pela combinação
+        // quote_id + is_auto_insurance direto no banco — NÃO depende do
+        // que já está carregado no cache local. Antes, se o usuário
+        // desmarcasse antes dessa consulta terminar (ou em qualquer
+        // situação em que o cache estivesse desatualizado), a exclusão
+        // podia ser pulada e a(s) taxa(s) ficavam órfãs: o processo
+        // marcado como "sem seguro" mas as taxas continuavam lançadas.
         const { error: delErr } = await (supabase as any)
           .from('quote_charges')
           .delete()
           .eq('quote_id', quoteId)
           .eq('is_auto_insurance', true);
         if (delErr) throw delErr;
-        qc.setQueryData(['quote-charge-auto-insurance', quoteId], null);
+        qc.setQueryData(['quote-charge-auto-insurance', quoteId], []);
       }
       // Reflete o novo seguro_auto no cache do quote-detail imediatamente,
       // pelo mesmo motivo acima (evita o efeito ler um valor desatualizado).
       qc.setQueryData(['quote-detail', quoteId], (old: any) => (old ? { ...old, seguro_auto: checked } : old));
 
       invalidateAll();
-      toast.success(checked ? 'Seguro incluído no processo.' : 'Seguro removido do processo.');
+      toast.success(checked ? 'Seguro incluído no processo (compra e venda).' : 'Seguro removido do processo.');
     } catch (err: any) {
       toast.error(err.message || 'Erro ao atualizar o seguro do processo.');
     }
@@ -228,8 +265,9 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
               </TooltipTrigger>
               <TooltipContent className="max-w-xs text-xs">
                 Calculado automaticamente: (Custo + Frete + 10% Despesas + 10% Lucro Esperado + Impostos) x Taxa da seguradora
-                vinculada ao processo (aba Parceiros). Impostos = (Custo + Frete) x 0,5. Marque para incluir esse valor como
-                taxa do processo — desmarcar remove a taxa. Clique na seta para ver o detalhamento.
+                vinculada ao processo (aba Parceiros). Impostos = (Custo + Frete) x 0,5. Gera uma taxa de Compra com a
+                Seguradora e uma de Venda com o Cliente. Marque para incluir no processo — desmarcar remove as duas.
+                Clique na seta para ver o detalhamento.
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -285,6 +323,16 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
                 <span className="font-mono font-bold text-primary">US$ {fmtUSD(breakdown.valorSeguro)}</span>
               </div>
             </div>
+            {!insurerClientId && (
+              <p className="text-[10px] text-amber-600 italic">
+                Sem Seguradora vinculada na aba Parceiros — a taxa de Compra fica sem parceiro definido.
+              </p>
+            )}
+            {!sellClientId && (
+              <p className="text-[10px] text-amber-600 italic">
+                Processo sem Cliente definido — a taxa de Venda fica sem parceiro definido.
+              </p>
+            )}
             {taxaSourceLabel && (
               <p className="text-[10px] text-muted-foreground italic">{taxaSourceLabel}</p>
             )}
