@@ -257,12 +257,12 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
                 {pairs.map(([l1, v1, l2, v2], idx) => (
                   <React.Fragment key={idx}>
                     <div style={{ display: 'flex', borderBottom: idx === pairs.length - 1 ? 'none' : '1px solid #ccc', borderRight: '1px solid #ccc' }}>
-                      <div style={{ fontSize: 8, fontWeight: 700, color: '#fff', background: BRAND, padding: '5px 8px', width: '42%', display: 'flex', alignItems: 'center' }}>{l1}</div>
-                      <div style={{ fontSize: 9, padding: '5px 8px', display: 'flex', alignItems: 'center', flex: 1 }}>{v1}</div>
+                      <div style={{ fontSize: 8, fontWeight: 700, color: '#fff', background: BRAND, padding: '5px 8px', width: '42%', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l1}</div>
+                      <div style={{ fontSize: 9, padding: '5px 8px', display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v1}</div>
                     </div>
                     <div style={{ display: 'flex', borderBottom: idx === pairs.length - 1 ? 'none' : '1px solid #ccc' }}>
-                      <div style={{ fontSize: 8, fontWeight: 700, color: '#fff', background: BRAND, padding: '5px 8px', width: '42%', display: 'flex', alignItems: 'center' }}>{l2}</div>
-                      <div style={{ fontSize: 9, padding: '5px 8px', display: 'flex', alignItems: 'center', flex: 1 }}>{v2}</div>
+                      <div style={{ fontSize: 8, fontWeight: 700, color: '#fff', background: BRAND, padding: '5px 8px', width: '42%', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l2}</div>
+                      <div style={{ fontSize: 9, padding: '5px 8px', display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v2}</div>
                     </div>
                   </React.Fragment>
                 ))}
