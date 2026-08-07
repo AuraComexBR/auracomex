@@ -129,59 +129,74 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
     }
   }
 
-  // 6ª posição = is_prepaid: taxa já paga na origem (ex.: frete Prepaid). Continua
-  // aparecendo na Estimativa/Numerário pra transparência, mas fica de fora do
-  // "Total do Numerário a Depositar" (o cliente não precisa mandar esse valor).
-  const rows: Array<[string, number, boolean, boolean, boolean, boolean]> = (() => {
-    const list: Array<[string, number, boolean, boolean, boolean, boolean]> = [
-      ['Valor da mercadoria (VMCV)', breakdown.vmcv_usd, true, false, true, false],
+  // Nacionais — calculados uma vez, reaproveitados na tabela de custos e no
+  // box "Valores para Depósito" abaixo.
+  const taxaSiscomexBrl = Number((estimate as any).taxa_siscomex_brl || 0);
+  const afrmmBrl = Number((estimate as any).afrmm_brl || 0);
+  const armazenagemBrl = Number((quote as any)?.storage_fee_amount || 0);
+  const taxaSiscomexUsd = taxaSiscomexBrl / rate;
+  const afrmmUsd = afrmmBrl / rate;
+  const armazenagemUsd = armazenagemBrl / rate;
+
+  // 6ª posição = is_prepaid, 7ª = isMerchandise (linha do VMCV — valor da
+  // mercadoria, pago direto pelo cliente ao fornecedor, fora do Numerário).
+  const rows: Array<[string, number, boolean, boolean, boolean, boolean, boolean]> = (() => {
+    const list: Array<[string, number, boolean, boolean, boolean, boolean, boolean]> = [
+      ['Valor da mercadoria (VMCV)', breakdown.vmcv_usd, true, false, true, false, true],
     ];
 
     // Origem
     expenses.filter(e => e.category === 'origin').forEach(e => {
-      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid]);
+      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid, false]);
     });
 
-    list.push(['Valor no embarque (VMLE)', breakdown.vmle_usd, true, false, true, false]);
+    list.push(['Valor no embarque (VMLE)', breakdown.vmle_usd, true, false, true, false, false]);
 
     // Frete/Seguro
     expenses.filter(e => e.category === 'freight').forEach(e => {
-      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid]);
+      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid, false]);
     });
 
     list.push(
-      ['Valor desembaraçado (VMLD)', breakdown.vmld_usd, true, false, true, false],
-      ['I.I.', breakdown.ii_usd, false, false, true, false],
-      ['I.P.I.', breakdown.ipi_usd, false, false, true, false],
-      ['P.I.S.', breakdown.pis_usd, false, false, true, false],
-      ['COFINS', breakdown.cofins_usd, false, false, true, false],
-      ['I.C.M.S.', breakdown.icms_usd, false, false, true, false],
-      ['SUBTOTAL', breakdown.subtotal_usd, true, false, true, false]
+      ['Valor desembaraçado (VMLD)', breakdown.vmld_usd, true, false, true, false, false],
+      ['I.I.', breakdown.ii_usd, false, false, true, false, false],
+      ['I.P.I.', breakdown.ipi_usd, false, false, true, false, false],
+      ['P.I.S.', breakdown.pis_usd, false, false, true, false, false],
+      ['COFINS', breakdown.cofins_usd, false, false, true, false, false],
+      ['I.C.M.S.', breakdown.icms_usd, false, false, true, false, false],
+      ['SUBTOTAL', breakdown.subtotal_usd, true, false, true, false, false]
     );
 
-    // Nacionais
-    const taxaSiscomexBrl = Number((estimate as any).taxa_siscomex_brl || 0);
-    const afrmmBrl = Number((estimate as any).afrmm_brl || 0);
-    const armazenagemBrl = Number((quote as any)?.storage_fee_amount || 0);
-
-    if (taxaSiscomexBrl > 0) list.push(['Taxa Siscomex', taxaSiscomexBrl / rate, false, false, true, false]);
-    if (afrmmBrl > 0) list.push(['AFRMM', afrmmBrl / rate, false, false, true, false]);
-    if (armazenagemBrl > 0) list.push(['Armazenagem no destino', armazenagemBrl / rate, false, false, true, false]);
+    if (taxaSiscomexBrl > 0) list.push(['Taxa Siscomex', taxaSiscomexUsd, false, false, true, false, false]);
+    if (afrmmBrl > 0) list.push(['AFRMM', afrmmUsd, false, false, true, false, false]);
+    if (armazenagemBrl > 0) list.push(['Armazenagem no destino', armazenagemUsd, false, false, true, false, false]);
 
     expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category).forEach(e => {
-      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid]);
+      list.push([e.descricao, (e.valor_brl || 0) / rate, false, false, true, !!(e as any).is_prepaid, false]);
     });
 
-    list.push(['TOTAL', breakdown.total_usd, true, false, true, false]);
+    list.push(['TOTAL', breakdown.total_usd, true, false, true, false, false]);
     return list;
   })();
 
-  // Soma (em USD) de todas as despesas marcadas como Prepaid — precisa sair do
-  // total que vai pro cliente no Numerário (já foi pago na origem).
-  const prepaidTotalUsd = expenses
-    .filter(e => (e as any).is_prepaid)
-    .reduce((s, e) => s + (e.valor_brl || 0) / rate, 0);
-  const numerarioTotalUsd = breakdown.total_usd - prepaidTotalUsd;
+  // ===== Valores para Depósito (Numerário) =====
+  // O que o cliente precisa mandar: Impostos (com Taxa Siscomex junto), AFRMM,
+  // Desembaraço/despesas de destino e outras despesas de origem/frete/seguro —
+  // desde que não sejam Prepaid (já pagas na origem). NÃO inclui o valor da
+  // mercadoria (VMCV): o cliente paga isso direto ao fornecedor, fora do Numerário.
+  const sumExpenses = (pred: (cat: string) => boolean) =>
+    expenses.filter(e => pred(e.category || 'local') && !(e as any).is_prepaid)
+      .reduce((s, e) => s + (e.valor_brl || 0) / rate, 0);
+  const impostosUsd = breakdown.ii_usd + breakdown.ipi_usd + breakdown.pis_usd + breakdown.cofins_usd + breakdown.icms_usd + taxaSiscomexUsd;
+  const desembaracoDestinoUsd = sumExpenses(cat => cat === 'destination' || cat === 'local') + armazenagemUsd;
+  const origemFreteSeguroUsd = sumExpenses(cat => cat === 'origin' || cat === 'freight');
+  const numerarioTotalUsd = impostosUsd + afrmmUsd + desembaracoDestinoUsd + origemFreteSeguroUsd;
+  const numerarioCategorias: Array<[string, number]> = [
+    ['Impostos (I.I. + I.P.I. + P.I.S. + COFINS + I.C.M.S. + Taxa Siscomex)', impostosUsd],
+    ...(afrmmUsd > 0 ? [['AFRMM', afrmmUsd] as [string, number]] : []),
+    ...(desembaracoDestinoUsd > 0 ? [['Desembaraço / Armazenagem / Despesas de Destino', desembaracoDestinoUsd] as [string, number]] : []),
+    ...(origemFreteSeguroUsd > 0 ? [['Frete / Seguro / Despesas de Origem (Collect)', origemFreteSeguroUsd] as [string, number]] : []),
+  ];
 
   const BRAND = (company as any)?.brand_primary_color || '#1a1a2e';
 
@@ -305,11 +320,14 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
               </tr>
             </thead>
             <tbody>
-              {rows.map(([label, val, bold, notContracted, showPct, isPrepaid], idx) => (
+              {rows.map(([label, val, bold, notContracted, showPct, isPrepaid, isMerchandise], idx) => {
+                const muted = isPrepaid || (isNumerario && isMerchandise);
+                return (
                 <tr key={`${label}-${idx}`} style={bold ? { background: '#f5f5f5', fontWeight: 700 } : {}}>
-                  <td style={{ ...td, ...(isPrepaid ? { color: '#888', fontStyle: 'italic' } : {}) }}>
+                  <td style={{ ...td, ...(muted ? { color: '#888', fontStyle: 'italic' } : {}) }}>
                     {label}
                     {isPrepaid && <span style={{ marginLeft: 5, fontSize: 8, fontWeight: 700, color: '#b45309', fontStyle: 'normal' }}>(PREPAID)</span>}
+                    {isNumerario && isMerchandise && <span style={{ marginLeft: 5, fontSize: 8, fontWeight: 700, color: '#b45309', fontStyle: 'normal' }}>(PAGO DIRETO AO FORNECEDOR)</span>}
                   </td>
                   {notContracted ? (
                     <>
@@ -318,27 +336,43 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
                     </>
                   ) : (
                     <>
-                      <td style={{ ...tdR, ...(isPrepaid ? { color: '#888', fontStyle: 'italic' } : {}) }}>{fmtUSD(val)}</td>
-                      <td style={{ ...tdR, ...(isPrepaid ? { color: '#888', fontStyle: 'italic' } : {}) }}>{fmtBRL(val * rate)}</td>
+                      <td style={{ ...tdR, ...(muted ? { color: '#888', fontStyle: 'italic' } : {}) }}>{fmtUSD(val)}</td>
+                      <td style={{ ...tdR, ...(muted ? { color: '#888', fontStyle: 'italic' } : {}) }}>{fmtBRL(val * rate)}</td>
                       <td style={tdR}>{showPct && Math.abs(val) > 0 ? pct(val, totalUsd).toFixed(2) : '—'}</td>
                     </>
                   )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
 
-          {/* Numerário: total efetivo a depositar, descontando taxas Prepaid
-              (já pagas na origem — não entram no valor cobrado do cliente). */}
-          {isNumerario && prepaidTotalUsd > 0 && (
-            <div style={{ background: BRAND, color: '#fff', padding: '10px 15px', borderRadius: 4, marginBottom: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: 10 }}>
-                <div style={{ fontWeight: 700, fontSize: 12 }}>TOTAL DO NUMERÁRIO A DEPOSITAR</div>
-                <div style={{ opacity: 0.85, fontSize: 9 }}>Total ({fmtUSD(breakdown.total_usd)}) menos taxas Prepaid ({fmtUSD(prepaidTotalUsd)}, já pagas na origem)</div>
+          {/* Numerário: destaque do que o cliente precisa depositar — Impostos
+              (com Taxa Siscomex junto), AFRMM, Desembaraço/despesas de destino
+              e outras despesas não-Prepaid. NÃO inclui o valor da mercadoria
+              (pago direto ao fornecedor) nem taxas Prepaid (já pagas na origem). */}
+          {isNumerario && (
+            <div style={{ border: `2px solid ${BRAND}`, marginBottom: 15 }}>
+              <div style={{ background: BRAND, color: '#fff', padding: '6px 12px', fontSize: 10, fontWeight: 700 }}>
+                VALORES PARA DEPÓSITO (NUMERÁRIO)
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 15, fontWeight: 700 }}>USD {fmtUSD(numerarioTotalUsd)}</div>
-                <div style={{ fontSize: 11 }}>R$ {fmtBRL(numerarioTotalUsd * rate)}</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  {numerarioCategorias.map(([label, val]) => (
+                    <tr key={label}>
+                      <td style={{ ...td, fontSize: 9.5 }}>{label}</td>
+                      <td style={{ ...tdR, fontSize: 9.5 }}>{fmtUSD(val)}</td>
+                      <td style={{ ...tdR, fontSize: 9.5 }}>{fmtBRL(val * rate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${BRAND}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: BRAND }}>TOTAL DO NUMERÁRIO A DEPOSITAR</div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: BRAND }}>USD {fmtUSD(numerarioTotalUsd)}</div>
+                  <div style={{ fontSize: 11, color: BRAND }}>R$ {fmtBRL(numerarioTotalUsd * rate)}</div>
+                </div>
               </div>
             </div>
           )}
