@@ -393,6 +393,7 @@ export function CostEstimateTab({
         'data_fiscal', 'usd_brl', 'eur_brl', 'rateio_metodo',
         'acrescimos_usd', 'deducoes_usd', 'frete_intl_usd', 'seguro_intl_usd', 'category',
         'taxa_siscomex_brl', 'taxa_siscomex_auto', 'afrmm_brl', 'afrmm_auto',
+        'pais_origem', 'armazem', 'peso_liquido_kg', 'cbm_total', 'usd_brl_agencia',
       ];
       editableEstKeys.forEach(k => {
         const a = (draftEstimate as any)[k];
@@ -930,6 +931,31 @@ export function CostEstimateTab({
                 Auto
               </Button>
             </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">País de Origem</Label>
+            <DebouncedInput disabled={ro} value={(estimate as any).pais_origem || ''} onCommit={(v) => patchEstimate({ pais_origem: v } as any)} placeholder="CHINA" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Armazém</Label>
+            <DebouncedInput disabled={ro} value={(estimate as any).armazem || ''} onCommit={(v) => patchEstimate({ armazem: v } as any)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Peso Líquido (kg)</Label>
+            <DebouncedInput disabled={ro} type="number" step="0.01" value={(estimate as any).peso_liquido_kg || 0} onCommit={(v) => patchEstimate({ peso_liquido_kg: v } as any)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">CBM Total</Label>
+            <DebouncedInput disabled={ro} type="number" step="0.001" value={(estimate as any).cbm_total || 0} onCommit={(v) => patchEstimate({ cbm_total: v } as any)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs flex items-center gap-1">
+              Taxa Câmbio Agência
+              <TooltipProvider><Tooltip><TooltipTrigger asChild><Info className="w-3 h-3 text-muted-foreground" /></TooltipTrigger>
+                <TooltipContent className="max-w-xs">Taxa de câmbio efetivamente paga pelo cliente na agência de câmbio, usada no cabeçalho do PDF de Numerário. Diferente da Câmbio USD/BRL (taxa fiscal usada nos cálculos de impostos).</TooltipContent>
+              </Tooltip></TooltipProvider>
+            </Label>
+            <DebouncedInput disabled={ro} type="number" step="0.0001" value={(estimate as any).usd_brl_agencia || 0} onCommit={(v) => patchEstimate({ usd_brl_agencia: v } as any)} />
           </div>
         </CardContent>
       </Card>

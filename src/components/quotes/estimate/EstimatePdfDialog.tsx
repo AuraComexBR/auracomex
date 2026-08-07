@@ -220,22 +220,70 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
           </div>
 
           {/* Resumo Consolidado (Primeira Folha) */}
-          <div style={{ fontWeight: 700, fontSize: 11, margin: '15px 0 8px', textTransform: 'uppercase', color: BRAND, borderLeft: `4px solid ${BRAND}`, paddingLeft: 8 }}>Resumo da Estimativa</div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 15 }}>
-            <div style={{ fontSize: 9 }}>
-              <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>INCOTERM:</strong> {estimate.incoterm || '-'}</div>
-              <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>FREQUÊNCIA:</strong> {estimate.frequencia || '-'}</div>
-              <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>TRÂNSITO:</strong> {estimate.transito || '-'}</div>
-              <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>CARRIER:</strong> {estimate.carrier || '-'}</div>
-            </div>
-            <div style={{ fontSize: 9 }}>
-              <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>ORIGEM:</strong> {estimate.rota_origem || '-'}</div>
-              <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>DESTINO:</strong> {estimate.rota_destino || '-'}</div>
-              <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>PESO TOTAL:</strong> {fmtUSD(totalPeso)} kg</div>
-              <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>TAXA CAMBIAL:</strong> R$ {fmtBRL(rate)}</div>
-            </div>
+          <div style={{ fontWeight: 700, fontSize: 11, margin: '15px 0 8px', textTransform: 'uppercase', color: BRAND, borderLeft: `4px solid ${BRAND}`, paddingLeft: 8 }}>
+            {isNumerario ? 'Dados do Embarque' : 'Resumo da Estimativa'}
           </div>
+
+          {isNumerario ? (() => {
+            const modalLabels: Record<string, string> = {
+              ocean_fcl: 'FCL - MARÍTIMO',
+              ocean_lcl: 'LCL - MARÍTIMO',
+              air: 'AÉREO',
+              road: 'RODOVIÁRIO',
+              multimodal: 'MULTIMODAL',
+            };
+            const modal = modalLabels[quote?.transport_mode || ''] || quote?.transport_mode || '-';
+            const mercadorias = items.map(i => i.nome).filter(Boolean).join(', ') || '-';
+            const ncms = items.map(i => i.ncm).filter(Boolean).join(' - ') || '-';
+            const vmcvBrl = breakdown.vmcv_usd * rate;
+            const vmldBrl = breakdown.vmld_usd * rate;
+            const pesoLiquido = Number((estimate as any).peso_liquido_kg || 0);
+            const cbmTotal = Number((estimate as any).cbm_total || 0);
+            const rateAgencia = Number((estimate as any).usd_brl_agencia || 0);
+            const pairs: Array<[string, string, string, string]> = [
+              ['REF. DO CLIENTE', quote?.client_reference || '-', 'MODAL', modal],
+              ['MERCADORIA', mercadorias, 'PAÍS DE ORIGEM', (estimate as any).pais_origem || '-'],
+              ['PESO BRUTO (KG)', fmtBRL(totalPeso), 'PESO LÍQUIDO (KG)', pesoLiquido ? fmtBRL(pesoLiquido) : '-'],
+              ['PORTO ORIGEM', estimate.rota_origem || '-', 'PORTO DESTINO', estimate.rota_destino || '-'],
+              ['NCM', ncms, 'ARMAZÉM', (estimate as any).armazem || '-'],
+              ['QUANTIDADE', String(totalQtd), 'CBM', cbmTotal ? fmtBRL(cbmTotal) : '-'],
+              ['TRANSPORTADOR', estimate.carrier || '-', 'FRETE INTL.: USD', `USD ${fmtUSD(estimate.frete_intl_usd || 0)}`],
+              ['VALOR FOB: USD', `USD ${fmtUSD(breakdown.vmcv_usd)}`, 'SEGURO INTL.: USD', `USD ${fmtUSD(estimate.seguro_intl_usd || 0)}`],
+              ['VALOR FOB: R$', `R$ ${fmtBRL(vmcvBrl)}`, 'VALOR ADUANEIRO R$', `R$ ${fmtBRL(vmldBrl)}`],
+              ['TAXA DE CÂMBIO FISCAL', `R$ ${fmtBRL(rate)}`, 'TAXA CÂMBIO AGÊNCIA', rateAgencia ? `R$ ${fmtBRL(rateAgencia)}` : '-'],
+            ];
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginBottom: 15, border: '1px solid #ccc' }}>
+                {pairs.map(([l1, v1, l2, v2], idx) => (
+                  <React.Fragment key={idx}>
+                    <div style={{ display: 'flex', borderBottom: idx === pairs.length - 1 ? 'none' : '1px solid #ccc', borderRight: '1px solid #ccc' }}>
+                      <div style={{ fontSize: 8, fontWeight: 700, color: '#fff', background: BRAND, padding: '5px 8px', width: '42%', display: 'flex', alignItems: 'center' }}>{l1}</div>
+                      <div style={{ fontSize: 9, padding: '5px 8px', display: 'flex', alignItems: 'center', flex: 1 }}>{v1}</div>
+                    </div>
+                    <div style={{ display: 'flex', borderBottom: idx === pairs.length - 1 ? 'none' : '1px solid #ccc' }}>
+                      <div style={{ fontSize: 8, fontWeight: 700, color: '#fff', background: BRAND, padding: '5px 8px', width: '42%', display: 'flex', alignItems: 'center' }}>{l2}</div>
+                      <div style={{ fontSize: 9, padding: '5px 8px', display: 'flex', alignItems: 'center', flex: 1 }}>{v2}</div>
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            );
+          })() : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 15 }}>
+              <div style={{ fontSize: 9 }}>
+                <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>INCOTERM:</strong> {estimate.incoterm || '-'}</div>
+                <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>FREQUÊNCIA:</strong> {estimate.frequencia || '-'}</div>
+                <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>TRÂNSITO:</strong> {estimate.transito || '-'}</div>
+                <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>CARRIER:</strong> {estimate.carrier || '-'}</div>
+              </div>
+              <div style={{ fontSize: 9 }}>
+                <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>ORIGEM:</strong> {estimate.rota_origem || '-'}</div>
+                <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>DESTINO:</strong> {estimate.rota_destino || '-'}</div>
+                <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>PESO TOTAL:</strong> {fmtUSD(totalPeso)} kg</div>
+                <div style={{ padding: '4px 0', borderBottom: '1px solid #eee' }}><strong>TAXA CAMBIAL:</strong> R$ {fmtBRL(rate)}</div>
+              </div>
+            </div>
+          )}
 
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
             <thead>

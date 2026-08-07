@@ -27,6 +27,15 @@ export interface EstimateRow {
   taxa_siscomex_auto?: boolean;
   afrmm_brl?: number;
   afrmm_auto?: boolean;
+  /** Campos extras do cabeçalho do PDF de Numerário — sem fonte automática
+   *  em outra tabela, preenchidos manualmente aqui. */
+  pais_origem?: string | null;
+  armazem?: string | null;
+  peso_liquido_kg?: number | null;
+  cbm_total?: number | null;
+  /** Taxa de câmbio da agência de câmbio (paga de fato pelo cliente),
+   *  diferente da taxa fiscal (usd_brl) usada nos cálculos de impostos. */
+  usd_brl_agencia?: number | null;
 }
 
 export interface EstimateItemRow {
