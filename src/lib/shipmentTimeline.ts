@@ -1,4 +1,4 @@
-import { STATUS_CATEGORY_ORDER, STATUS_CATEGORY_LABELS, resolveStatusCategory, type StatusOption } from './shipmentStatusCategory';
+import { STATUS_CATEGORY_ORDER, STATUS_CATEGORY_LABELS, resolveStatusCategory, transitCategoryLabel, type StatusOption } from './shipmentStatusCategory';
 
 export type StepState = 'done' | 'current' | 'pending';
 
@@ -31,11 +31,11 @@ function startOfDay(d: Date) {
 
 // A linha do tempo não é mais amarrada a uma lista fixa de status: qualquer
 // status (inclusive personalizados cadastrados em Logística > Gerenciar
-// Status) pertence a uma das 5 categorias genéricas (booking/origin/transit/
-// customs/delivered), e é essa categoria que decide qual marco acende. Isso
-// evita que embarques com status como "financeiro" ou "lançar_di" fiquem
-// com a linha do tempo inteira "pendente" só por não bater com um valor
-// específico esperado.
+// Status) pertence a uma das 6 categorias genéricas (booking/origin/transit/
+// arrived/customs/delivered), e é essa categoria que decide qual marco
+// acende. Isso evita que embarques com status como "financeiro" ou
+// "lançar_di" fiquem com a linha do tempo inteira "pendente" só por não
+// bater com um valor específico esperado.
 export function buildTimeline(shipment: any, statusOptions: StatusOption[] = []): { steps: TimelineStep[]; kpis: TimelineKpis } {
   const status: string = shipment.status || 'approved';
   const category = resolveStatusCategory(status, statusOptions);
@@ -62,8 +62,9 @@ export function buildTimeline(shipment: any, statusOptions: StatusOption[] = [])
   const rawSteps: Array<Omit<TimelineStep, 'state'> & { categoryKey: typeof STATUS_CATEGORY_ORDER[number] }> = [
     { key: 'booking', categoryKey: 'booking', label: STATUS_CATEGORY_LABELS.booking, date: shipment.created_at },
     { key: 'origin', categoryKey: 'origin', label: STATUS_CATEGORY_LABELS.origin, hint: shipment.booking_number || undefined },
-    { key: 'transit', categoryKey: 'transit', label: STATUS_CATEGORY_LABELS.transit, date: atd?.toISOString() || etd?.toISOString() || null, hint: shipment.vessel_flight || undefined },
-    { key: 'customs', categoryKey: 'customs', label: STATUS_CATEGORY_LABELS.customs, date: ata?.toISOString() || eta?.toISOString() || null },
+    { key: 'transit', categoryKey: 'transit', label: transitCategoryLabel(shipment.transport_mode), date: atd?.toISOString() || etd?.toISOString() || null, hint: shipment.vessel_flight || undefined },
+    { key: 'arrived', categoryKey: 'arrived', label: STATUS_CATEGORY_LABELS.arrived, date: ata?.toISOString() || eta?.toISOString() || null },
+    { key: 'customs', categoryKey: 'customs', label: STATUS_CATEGORY_LABELS.customs, date: null },
     { key: 'delivered', categoryKey: 'delivered', label: STATUS_CATEGORY_LABELS.delivered, date: null },
   ];
 

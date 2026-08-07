@@ -715,7 +715,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                A categoria define em qual marco da linha do tempo (Reservado / Origem / Trânsito / Desembaraço / Entregue) o status aparece no tracking do cliente.
+                A categoria define em qual marco da linha do tempo (Reservado / Origem / Navegando ou Voando / Atracado / Desembaraço / Entregue) o status aparece no tracking do cliente.
               </p>
               <div className="space-y-1">
                 {statusOptions.map((s, idx) => (

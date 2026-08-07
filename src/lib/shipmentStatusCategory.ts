@@ -1,16 +1,25 @@
 // Categorias fixas que orientam a linha do tempo genérica do tracking do
 // cliente. Cada status de embarque (fixo ou personalizado, cadastrado em
 // Logística > Gerenciar Status) pertence a uma dessas categorias — é isso
-// que permite montar uma linha do tempo de 5 marcos que funciona mesmo com
+// que permite montar uma linha do tempo de 6 marcos que funciona mesmo com
 // status totalmente customizados pela empresa (ex.: "financeiro",
 // "lançar_di", "dta").
-export const STATUS_CATEGORY_ORDER = ['booking', 'origin', 'transit', 'customs', 'delivered'] as const;
+export const STATUS_CATEGORY_ORDER = ['booking', 'origin', 'transit', 'arrived', 'customs', 'delivered'] as const;
 export type StatusCategory = typeof STATUS_CATEGORY_ORDER[number] | 'cancelled';
+
+// Rótulo do marco "transit" muda com o modal: Navegando (marítimo), Voando
+// (aéreo); rodoviário/multimodal caem no genérico "Em Trânsito".
+export function transitCategoryLabel(transportMode?: string | null): string {
+  if (transportMode === 'ocean_fcl' || transportMode === 'ocean_lcl') return 'Navegando';
+  if (transportMode === 'air') return 'Voando';
+  return 'Em Trânsito';
+}
 
 export const STATUS_CATEGORY_LABELS: Record<StatusCategory, string> = {
   booking: 'Reservado',
   origin: 'Origem',
-  transit: 'Trânsito',
+  transit: 'Em Trânsito',
+  arrived: 'Atracado',
   customs: 'Desembaraço',
   delivered: 'Entregue',
   cancelled: 'Cancelado',
@@ -25,6 +34,7 @@ export const STATUS_CATEGORY_COLORS: Record<StatusCategory, string> = {
   booking: 'bg-indigo-500/10 text-indigo-600',
   origin: 'bg-blue-500/10 text-blue-600',
   transit: 'bg-amber-500/10 text-amber-600',
+  arrived: 'bg-cyan-500/10 text-cyan-600',
   customs: 'bg-purple-500/10 text-purple-600',
   delivered: 'bg-green-500/10 text-green-600',
   cancelled: 'bg-red-500/10 text-red-600',
@@ -41,7 +51,7 @@ export interface StatusOption {
 // Gerenciar Status (mesma lista de LogisticsTab.tsx, agora com categoria).
 export const DEFAULT_STATUS_OPTIONS: StatusOption[] = [
   { label: 'Aprovado', value: 'approved', position: 0, category: 'booking' },
-  { label: 'Atracou', value: 'arrived', position: 1, category: 'customs' },
+  { label: 'Atracou', value: 'arrived', position: 1, category: 'arrived' },
   { label: 'Cancelado', value: 'cancelled', position: 2, category: 'cancelled' },
   { label: 'Coletado', value: 'collected_at_origin', position: 3, category: 'origin' },
   { label: 'Docs', value: 'docs_at_origin', position: 4, category: 'origin' },
