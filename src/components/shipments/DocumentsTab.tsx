@@ -6,11 +6,18 @@ import { Upload, FileText, Download, Eye, Trash2, Radio } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useCallback, useState } from 'react';
+
+// Valor especial do Select que abre o campo de texto para digitar uma
+// categoria nova (não confundir com o document_type "other" salvo no banco).
+const NEW_CATEGORY_VALUE = '__new_category__';
+const CUSTOM_PREFIX = 'custom:';
 
 interface Props {
   shipmentId: string;
@@ -33,7 +40,25 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
   // obrigatória antes do envio efetivo.
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
   const [uploadCategory, setUploadCategory] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [saveNewCategory, setSaveNewCategory] = useState(true);
   const [uploading, setUploading] = useState(false);
+
+  // Categorias personalizadas já cadastradas pela empresa (opção "Outro" com
+  // "adicionar à lista" marcado em uploads anteriores).
+  const { data: customCategories = [], refetch: refetchCustomCategories } = useQuery({
+    queryKey: ['document-custom-categories', companyId],
+    queryFn: async () => {
+      const { data, error } = await (supabase
+        .from('document_custom_categories' as any)
+        .select('id, name') as any)
+        .eq('company_id', companyId)
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return (data || []) as { id: string; name: string }[];
+    },
+    enabled: !!companyId,
+  });
 
   const { data: documents = [], refetch } = useQuery({
     queryKey: ['documents', shipmentId, isQuoteMode ? 'quote' : 'shipment'],
@@ -68,6 +93,8 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
     setUploadCategory('');
+    setNewCategoryName('');
+    setSaveNewCategory(true);
     setPendingUploadFiles(files);
   }, []);
 
@@ -79,13 +106,53 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
     e.target.value = '';
     if (files.length === 0) return;
     setUploadCategory('');
+    setNewCategoryName('');
+    setSaveNewCategory(true);
     setPendingUploadFiles(files);
   };
 
+  // Categoria digitada é válida apenas quando "Outro" está selecionado e o
+  // campo de texto foi preenchido.
+  const trimmedNewCategory = newCategoryName.trim();
+  const isNewCategorySelected = uploadCategory === NEW_CATEGORY_VALUE;
+  const canConfirmUpload = isNewCategorySelected ? !!trimmedNewCategory : !!uploadCategory;
+
   async function confirmUpload() {
-    if (!pendingUploadFiles || !uploadCategory) return;
+    if (!pendingUploadFiles || !canConfirmUpload) return;
     setUploading(true);
     try {
+      // Resolve a categoria escolhida para (document_type, custom_category):
+      // - item fixo do enum -> document_type = valor, custom_category = null
+      // - categoria personalizada já salva -> document_type = 'other', custom_category = nome
+      // - "Outro" digitado agora -> document_type = 'other', custom_category = texto digitado
+      let documentType: string;
+      let customCategory: string | null;
+      if (isNewCategorySelected) {
+        documentType = 'other';
+        customCategory = trimmedNewCategory;
+      } else if (uploadCategory.startsWith(CUSTOM_PREFIX)) {
+        documentType = 'other';
+        customCategory = uploadCategory.slice(CUSTOM_PREFIX.length);
+      } else {
+        documentType = uploadCategory;
+        customCategory = null;
+      }
+
+      // Se o usuário digitou uma categoria nova e marcou para salvá-la, guarda
+      // na lista da empresa para aparecer como opção nos próximos uploads.
+      if (isNewCategorySelected && saveNewCategory && trimmedNewCategory) {
+        const alreadyExists = customCategories.some(
+          (c) => c.name.toLowerCase() === trimmedNewCategory.toLowerCase()
+        );
+        if (!alreadyExists) {
+          const { error: categoryError } = await supabase
+            .from('document_custom_categories' as any)
+            .insert({ company_id: companyId, name: trimmedNewCategory, created_by: profile?.user_id } as any);
+          if (categoryError) toast.error(categoryError.message);
+          else refetchCustomCategories();
+        }
+      }
+
       for (const file of pendingUploadFiles) {
         const path = `${companyId}/${shipmentId}/${Date.now()}_${file.name}`;
         const { error: uploadError } = await supabase.storage.from('shipment-documents').upload(path, file);
@@ -98,13 +165,16 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
           file_url: path,
           file_size: file.size,
           uploaded_by: profile?.user_id,
-          document_type: uploadCategory as any,
+          document_type: documentType as any,
+          custom_category: customCategory,
         } as any);
       }
       refetch();
       toast.success(`${pendingUploadFiles.length} arquivo(s) enviado(s)`);
       setPendingUploadFiles(null);
       setUploadCategory('');
+      setNewCategoryName('');
+      setSaveNewCategory(true);
     } finally {
       setUploading(false);
     }
@@ -151,7 +221,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
                   <FileText className="w-5 h-5 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">{doc.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{DOC_TYPE_LABELS[doc.document_type] ?? doc.document_type} • {doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : ''}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{doc.custom_category || DOC_TYPE_LABELS[doc.document_type] || doc.document_type} • {doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : ''}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -196,7 +266,14 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
       </CardContent>
 
       {/* Categoria obrigatória antes de efetivar o envio. */}
-      <Dialog open={!!pendingUploadFiles} onOpenChange={(o) => { if (!o && !uploading) { setPendingUploadFiles(null); setUploadCategory(''); } }}>
+      <Dialog open={!!pendingUploadFiles} onOpenChange={(o) => {
+        if (!o && !uploading) {
+          setPendingUploadFiles(null);
+          setUploadCategory('');
+          setNewCategoryName('');
+          setSaveNewCategory(true);
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Categoria do documento</DialogTitle>
@@ -218,16 +295,52 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
                   <SelectItem value="certificate_origin">Certificado de Origem</SelectItem>
                   <SelectItem value="customs_declaration">Declaração Aduaneira</SelectItem>
                   <SelectItem value="insurance">Seguro</SelectItem>
-                  <SelectItem value="other">Outro</SelectItem>
+                  {customCategories.map((c) => (
+                    <SelectItem key={c.id} value={`${CUSTOM_PREFIX}${c.name}`}>{c.name}</SelectItem>
+                  ))}
+                  <SelectItem value={NEW_CATEGORY_VALUE}>Outro (digitar categoria)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {isNewCategorySelected && (
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Nome da categoria *</Label>
+                  <Input
+                    autoFocus
+                    placeholder="Ex.: Romaneio, Laudo, Contrato..."
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="save-new-category"
+                    checked={saveNewCategory}
+                    onCheckedChange={(v) => setSaveNewCategory(v === true)}
+                  />
+                  <Label htmlFor="save-new-category" className="text-xs font-normal text-muted-foreground cursor-pointer">
+                    Adicionar à lista de categorias para uso futuro
+                  </Label>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setPendingUploadFiles(null); setUploadCategory(''); }} disabled={uploading}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setPendingUploadFiles(null);
+                setUploadCategory('');
+                setNewCategoryName('');
+                setSaveNewCategory(true);
+              }}
+              disabled={uploading}
+            >
               Cancelar
             </Button>
-            <Button onClick={confirmUpload} disabled={!uploadCategory || uploading}>
+            <Button onClick={confirmUpload} disabled={!canConfirmUpload || uploading}>
               {uploading ? 'Enviando…' : 'Enviar'}
             </Button>
           </DialogFooter>

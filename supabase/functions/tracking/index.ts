@@ -103,20 +103,27 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "client_id and filter required" }, 400);
       }
 
-      // "Em Andamento" precisa cobrir todos os status intermediários do
-      // padrão (não só approved/booked/in_transit) — faltavam
-      // collected_at_origin e docs_at_origin, então embarques nesses status
-      // simplesmente sumiam do tracking do cliente, em qualquer aba.
-      const activeStatuses = ["approved", "booked", "collected_at_origin", "docs_at_origin", "in_transit"];
+      // O status do embarque não é mais um enum fixo — a empresa cadastra
+      // status personalizados em Logística > Gerenciar Status (ex.:
+      // "financeiro", "lançar_di", "aguard._nacionalização"). Uma lista fixa
+      // de status "ativos" fazia qualquer status personalizado sumir do
+      // tracking do cliente, em qualquer aba. Agora "Finalizado" é só o que
+      // realmente terminou (arrived/delivered); "Em Andamento" é tudo que
+      // não é finalizado, rascunho ou cancelado — cobre qualquer status
+      // personalizado que a empresa venha a criar.
       const finishedStatuses = ["arrived", "delivered"];
-      const statuses = filter === "active" ? activeStatuses : finishedStatuses;
+      const excludedFromActive = [...finishedStatuses, "draft", "cancelled"];
 
-      const { data } = await adminClient
+      let query = adminClient
         .from("shipments")
         .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, next_update, courier_provider, courier_tracking_number")
-        .eq("client_id", client_id)
-        .in("status", statuses)
-        .order("created_at", { ascending: false });
+        .eq("client_id", client_id);
+
+      query = filter === "active"
+        ? query.not("status", "in", `(${excludedFromActive.join(",")})`)
+        : query.in("status", finishedStatuses);
+
+      const { data } = await query.order("created_at", { ascending: false });
 
       return jsonResponse({ shipments: data || [] });
     }
