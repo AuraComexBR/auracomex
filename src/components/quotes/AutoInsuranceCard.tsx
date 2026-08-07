@@ -42,21 +42,18 @@ function fmtUSD(n: number) {
 export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [], cargoItems = [], readOnly }: Props) {
   const qc = useQueryClient();
 
-  // Frete Internacional e Impostos (II/IPI/PIS/COFINS/ICMS) ainda vêm da
-  // Estimativa de Custo — só o Custo mudou de fonte (ver abaixo).
+  // Frete Internacional ainda vem da Estimativa de Custo — Custo vem da carga
+  // (abaixo) e Impostos é derivado de Custo+Frete (ver calcSeguroInternacional).
   const { data: basis } = useQuery({
     queryKey: ['cost-estimate-insurance-basis', quoteId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('cost_estimates')
-        .select('frete_intl_usd, ii_usd, ipi_usd, pis_usd, cofins_usd, icms_usd')
+        .select('frete_intl_usd')
         .eq('quote_id', quoteId)
         .maybeSingle();
       if (error) throw error;
-      return data as {
-        frete_intl_usd: number;
-        ii_usd: number; ipi_usd: number; pis_usd: number; cofins_usd: number; icms_usd: number;
-      } | null;
+      return data as { frete_intl_usd: number } | null;
     },
     enabled: !!quoteId,
   });
@@ -121,8 +118,6 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
   const breakdown = useMemo(() => calcSeguroInternacional({
     custoUsd: custoCargaUsd,
     freteUsd: Number(basis?.frete_intl_usd || 0),
-    impostosUsd: Number(basis?.ii_usd || 0) + Number(basis?.ipi_usd || 0) + Number(basis?.pis_usd || 0)
-      + Number(basis?.cofins_usd || 0) + Number(basis?.icms_usd || 0),
     taxaPct,
   }), [custoCargaUsd, basis, taxaPct]);
 
@@ -176,11 +171,23 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
   const handleToggle = async (checked: boolean) => {
     if (readOnly) return;
     try {
-      await (supabase as any).from('quotes').update({ seguro_auto: checked }).eq('id', quoteId);
+      const { error: qErr } = await (supabase as any).from('quotes').update({ seguro_auto: checked }).eq('id', quoteId);
+      if (qErr) throw qErr;
+
       if (!checked && autoCharge) {
-        await (supabase as any).from('quote_charges').delete().eq('id', autoCharge.id);
+        const { error: delErr } = await (supabase as any).from('quote_charges').delete().eq('id', autoCharge.id);
+        if (delErr) throw delErr;
+        // Atualiza o cache na hora — sem isso, o refetch de ['quote-detail']
+        // (seguro_auto=false) e o de ['quote-charge-auto-insurance'] (null)
+        // podem chegar em momentos diferentes; se o efeito de sincronização
+        // rodar entre um e outro com auto ainda "true" (stale) e a taxa já
+        // null, ele recria a taxa sozinho — o checkbox parecia "não travar".
+        qc.setQueryData(['quote-charge-auto-insurance', quoteId], null);
       }
-      qc.invalidateQueries({ queryKey: ['quote-detail', quoteId] });
+      // Reflete o novo seguro_auto no cache do quote-detail imediatamente,
+      // pelo mesmo motivo acima (evita o efeito ler um valor desatualizado).
+      qc.setQueryData(['quote-detail', quoteId], (old: any) => (old ? { ...old, seguro_auto: checked } : old));
+
       invalidateAll();
       toast.success(checked ? 'Seguro incluído no processo.' : 'Seguro removido do processo.');
     } catch (err: any) {
@@ -199,7 +206,8 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
               <TooltipTrigger asChild><Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" /></TooltipTrigger>
               <TooltipContent className="max-w-xs text-xs">
                 Calculado automaticamente: (Custo + Frete + 10% Despesas + 10% Lucro Esperado + Impostos) x Taxa da seguradora
-                vinculada ao processo (aba Parceiros). Marque para incluir esse valor como taxa do processo.
+                vinculada ao processo (aba Parceiros). Impostos = (Custo + Frete) x 0,5. Marque para incluir esse valor como
+                taxa do processo — desmarcar remove a taxa.
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
