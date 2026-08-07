@@ -16,6 +16,10 @@ interface Props {
   expenses: EstimateExpenseRow[];
   breakdown: EstimateBreakdown | null;
   hasInsurance?: boolean;
+  /** 'estimativa' (padrão) gera o PDF completo (resumo + 1 folha por item).
+   *  'numerario' gera só a folha de resumo, renomeada pra "Numerário" e com
+   *  os dados bancários da empresa anexados no rodapé. */
+  mode?: 'estimativa' | 'numerario';
 }
 
 const fmtUSD = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -43,11 +47,13 @@ const sheet: React.CSSProperties = {
 const sheetLast: React.CSSProperties = { ...sheet, pageBreakAfter: 'auto', breakAfter: 'auto' };
 const avoidBreak: React.CSSProperties = { pageBreakInside: 'avoid', breakInside: 'avoid' };
 
-export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expenses, breakdown, hasInsurance = true }: Props) {
+export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expenses, breakdown, hasInsurance = true, mode = 'estimativa' }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [company, setCompany] = useState<any>(null);
   const [client, setClient] = useState<any>(null);
+  const [bank, setBank] = useState<any>(null);
+  const isNumerario = mode === 'numerario';
 
   useEffect(() => {
     if (!open || !quote?.company_id) return;
@@ -58,6 +64,22 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
       setClient(null);
     }
   }, [open, quote?.company_id, quote?.client_id]);
+
+  // Dados bancários só fazem sentido no Numerário. Usa a conta padrão em BRL
+  // (moeda em que os custos de nacionalização são pagos); sem uma marcada
+  // como padrão, cai na primeira conta BRL ativa.
+  useEffect(() => {
+    if (!open || !isNumerario || !quote?.company_id) { setBank(null); return; }
+    supabase
+      .from('company_bank_accounts' as any)
+      .select('*')
+      .eq('company_id', quote.company_id)
+      .eq('currency', 'BRL')
+      .eq('active', true)
+      .order('is_default', { ascending: false })
+      .limit(1)
+      .then((r: any) => setBank(r.data?.[0] || null));
+  }, [open, isNumerario, quote?.company_id]);
 
   if (!open || !breakdown) return null;
 
@@ -71,7 +93,8 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
     setDownloading(true);
     try {
       const html2pdf = (await import('html2pdf.js')).default;
-      const filename = `estimativa_${quote?.quote_number || estimate.id.slice(0, 8)}.pdf`;
+      const filenamePrefix = isNumerario ? 'numerario' : 'estimativa';
+      const filename = `${filenamePrefix}_${quote?.quote_number || estimate.id.slice(0, 8)}.pdf`;
       const blob: Blob = await html2pdf().set({
         margin: 0,
         filename,
@@ -156,7 +179,7 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader className="flex flex-row items-center justify-between">
-          <DialogTitle>Estimativa de Custo</DialogTitle>
+          <DialogTitle>{isNumerario ? 'Numerário' : 'Estimativa de Custo'}</DialogTitle>
           <Button onClick={handleDownload} disabled={downloading} size="sm">
             <Download className="w-4 h-4 mr-2" /> {downloading ? 'Gerando…' : 'Baixar PDF'}
           </Button>
@@ -164,7 +187,7 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
 
         <div ref={ref} style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", color: BRAND, background: '#e5e5e5' }}>
         {/* ============= FOLHA 1: Resumo ============= */}
-        <section className="pdf-avoid-break" style={items.length === 0 ? sheetLast : sheet}>
+        <section className="pdf-avoid-break" style={isNumerario || items.length === 0 ? sheetLast : sheet}>
           {/* Header Empresa */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: 10, marginBottom: 15 }}>
             {company?.logo_url ? (
@@ -184,7 +207,9 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
           {/* Header Estimativa */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', background: BRAND, color: '#fff', padding: '10px 15px', borderRadius: 4, marginBottom: 15 }}>
             <div style={{ fontSize: 10 }}>
-              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>ESTIMATIVA DE CUSTOS DE IMPORTAÇÃO</div>
+              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>
+                {isNumerario ? 'NUMERÁRIO' : 'ESTIMATIVA DE CUSTOS DE IMPORTAÇÃO'}
+              </div>
               <div>{quote?.quote_number || '---'}</div>
               <div style={{ opacity: 0.8 }}>DATA: {new Date().toLocaleDateString('pt-BR')}</div>
             </div>
@@ -241,10 +266,33 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
               ))}
             </tbody>
           </table>
+
+          {/* Numerário: dados bancários da empresa pra pagamento, no lugar
+              das folhas por item (que só existem na Estimativa completa). */}
+          {isNumerario && bank && (
+            <div style={{ border: `2px solid ${BRAND}`, padding: 12, marginTop: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: BRAND, marginBottom: 6 }}>DADOS BANCÁRIOS PARA PAGAMENTO</div>
+              <table style={{ width: '100%', fontSize: 10 }}>
+                <tbody>
+                  <tr><td style={{ width: 130, padding: '2px 0' }}><strong>Banco</strong></td><td>{bank.bank_name}</td></tr>
+                  {bank.branch && <tr><td style={{ padding: '2px 0' }}><strong>Agência</strong></td><td>{bank.branch}</td></tr>}
+                  {bank.account_number && <tr><td style={{ padding: '2px 0' }}><strong>Conta</strong></td><td>{bank.account_number}</td></tr>}
+                  <tr><td style={{ padding: '2px 0' }}><strong>Titular</strong></td><td>{bank.account_holder}</td></tr>
+                  {bank.tax_id && <tr><td style={{ padding: '2px 0' }}><strong>CNPJ/CPF</strong></td><td>{bank.tax_id}</td></tr>}
+                  {bank.pix_key && <tr><td style={{ padding: '2px 0' }}><strong>PIX</strong></td><td>{bank.pix_key}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {isNumerario && !bank && (
+            <div style={{ fontSize: 9, color: '#888', fontStyle: 'italic', marginTop: 10 }}>
+              Nenhuma conta bancária em BRL cadastrada em Configurações &gt; Dados Bancários.
+            </div>
+          )}
         </section>
 
-        {/* ============= 1 FOLHA POR ITEM ============= */}
-        {items.map((item, idx) => {
+        {/* ============= 1 FOLHA POR ITEM (só na Estimativa completa) ============= */}
+        {!isNumerario && items.map((item, idx) => {
             const b = breakdown.itemBreakdowns[idx];
             if (!b) return null;
             const itemRows: Array<[string, number, boolean?]> = [

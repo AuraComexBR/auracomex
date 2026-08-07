@@ -23,7 +23,8 @@ import type { ChargeLike } from '@/lib/estimateSync';
 import { chargesHaveInsurance } from '@/lib/estimateSync';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
-import { Info } from 'lucide-react';
+import { Info, ChevronDown } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface Props {
   quoteId: string;
@@ -68,6 +69,7 @@ export function CostEstimateTab({
   // Taxa efetiva é calculada mais abaixo, após declarar draftEstimate/editMode.
   const queryClient = useQueryClient();
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfMode, setPdfMode] = useState<'estimativa' | 'numerario'>('estimativa');
   const [creating, setCreating] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -790,7 +792,19 @@ export function CostEstimateTab({
               <Link2 className="w-3 h-3" /> Espelho automático Taxas/Carga
             </span>
             <Button size="sm" variant="outline" onClick={() => guardStructural(refreshRates)}><RefreshCw className="w-3.5 h-3.5 mr-1" /> Atualizar câmbio</Button>
-            <Button size="sm" onClick={() => setPdfOpen(true)}><FileDown className="w-3.5 h-3.5 mr-1" /> PDF</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm"><FileDown className="w-3.5 h-3.5 mr-1" /> PDF <ChevronDown className="w-3.5 h-3.5 ml-1" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => { setPdfMode('estimativa'); setPdfOpen(true); }}>
+                  Estimativa
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setPdfMode('numerario'); setPdfOpen(true); }}>
+                  Numerário
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {serverEstimate && (
               <Button
                 size="sm"
@@ -1267,34 +1281,50 @@ export function CostEstimateTab({
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            {breakdown ? (
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-2">
-                <div className="border-r border-border/50 pr-4">
-                  <span className="text-[9px] uppercase text-muted-foreground block">I.I.</span>
-                  <span className="font-mono text-sm">R$ {fmtBRL(toBRL(breakdown.ii_usd, estimate?.usd_brl || 0))}</span>
+            {breakdown ? (() => {
+              const taxaSiscomexBrl = Number((estimate as any)?.taxa_siscomex_brl || 0);
+              // Taxa Siscomex é uma taxa federal cobrada junto com o desembaraço
+              // (não integra o VMLD/base de ICMS), mas pro usuário faz mais sentido
+              // ver o valor dela ao lado dos demais impostos do que só lá no card
+              // de Custos de Destino — por isso entra aqui também, e soma no
+              // "Total Impostos" desta seção.
+              const totalImpostosUsd = (breakdown.subtotal_usd - breakdown.vmld_usd) + (taxaSiscomexBrl / (estimate?.usd_brl || 1));
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-7 gap-4 mt-2">
+                  <div className="border-r border-border/50 pr-4">
+                    <span className="text-[9px] uppercase text-muted-foreground block">I.I.</span>
+                    <span className="font-mono text-sm">R$ {fmtBRL(toBRL(breakdown.ii_usd, estimate?.usd_brl || 0))}</span>
+                  </div>
+                  <div className="border-r border-border/50 pr-4">
+                    <span className="text-[9px] uppercase text-muted-foreground block">I.P.I.</span>
+                    <span className="font-mono text-sm">R$ {fmtBRL(toBRL(breakdown.ipi_usd, estimate?.usd_brl || 0))}</span>
+                  </div>
+                  <div className="border-r border-border/50 pr-4">
+                    <span className="text-[9px] uppercase text-muted-foreground block">P.I.S.</span>
+                    <span className="font-mono text-sm">R$ {fmtBRL(toBRL(breakdown.pis_usd, estimate?.usd_brl || 0))}</span>
+                  </div>
+                  <div className="border-r border-border/50 pr-4">
+                    <span className="text-[9px] uppercase text-muted-foreground block">COFINS</span>
+                    <span className="font-mono text-sm">R$ {fmtBRL(toBRL(breakdown.cofins_usd, estimate?.usd_brl || 0))}</span>
+                  </div>
+                  <div className="border-r border-border/50 pr-4">
+                    <span className="text-[9px] uppercase text-muted-foreground block text-blue-600">I.C.M.S.</span>
+                    <span className="font-mono text-sm font-bold text-blue-600">R$ {fmtBRL(toBRL(breakdown.icms_usd, estimate?.usd_brl || 0))}</span>
+                  </div>
+                  <div className="border-r border-border/50 pr-4">
+                    <span className="text-[9px] uppercase text-muted-foreground block">
+                      Taxa Siscomex
+                      {(estimate as any)?.taxa_siscomex_auto && <span> (auto)</span>}
+                    </span>
+                    <span className="font-mono text-sm">R$ {fmtBRL(taxaSiscomexBrl)}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[9px] uppercase text-muted-foreground block font-bold">Total Impostos</span>
+                    <span className="font-mono text-base font-bold text-red-600">R$ {fmtBRL(toBRL(totalImpostosUsd, estimate?.usd_brl || 0))}</span>
+                  </div>
                 </div>
-                <div className="border-r border-border/50 pr-4">
-                  <span className="text-[9px] uppercase text-muted-foreground block">I.P.I.</span>
-                  <span className="font-mono text-sm">R$ {fmtBRL(toBRL(breakdown.ipi_usd, estimate?.usd_brl || 0))}</span>
-                </div>
-                <div className="border-r border-border/50 pr-4">
-                  <span className="text-[9px] uppercase text-muted-foreground block">P.I.S.</span>
-                  <span className="font-mono text-sm">R$ {fmtBRL(toBRL(breakdown.pis_usd, estimate?.usd_brl || 0))}</span>
-                </div>
-                <div className="border-r border-border/50 pr-4">
-                  <span className="text-[9px] uppercase text-muted-foreground block">COFINS</span>
-                  <span className="font-mono text-sm">R$ {fmtBRL(toBRL(breakdown.cofins_usd, estimate?.usd_brl || 0))}</span>
-                </div>
-                <div className="border-r border-border/50 pr-4">
-                  <span className="text-[9px] uppercase text-muted-foreground block text-blue-600">I.C.M.S.</span>
-                  <span className="font-mono text-sm font-bold text-blue-600">R$ {fmtBRL(toBRL(breakdown.icms_usd, estimate?.usd_brl || 0))}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[9px] uppercase text-muted-foreground block font-bold">Total Impostos</span>
-                  <span className="font-mono text-base font-bold text-red-600">R$ {fmtBRL(toBRL(breakdown.subtotal_usd - breakdown.vmld_usd, estimate?.usd_brl || 0))}</span>
-                </div>
-              </div>
-            ) : (
+              );
+            })() : (
               <div className="text-center py-6 text-xs text-muted-foreground italic">Aguardando cálculo...</div>
             )}
           </CardContent>
@@ -1398,6 +1428,7 @@ export function CostEstimateTab({
         expenses={expenses as any}
         breakdown={breakdown}
         hasInsurance={hasInsurance}
+        mode={pdfMode}
       />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
