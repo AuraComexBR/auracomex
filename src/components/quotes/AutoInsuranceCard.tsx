@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { ShieldCheck, Info } from 'lucide-react';
+import { ShieldCheck, Info, ChevronDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,6 +42,7 @@ function fmtUSD(n: number) {
  */
 export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [], cargoItems = [], readOnly }: Props) {
   const qc = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
 
   // Frete Internacional ainda vem da Estimativa de Custo — Custo vem da carga
   // (abaixo) e Impostos é derivado de Custo+Frete (ver calcSeguroInternacional).
@@ -195,23 +197,41 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
     }
   };
 
+  const canExpand = hasRate && hasBasis;
+
   return (
     <Card className="glass border-primary/20">
       <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-primary" />
+        <button
+          type="button"
+          onClick={() => canExpand && setExpanded((e) => !e)}
+          disabled={!canExpand}
+          className={cn('flex items-center gap-2 text-left', canExpand ? 'cursor-pointer' : 'cursor-default')}
+        >
+          {canExpand && (
+            <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform shrink-0', expanded && 'rotate-180')} />
+          )}
+          <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
           <CardTitle className="text-sm font-medium">Seguro Internacional</CardTitle>
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger asChild><Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" /></TooltipTrigger>
+              <TooltipTrigger asChild>
+                <Info
+                  className="w-3.5 h-3.5 text-muted-foreground cursor-help"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </TooltipTrigger>
               <TooltipContent className="max-w-xs text-xs">
                 Calculado automaticamente: (Custo + Frete + 10% Despesas + 10% Lucro Esperado + Impostos) x Taxa da seguradora
                 vinculada ao processo (aba Parceiros). Impostos = (Custo + Frete) x 0,5. Marque para incluir esse valor como
-                taxa do processo — desmarcar remove a taxa.
+                taxa do processo — desmarcar remove a taxa. Clique na seta para ver o detalhamento.
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        </div>
+          {canExpand && (
+            <span className="text-xs text-muted-foreground font-mono ml-1">US$ {fmtUSD(breakdown.valorSeguro)}</span>
+          )}
+        </button>
         <div className="flex items-center gap-2">
           <Checkbox
             id={`seguro-auto-${quoteId}`}
@@ -224,17 +244,21 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
           </Label>
         </div>
       </CardHeader>
-      <CardContent className="pt-0">
-        {!hasRate ? (
+      {!hasRate ? (
+        <CardContent className="pt-0">
           <p className="text-xs text-muted-foreground italic py-2">
             Nenhuma taxa de seguro disponível. Vincule uma Seguradora ao processo na aba Parceiros (Cadastros &gt; Parceiros,
             categoria "Seguradora", com a Taxa de Seguro preenchida) ou defina uma taxa padrão em Configurações &gt; Empresa.
           </p>
-        ) : !hasBasis ? (
+        </CardContent>
+      ) : !hasBasis ? (
+        <CardContent className="pt-0">
           <p className="text-xs text-muted-foreground italic py-2">
             Informe o Valor da Carga (em USD) na aba Resumo da Carga para calcular o seguro automaticamente.
           </p>
-        ) : (
+        </CardContent>
+      ) : expanded ? (
+        <CardContent className="pt-0">
           <div className="space-y-2">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div>
@@ -260,8 +284,8 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
               <p className="text-[10px] text-muted-foreground italic">{taxaSourceLabel}</p>
             )}
           </div>
-        )}
-      </CardContent>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }
