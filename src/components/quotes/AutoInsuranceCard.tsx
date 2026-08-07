@@ -90,7 +90,7 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
 
   // Taxas automáticas já lançadas no processo — pode haver até 2 linhas
   // (Compra com a Seguradora, Venda com o Cliente).
-  const { data: autoCharges = [] } = useQuery({
+  const { data: autoCharges = [], isFetched: chargesFetched } = useQuery({
     queryKey: ['quote-charge-auto-insurance', quoteId],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
@@ -169,6 +169,14 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
   // seguradora ou o cliente do processo etc.).
   const syncedRef = useRef<string | null>(null);
   useEffect(() => {
+    // Espera a consulta das taxas automáticas já existentes terminar de
+    // carregar antes de decidir se insere ou atualiza. Sem isso, a CADA
+    // remount do card (ex.: F5 na página, troca de aba e volta) o hook
+    // começa com `autoCharges=[]` (valor padrão enquanto a query ainda não
+    // resolveu) — o efeito lia isso como "não existe taxa nenhuma ainda" e
+    // inseria um par novo de Compra/Venda antes da consulta real chegar,
+    // duplicando a taxa a cada recarregamento da tela.
+    if (!chargesFetched) return;
     if (!auto || !canCalc || readOnly || !companyId) return;
     const key = `${buyCharge?.id || ''}:${sellCharge?.id || ''}:${breakdown.valorSeguro}:${insurerClientId || ''}:${sellClientId || ''}`;
     if (syncedRef.current === key) return;
@@ -218,7 +226,7 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
       invalidateAll();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, canCalc, readOnly, breakdown.valorSeguro, buyCharge?.id, sellCharge?.id, insurerClientId, sellClientId, companyId]);
+  }, [chargesFetched, auto, canCalc, readOnly, breakdown.valorSeguro, buyCharge?.id, sellCharge?.id, insurerClientId, sellClientId, companyId]);
 
   const handleToggle = async (checked: boolean) => {
     if (readOnly) return;

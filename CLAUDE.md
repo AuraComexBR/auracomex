@@ -21,10 +21,19 @@ SaaS de gestão de frete internacional (comex), em português. Usuário: Marcos 
    NUNCA usar `-p .` — o tsconfig.json raiz é solution-style com `files: []` e não checa nada.
 2. **Deploy sempre**: toda mudança verificada é commitada e enviada pro `main` imediatamente
    (o usuário pediu "deploy sempre"). Antes de push, `git fetch origin main` pra checar divergência.
-3. **Uma versão por deploy**: cada deploy ganha uma linha nova na tabela `app_releases` do Supabase
-   (via `execute_sql` INSERT). Formato da versão: `AA.M.NN` (ano.mês.sequencial — ex: `26.8.55`).
-   Colunas: `version`, `title`, `summary`, `highlights` (jsonb array de strings), `is_major` (bool).
-   Consultar a última versão antes de inserir: `SELECT version FROM app_releases ORDER BY created_at DESC LIMIT 1`.
+3. **Versionamento por assunto (uma versão "fechada" por conversa/assunto)**: dentro de um mesmo
+   assunto (tipicamente uma conversa), o sequencial (`NN`) fica TRAVADO e cada deploy intermediário
+   ganha uma letra: `26.8.64a`, `26.8.64b`, `26.8.64c`... Essas versões com letra são só pro bundle
+   ir pro ar (deploy Vercel normal) — **NÃO inserir linha em `app_releases`** pra elas, é só rodar
+   o deploy e confirmar via Vercel. O usuário avisa quando o assunto está resolvido/fechado; só
+   nesse momento insere UMA linha em `app_releases` com a versão sem letra (o próximo sequencial
+   "puro", ex. `26.8.65`) resumindo o que foi feito no assunto inteiro — não cada ajuste intermediário.
+   Um assunto novo (nova conversa/tema) sempre começa do próximo sequencial sem letra e recomeça o
+   ciclo de letras se precisar de vários ajustes.
+   Formato da versão: `AA.M.NN[letra]` (ano.mês.sequencial — ex: `26.8.55`, `26.8.64b`).
+   Colunas de `app_releases`: `version`, `title`, `summary`, `highlights` (jsonb array de strings),
+   `is_major` (bool). Consultar a última versão ANTES de fechar um assunto:
+   `SELECT version FROM app_releases ORDER BY created_at DESC LIMIT 1`.
    ATENÇÃO: a versão exibida na sidebar do app vem SÓ dessa tabela — não prova que o bundle novo
    está no ar. Confirmar deploys pela API do Vercel (`list_deployments`) e pelos valores reais na tela.
 4. **Confirmar o deploy**: após push, checar via `list_deployments` (Vercel MCP) que apareceu um
