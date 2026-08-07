@@ -416,58 +416,10 @@ export default function Quotes() {
                     <TableCell className="py-0.5 px-4">{q.destination || '-'}</TableCell>
                     <TableCell className="py-0.5 px-4 text-right font-mono text-[15px] font-semibold">
                       {(() => {
-                        const qCharges = (q as any).quote_charges || [];
-                        const qItems = ((q as any).quote_items || []).map((item: any) => ({
-                          container_type: item.container_type || '20GP',
-                          container_qty: item.container_qty || 1,
-                          weight_kg: String(item.weight_kg || ''),
-                          volume_cbm: String(item.volume_cbm || ''),
-                          chargeable_weight: String(item.chargeable_weight || ''),
-                          length_cm: String(item.length_cm || ''),
-                          width_cm: String(item.width_cm || ''),
-                          height_cm: String(item.height_cm || ''),
-                          packages: String(item.packages || ''),
-                          ncm_code: item.ncm_code || '',
-                          commodity: item.commodity || '',
-                          dangerous_goods: item.dangerous_goods || false,
-                          vehicle_type: item.vehicle_type || '',
-                        }));
-                        
-                        const totalWeight = qItems.reduce((s: number, i: any) => s + calcItemWeight(i), 0);
-                        const totalCbm = qItems.reduce((s: number, i: any) => s + getEffectiveVolume(i), 0);
-                        const totalChargeable = calcChargeableWeight(qItems, q.transport_mode);
-                        const totalContainers = qItems.reduce((s: number, i: any) => s + (i.container_qty || 1), 0);
-                        const totalContainers20 = qItems.reduce((s: number, i: any) => s + ((i.container_type || '').startsWith('20') ? (i.container_qty || 1) : 0), 0);
-                        const totalContainers40 = qItems.reduce((s: number, i: any) => s + ((i.container_type || '').startsWith('40') ? (i.container_qty || 1) : 0), 0);
-                        
-                        function getMultiplier(unit: string): number {
-                          switch (unit) {
-                            case 'per_cw': return totalChargeable;
-                            case 'per_ton': return totalWeight / 1000;
-                            case 'per_cbm': return totalCbm;
-                            case 'per_container': return totalContainers;
-                            case 'per_container_20': return totalContainers20;
-                            case 'per_container_40': return totalContainers40;
-                            case 'per_bl': return 1;
-                            default: return 1;
-                          }
-                        }
-                        
-                        const sellMap = groupByCurrency(qCharges, (c: any) => c.currency || 'USD', (c: any) => (c.sell_amount || 0) * getMultiplier(c.billing_unit || 'fixed'));
-                        const buyMap = groupByCurrency(qCharges, (c: any) => c.currency || 'USD', (c: any) => (c.buy_amount || 0) * getMultiplier(c.billing_unit || 'fixed'));
-                        const allCurs = [...new Set([...Object.keys(sellMap), ...Object.keys(buyMap)])];
-                        const profitMap: Record<string, number> = {};
-                        allCurs.forEach((cur) => { profitMap[cur] = (sellMap[cur] || 0) - (buyMap[cur] || 0); });
-                        
-                        // Convert all to BRL
-                        let totalBrl = 0;
-                        Object.entries(profitMap).forEach(([cur, val]) => {
-                          if (cur === 'BRL') totalBrl += val;
-                          else if (cur === 'USD') totalBrl += val * (usdBrl || 0);
-                          else if (cur === 'EUR') totalBrl += val * (eurBrl || 0);
-                          else totalBrl += val * (usdBrl || 0);
-                        });
-                        
+                        // Reaproveita a mesma função usada pra ordenação (computeQuoteProfitBrl),
+                        // em vez de uma segunda cópia da conta aqui — as duas tinham divergido
+                        // (esta versão inline não tratava a unidade de cobrança per_wm).
+                        const totalBrl = computeQuoteProfitBrl(q as any, usdBrl, eurBrl);
                         return (
                           <span className={totalBrl >= 0 ? 'text-status-completed' : 'text-status-urgent'}>
                             R$ {totalBrl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
