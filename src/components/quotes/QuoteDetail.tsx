@@ -381,7 +381,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('quote_partners' as any)
-        .select('*, clients:client_id(id, name, type, partner_category, storage_rebate_percent)')
+        .select('*, clients:client_id(id, name, type, partner_category, storage_rebate_percent, insurance_rate_pct)')
         .eq('quote_id', quoteId)
         .order('created_at');
       if (error) throw error;
@@ -2326,6 +2326,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 quoteId={quoteId}
                 companyId={profile.company_id}
                 quote={quote as any}
+                quotePartners={quotePartners}
                 readOnly={!canEditCharges}
               />
             )}

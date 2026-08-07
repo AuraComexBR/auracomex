@@ -519,7 +519,7 @@ export default function SettingsPage() {
                   onChange={(e) => setForm({ ...form, seguroTaxaPctDefault: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Usada no cálculo automático do seguro na aba Taxas de todo processo novo (ex.: 0,16 = 0,16%). Pode ser ajustada em cada processo individualmente.
+                  Usada no cálculo automático do seguro na aba Taxas somente quando o processo não tem uma Seguradora vinculada na aba Parceiros. Para uma taxa específica, cadastre-a na Seguradora (Cadastros &gt; Parceiros, categoria "Seguradora").
                 </p>
               </div>
 

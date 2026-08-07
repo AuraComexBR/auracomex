@@ -78,6 +78,7 @@ export default function Registrations() {
     is_foreign: false,
     partner_category: '',
     storage_rebate_percent: '',
+    insurance_rate_pct: '',
   });
 
   function getClientTrackingLink(taxId: string | null) {
@@ -199,6 +200,9 @@ export default function Registrations() {
         storage_rebate_percent: form.partner_category === 'co_loader' && form.storage_rebate_percent
           ? parseFloat(form.storage_rebate_percent)
           : null,
+        insurance_rate_pct: form.partner_category === 'insurance' && form.insurance_rate_pct
+          ? parseFloat(form.insurance_rate_pct)
+          : null,
       };
 
       if (editingId) {
@@ -268,6 +272,7 @@ export default function Registrations() {
       is_foreign: client.is_foreign || false,
       partner_category: client.partner_category || '',
       storage_rebate_percent: client.storage_rebate_percent != null ? String(client.storage_rebate_percent) : '',
+      insurance_rate_pct: client.insurance_rate_pct != null ? String(client.insurance_rate_pct) : '',
     });
     setEditingId(client.id);
     setShowAdd(true);
@@ -289,6 +294,7 @@ export default function Registrations() {
       is_foreign: false,
       partner_category: '',
       storage_rebate_percent: '',
+      insurance_rate_pct: '',
     });
   }
 
@@ -676,6 +682,28 @@ export default function Registrations() {
                 </div>
                 <p className="text-[11px] text-muted-foreground">
                   Percentual do valor da armazenagem que este Co-loader repassa como rebate. É esse valor que vai para Contas a Receber quando armazenagem é lançada em um embarque LCL.
+                </p>
+              </div>
+            )}
+
+            {/* Taxa de Seguro - só para Seguradoras */}
+            {form.partner_category === 'insurance' && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                <Label>Taxa de Seguro (%)</Label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    placeholder="0.16"
+                    value={form.insurance_rate_pct}
+                    onChange={(e) => setForm({ ...form, insurance_rate_pct: e.target.value })}
+                    className="pr-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Taxa cobrada por esta seguradora sobre a soma das verbas (Custo + Frete + Despesas + Lucro Esperado + Impostos). Usada no cálculo automático do Seguro Internacional na aba Taxas do processo.
                 </p>
               </div>
             )}
