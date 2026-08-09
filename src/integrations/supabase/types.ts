@@ -770,6 +770,7 @@ export type Database = {
         Row: {
           certificate_password: string | null
           certificate_path: string | null
+          certificate_pem_path: string | null
           client_id: string
           client_secret: string
           company_id: string
@@ -785,6 +786,7 @@ export type Database = {
         Insert: {
           certificate_password?: string | null
           certificate_path?: string | null
+          certificate_pem_path?: string | null
           client_id: string
           client_secret: string
           company_id: string
@@ -800,6 +802,7 @@ export type Database = {
         Update: {
           certificate_password?: string | null
           certificate_path?: string | null
+          certificate_pem_path?: string | null
           client_id?: string
           client_secret?: string
           company_id?: string

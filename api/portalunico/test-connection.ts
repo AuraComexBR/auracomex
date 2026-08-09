@@ -55,20 +55,42 @@ export default async function handler(req: any, res: any) {
       res.status(404).json({ success: false, error: 'Nenhuma credencial do Portal Único cadastrada para esta empresa.' });
       return;
     }
-    if (!config.certificate_path || !config.certificate_password) {
-      res.status(422).json({ success: false, error: 'Certificado digital (.pfx/.p12) e senha ainda não cadastrados para esta empresa.' });
+
+    let tlsOptions: { pfx: Buffer; passphrase: string } | { cert: string; key: string };
+
+    // Prioriza o PEM combinado quando cadastrado — evita o parser PKCS12 do
+    // Node/OpenSSL3, que rejeita certificados A1 mais antigos com
+    // "Unsupported PKCS12 PFX data" (algoritmos legados tipo RC2-40/3DES+SHA1).
+    if (config.certificate_pem_path) {
+      const { data: pemBlob, error: pemDownloadError } = await supabase.storage
+        .from('company-certificates')
+        .download(config.certificate_pem_path);
+      if (pemDownloadError || !pemBlob) {
+        throw new Error(`Falha ao baixar o certificado PEM: ${pemDownloadError?.message || 'arquivo não encontrado'}`);
+      }
+      const pemText = await pemBlob.text();
+      const certMatch = pemText.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/);
+      const keyMatch = pemText.match(/-----BEGIN (?:RSA |EC )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA |EC )?PRIVATE KEY-----/);
+      if (!certMatch || !keyMatch) {
+        res.status(422).json({ success: false, error: 'O arquivo PEM cadastrado não tem um bloco CERTIFICATE e/ou PRIVATE KEY reconhecível.' });
+        return;
+      }
+      tlsOptions = { cert: certMatch[0], key: keyMatch[0] };
+    } else if (config.certificate_path && config.certificate_password) {
+      const { data: certBlob, error: downloadError } = await supabase.storage
+        .from('company-certificates')
+        .download(config.certificate_path);
+      if (downloadError || !certBlob) {
+        throw new Error(`Falha ao baixar o certificado: ${downloadError?.message || 'arquivo não encontrado'}`);
+      }
+      const certBuffer = Buffer.from(await certBlob.arrayBuffer());
+      tlsOptions = { pfx: certBuffer, passphrase: config.certificate_password };
+    } else {
+      res.status(422).json({ success: false, error: 'Certificado digital (.pfx/.p12 ou PEM combinado) ainda não cadastrado para esta empresa.' });
       return;
     }
 
-    const { data: certBlob, error: downloadError } = await supabase.storage
-      .from('company-certificates')
-      .download(config.certificate_path);
-    if (downloadError || !certBlob) {
-      throw new Error(`Falha ao baixar o certificado: ${downloadError?.message || 'arquivo não encontrado'}`);
-    }
-    const certBuffer = Buffer.from(await certBlob.arrayBuffer());
-
-    const result = await authenticate(certBuffer, config.certificate_password, config.role_type || 'IMPEXP');
+    const result = await authenticate(tlsOptions, config.role_type || 'IMPEXP');
 
     await supabase
       .from('company_portalunico_configs')
@@ -85,15 +107,17 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-function authenticate(pfx: Buffer, passphrase: string, roleType: string): Promise<{ success: boolean; error?: string; message?: string; portal_status?: number; portal_response?: any }> {
+function authenticate(
+  tlsOptions: { pfx: Buffer; passphrase: string } | { cert: string; key: string },
+  roleType: string,
+): Promise<{ success: boolean; error?: string; message?: string; portal_status?: number; portal_response?: any }> {
   return new Promise((resolve) => {
     const request = https.request(
       {
         hostname: PORTAL_HOST,
         path: '/portal/api/autenticar',
         method: 'POST',
-        pfx,
-        passphrase,
+        ...tlsOptions,
         headers: {
           'Content-Type': 'application/json',
           'Role-Type': roleType,

@@ -50,10 +50,12 @@ async function extractFunctionErrorMessage(error: any): Promise<string> {
 export function PortalUnicoConfigWizard({ companyId }: Props) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pemFileInputRef = useRef<HTMLInputElement>(null);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [certificatePassword, setCertificatePassword] = useState('');
+  const [pemFile, setPemFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
@@ -61,7 +63,7 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
     queryKey: ['company-portalunico-config', companyId],
     queryFn: async () => {
       const { data, error } = await (supabase.from('company_portalunico_configs') as any)
-        .select('client_id, role_type, is_active, certificate_path, last_tested_at, last_test_success')
+        .select('client_id, role_type, is_active, certificate_path, certificate_pem_path, last_tested_at, last_test_success')
         .eq('company_id', companyId)
         .maybeSingle();
       if (error) throw error;
@@ -78,6 +80,16 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
       return;
     }
     setCertificateFile(file);
+  }
+
+  function handlePemFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.pem')) {
+      toast.error('Selecione o arquivo .pem gerado pelo openssl');
+      return;
+    }
+    setPemFile(file);
   }
 
   async function handleSave() {
@@ -101,6 +113,15 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
         if (uploadError) throw uploadError;
       }
 
+      let certificatePemPath: string | undefined;
+      if (pemFile) {
+        certificatePemPath = `${companyId}/portalunico_cert_${Date.now()}.pem`;
+        const { error: uploadPemError } = await supabase.storage
+          .from('company-certificates')
+          .upload(certificatePemPath, pemFile, { upsert: true });
+        if (uploadPemError) throw uploadPemError;
+      }
+
       const { data, error } = await supabase.functions.invoke('portalunico-gateway', {
         body: {
           action: 'save_config',
@@ -109,6 +130,7 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
           client_secret: clientSecret.trim(),
           certificate_path: certificatePath,
           certificate_password: certificatePassword.trim() || undefined,
+          certificate_pem_path: certificatePemPath,
         },
       });
       if (error) throw new Error(await extractFunctionErrorMessage(error));
@@ -117,6 +139,7 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
       setClientSecret('');
       setCertificateFile(null);
       setCertificatePassword('');
+      setPemFile(null);
       queryClient.invalidateQueries({ queryKey: ['company-portalunico-config', companyId] });
     } catch (err: any) {
       toast.error(err.message);
@@ -172,6 +195,9 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
             {config.certificate_path && (
               <Badge variant="outline" className="gap-1"><FileCode className="w-3 h-3" /> Certificado cadastrado</Badge>
             )}
+            {config.certificate_pem_path && (
+              <Badge variant="outline" className="gap-1"><FileCode className="w-3 h-3" /> PEM cadastrado</Badge>
+            )}
             {config.last_tested_at && (
               <span className="flex items-center gap-1 ml-auto">
                 {config.last_test_success ? (
@@ -218,6 +244,26 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
               onChange={(e) => setCertificatePassword(e.target.value)}
               placeholder={config?.certificate_path ? 'Preencha se for substituir o certificado' : 'Senha do arquivo .pfx'}
             />
+          </div>
+        </div>
+
+        <div className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+          <Label className="text-xs">Certificado combinado em PEM (opcional — só se o .pfx der erro "Unsupported PKCS12 PFX data")</Label>
+          <p className="text-[11px] text-muted-foreground">
+            Certificados A1 mais antigos usam criptografia que o Node.js/OpenSSL 3 não abre mais diretamente.
+            Rode no seu computador (com openssl instalado): <br />
+            <code className="text-[10px] bg-muted px-1 rounded">openssl pkcs12 -in seu_certificado.pfx -nodes -out combinado.pem -legacy</code>
+            {' '}(se der erro de opção desconhecida, tire o <code className="text-[10px]">-legacy</code> do final) e envie o arquivo <code className="text-[10px]">combinado.pem</code> gerado abaixo.
+          </p>
+          <div
+            className="border-2 border-dashed rounded-lg p-3 flex items-center justify-center gap-2 cursor-pointer hover:bg-muted/50 transition-colors mt-2"
+            onClick={() => pemFileInputRef.current?.click()}
+          >
+            <FileCode className={`h-5 w-5 ${pemFile ? 'text-primary' : 'text-muted-foreground'}`} />
+            <span className="text-xs font-medium">
+              {pemFile ? pemFile.name : config?.certificate_pem_path ? 'PEM cadastrado — clique para substituir' : 'Clique para selecionar combinado.pem'}
+            </span>
+            <input ref={pemFileInputRef} type="file" className="hidden" accept=".pem" onChange={handlePemFileChange} />
           </div>
         </div>
 

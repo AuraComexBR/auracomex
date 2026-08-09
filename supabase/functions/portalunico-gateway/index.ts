@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     const body = await req.json().catch(() => ({}));
-    const { action, company_id, client_id, client_secret, role_type, certificate_path, certificate_password } = body as any;
+    const { action, company_id, client_id, client_secret, role_type, certificate_path, certificate_password, certificate_pem_path } = body as any;
 
     if (!company_id) {
       return jsonResponse({ success: false, error: "company_id é obrigatório" }, 400);
@@ -51,6 +51,7 @@ Deno.serve(async (req) => {
             role_type: role_type || "IMPEXP",
             certificate_path: certificate_path ?? undefined,
             certificate_password: certificate_password ?? undefined,
+            certificate_pem_path: certificate_pem_path ?? undefined,
             is_active: true,
           },
           { onConflict: "company_id" },
