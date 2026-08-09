@@ -1,5 +1,5 @@
+import https from 'node:https';
 import { createClient } from '@supabase/supabase-js';
-import { authenticate, loadTlsOptions } from './_lib';
 
 /**
  * Autenticação real (TLS mútuo) no Portal Único Siscomex.
@@ -14,7 +14,102 @@ import { authenticate, loadTlsOptions } from './_lib';
  * nunca compartilhados entre tenants do AuraComex — isolamento reforçado
  * pelo RLS do bucket `company-certificates` e da tabela
  * `company_portalunico_configs` (ambos escopados por company_id).
+ *
+ * Nota: esta lógica é duplicada em subscribe-webhook.ts em vez de ficar
+ * num módulo compartilhado (ex: _lib.ts) — um teste anterior com arquivo
+ * compartilhado prefixado com "_" quebrou os dois endpoints em produção
+ * (aparentemente excluído do bundle da função pela Vercel). Duplicar é
+ * menos elegante, mas garante que cada função Vercel funcione isolada.
  */
+
+const PORTAL_HOST = 'portalunico.siscomex.gov.br';
+
+type TlsOptions = { pfx: Buffer; passphrase: string } | { cert: string; key: string };
+
+async function loadTlsOptions(
+  supabase: any,
+  config: { certificate_pem_path?: string | null; certificate_path?: string | null; certificate_password?: string | null },
+): Promise<{ tlsOptions: TlsOptions } | { error: string; status: number }> {
+  if (config.certificate_pem_path) {
+    const { data: pemBlob, error: pemDownloadError } = await supabase.storage
+      .from('company-certificates')
+      .download(config.certificate_pem_path);
+    if (pemDownloadError || !pemBlob) {
+      return { error: `Falha ao baixar o certificado PEM: ${pemDownloadError?.message || 'arquivo não encontrado'}`, status: 500 };
+    }
+    const pemText = await pemBlob.text();
+    const certMatch = pemText.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/);
+    const keyMatch = pemText.match(/-----BEGIN (?:RSA |EC )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA |EC )?PRIVATE KEY-----/);
+    if (!certMatch || !keyMatch) {
+      return { error: 'O arquivo PEM cadastrado não tem um bloco CERTIFICATE e/ou PRIVATE KEY reconhecível.', status: 422 };
+    }
+    return { tlsOptions: { cert: certMatch[0], key: keyMatch[0] } };
+  }
+
+  if (config.certificate_path && config.certificate_password) {
+    const { data: certBlob, error: downloadError } = await supabase.storage
+      .from('company-certificates')
+      .download(config.certificate_path);
+    if (downloadError || !certBlob) {
+      return { error: `Falha ao baixar o certificado: ${downloadError?.message || 'arquivo não encontrado'}`, status: 500 };
+    }
+    const certBuffer = Buffer.from(await certBlob.arrayBuffer());
+    return { tlsOptions: { pfx: certBuffer, passphrase: config.certificate_password } };
+  }
+
+  return { error: 'Certificado digital (.pfx/.p12 ou PEM combinado) ainda não cadastrado para esta empresa.', status: 422 };
+}
+
+function authenticate(tlsOptions: TlsOptions, roleType: string): Promise<
+  | { success: true; token: string; csrfToken: string }
+  | { success: false; error: string; portal_status?: number; portal_response?: unknown }
+> {
+  return new Promise((resolve) => {
+    const request = https.request(
+      {
+        hostname: PORTAL_HOST,
+        path: '/portal/api/autenticar',
+        method: 'POST',
+        ...tlsOptions,
+        headers: { 'Content-Type': 'application/json', 'Role-Type': roleType },
+        timeout: 15000,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => {
+          const rawBody = Buffer.concat(chunks).toString('utf-8');
+          let parsedBody: any = null;
+          try { parsedBody = rawBody ? JSON.parse(rawBody) : null; } catch { /* corpo não é JSON */ }
+
+          const token = response.headers['set-token'] as string | undefined;
+          const csrfToken = response.headers['x-csrf-token'] as string | undefined;
+          const success = (response.statusCode || 0) < 300 && !!token;
+
+          resolve(
+            success
+              ? { success: true, token: token!, csrfToken: csrfToken || '' }
+              : {
+                  success: false,
+                  error: parsedBody?.message || `Falha na autenticação com o Portal Único (status ${response.statusCode}).`,
+                  portal_status: response.statusCode,
+                  portal_response: parsedBody || rawBody || null,
+                },
+          );
+        });
+      },
+    );
+
+    request.on('timeout', () => {
+      request.destroy();
+      resolve({ success: false, error: 'Tempo esgotado ao conectar no Portal Único.' });
+    });
+    request.on('error', (err: any) => {
+      resolve({ success: false, error: `Erro de conexão TLS com o Portal Único: ${err.message}` });
+    });
+    request.end();
+  });
+}
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
