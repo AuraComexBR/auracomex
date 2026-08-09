@@ -57,6 +57,7 @@ const CUSTOMS_CHANNEL_OPTIONS: { value: string; label: string; badgeClass: strin
   { value: 'green', label: 'Verde', badgeClass: 'bg-green-500/10 text-green-600' },
   { value: 'yellow', label: 'Amarelo', badgeClass: 'bg-amber-500/10 text-amber-600' },
   { value: 'red', label: 'Vermelho', badgeClass: 'bg-red-500/10 text-red-600' },
+  { value: 'gray', label: 'Cinza', badgeClass: 'bg-gray-500/10 text-gray-600' },
 ];
 
 // Ordem alfabética por padrão (pedido do usuário) — o usuário ainda pode
@@ -319,6 +320,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     courier_provider: (shipment as any).courier_provider || '',
     courier_tracking_number: (shipment as any).courier_tracking_number || '',
     customs_channel: (shipment as any).customs_channel || '',
+    duimp_number: (shipment as any).duimp_number || '',
     customs_registration_date: (shipment as any).customs_registration_date || '',
     terminal_entry_date: (shipment as any).terminal_entry_date || '',
     demurrage_deadline: (shipment as any).demurrage_deadline || '',
@@ -414,7 +416,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
       'etd', 'eta', 'atd', 'ata', 'incoterm', 'transport_mode',
       'shipper_id', 'consignee_id', 'notify_id',
       'courier_provider', 'courier_tracking_number',
-      'customs_channel', 'customs_registration_date', 'terminal_entry_date',
+      'customs_channel', 'duimp_number', 'customs_registration_date', 'terminal_entry_date',
       'demurrage_deadline', 'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
     ];
     for (const key of fieldsToCheck) {
@@ -490,6 +492,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         courier_provider: form.courier_provider || null,
         courier_tracking_number: form.courier_tracking_number || null,
         customs_channel: form.customs_channel || null,
+        duimp_number: form.duimp_number.trim() || null,
         customs_registration_date: form.customs_registration_date || null,
         terminal_entry_date: form.terminal_entry_date || null,
         demurrage_deadline: form.demurrage_deadline || null,
@@ -513,7 +516,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
         'shipper_id', 'consignee_id', 'notify_id',
         'courier_provider', 'courier_tracking_number',
-        'customs_channel', 'customs_registration_date', 'terminal_entry_date',
+        'customs_channel', 'duimp_number', 'customs_registration_date', 'terminal_entry_date',
         'demurrage_deadline', 'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
       ];
       for (const dbKey of allFields) {
@@ -1077,6 +1080,16 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
                   Canal {CUSTOMS_CHANNEL_OPTIONS.find((c) => c.value === form.customs_channel)?.label}
                 </Badge>
               )}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Número DUIMP</Label>
+              <Input
+                value={form.duimp_number}
+                onChange={(e) => updateField('duimp_number', e.target.value)}
+                placeholder="26BR00000000198"
+                className="h-9"
+              />
+              <p className="text-[10px] text-muted-foreground">Preenchendo aqui, canal e situação são atualizados sozinhos via Portal Único (se a notificação automática estiver ativa em Configurações).</p>
             </div>
             <DateField label="Registro DI" fieldKey="customs_registration_date" />
             <DateField label="Entrada no Terminal" fieldKey="terminal_entry_date" />

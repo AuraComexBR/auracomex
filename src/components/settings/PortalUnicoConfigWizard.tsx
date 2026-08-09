@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, XCircle, Loader2, ExternalLink, FileCode } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, ExternalLink, FileCode, BellRing } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -58,12 +58,13 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
   const [pemFile, setPemFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
 
   const { data: config } = useQuery({
     queryKey: ['company-portalunico-config', companyId],
     queryFn: async () => {
       const { data, error } = await (supabase.from('company_portalunico_configs') as any)
-        .select('client_id, role_type, is_active, certificate_path, certificate_pem_path, last_tested_at, last_test_success')
+        .select('client_id, role_type, is_active, certificate_path, certificate_pem_path, last_tested_at, last_test_success, webhook_active, webhook_subscription_ids, webhook_last_event_at')
         .eq('company_id', companyId)
         .maybeSingle();
       if (error) throw error;
@@ -170,6 +171,28 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
     }
   }
 
+  async function handleSubscribe() {
+    setSubscribing(true);
+    try {
+      const response = await fetch('/api/portalunico/subscribe-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        toast.error(data?.error || `Falha ao ativar as notificações (status ${response.status})`);
+      } else {
+        toast.success(data.message || 'Notificações automáticas ativadas.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Falha ao chamar a função de assinatura');
+    } finally {
+      setSubscribing(false);
+      queryClient.invalidateQueries({ queryKey: ['company-portalunico-config', companyId] });
+    }
+  }
+
   return (
     <Card className="glass">
       <CardContent className="pt-6 space-y-4">
@@ -207,6 +230,12 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
                 )}
                 <span className="text-muted-foreground">{format(new Date(config.last_tested_at), 'dd/MM/yyyy HH:mm')}</span>
               </span>
+            )}
+            {config.webhook_active && (
+              <Badge className="bg-blue-500/10 text-blue-600 gap-1">
+                <BellRing className="w-3 h-3" /> Notificações ativas
+                {config.webhook_last_event_at && ` · último evento ${format(new Date(config.webhook_last_event_at), 'dd/MM HH:mm')}`}
+              </Badge>
             )}
           </div>
         )}
@@ -276,7 +305,21 @@ export function PortalUnicoConfigWizard({ companyId }: Props) {
             {testing ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : null}
             Testar Conexão
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSubscribe}
+            disabled={subscribing || !config?.last_test_success}
+            title={!config?.last_test_success ? 'Teste a conexão com sucesso antes de ativar as notificações' : undefined}
+          >
+            {subscribing ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <BellRing className="w-4 h-4 mr-1.5" />}
+            {config?.webhook_active ? 'Reativar Notificações' : 'Ativar Notificações Automáticas'}
+          </Button>
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          Ativando, o canal e a situação da DUIMP são atualizados sozinhos no embarque sempre que mudarem no Portal Único —
+          basta preencher o "Número DUIMP" na aba Logística de cada processo.
+        </p>
       </CardContent>
     </Card>
   );

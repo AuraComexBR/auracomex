@@ -782,6 +782,11 @@ export type Database = {
           last_tested_at: string | null
           role_type: string
           updated_at: string
+          webhook_active: boolean
+          webhook_auth_key: string | null
+          webhook_last_event_at: string | null
+          webhook_secret: string | null
+          webhook_subscription_ids: Json | null
         }
         Insert: {
           certificate_password?: string | null
@@ -798,6 +803,11 @@ export type Database = {
           last_tested_at?: string | null
           role_type?: string
           updated_at?: string
+          webhook_active?: boolean
+          webhook_auth_key?: string | null
+          webhook_last_event_at?: string | null
+          webhook_secret?: string | null
+          webhook_subscription_ids?: Json | null
         }
         Update: {
           certificate_password?: string | null
@@ -814,6 +824,11 @@ export type Database = {
           last_tested_at?: string | null
           role_type?: string
           updated_at?: string
+          webhook_active?: boolean
+          webhook_auth_key?: string | null
+          webhook_last_event_at?: string | null
+          webhook_secret?: string | null
+          webhook_subscription_ids?: Json | null
         }
         Relationships: [
           {
@@ -2719,6 +2734,8 @@ export type Database = {
           destination_city: string | null
           destination_country: string | null
           destination_port: string | null
+          duimp_number: string | null
+          duimp_version: number | null
           eta: string | null
           etd: string | null
           financial_released: boolean
@@ -2772,6 +2789,8 @@ export type Database = {
           destination_city?: string | null
           destination_country?: string | null
           destination_port?: string | null
+          duimp_number?: string | null
+          duimp_version?: number | null
           eta?: string | null
           etd?: string | null
           financial_released?: boolean
@@ -2825,6 +2844,8 @@ export type Database = {
           destination_city?: string | null
           destination_country?: string | null
           destination_port?: string | null
+          duimp_number?: string | null
+          duimp_version?: number | null
           eta?: string | null
           etd?: string | null
           financial_released?: boolean
