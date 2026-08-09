@@ -30,10 +30,14 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
+  // Reaproveita a VITE_SUPABASE_URL já existente no projeto (não é segredo,
+  // já vai exposta no bundle do front-end mesmo) — só o service role key
+  // precisa ser cadastrado à parte, esse sim nunca pode ter prefixo VITE_
+  // (senão o Vite embute ele no JS do cliente).
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceRoleKey) {
-    res.status(500).json({ success: false, error: 'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY não configurados nas variáveis de ambiente do Vercel.' });
+    res.status(500).json({ success: false, error: 'SUPABASE_SERVICE_ROLE_KEY não configurada nas variáveis de ambiente do Vercel (VITE_SUPABASE_URL já é reaproveitada automaticamente).' });
     return;
   }
   const supabase = createClient(supabaseUrl, serviceRoleKey);
