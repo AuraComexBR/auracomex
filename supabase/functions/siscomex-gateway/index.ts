@@ -53,58 +53,58 @@ serve(async (req) => {
 
     if (action === 'get_ncm_rates') {
       if (!ncm) throw new Error('NCM é obrigatório')
-      
+
       const cleanNcm = ncm.replace(/\D/g, '')
-      console.log(`Consultando simulador da Receita para NCM: ${cleanNcm}`)
+      if (cleanNcm.length !== 8) throw new Error('NCM deve ter 8 dígitos')
+      console.log(`Consultando Tabelas Fiscais (dados oficiais NCM/TEC/TIPI) para NCM: ${cleanNcm}`)
 
-      try {
-        // Simulando a chamada ao simulador público da Receita Federal
-        // Link: https://www4.receita.fazenda.gov.br/simulador/SimularTratamento.jsp
-        // Em uma implementação real de scraping, usaríamos fetch com os parâmetros necessários.
-        
-        // Aqui simulamos o parser do retorno oficial para garantir a lógica de tempo real
-        // conforme solicitado pelo usuário (sem base local).
-        
-        const response = await fetch(`https://www4.receita.fazenda.gov.br/simulador/SimularTratamento.jsp?ncm=${cleanNcm}&moeda=220&valor=1000`, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-          }
-        });
+      // Busca real de II e IPI na API pública "Tabelas Fiscais" — sem chave,
+      // dados de fonte oficial (Siscomex/Receita Federal/MDIC-Gecex).
+      // Substituiu uma implementação anterior que retornava valores
+      // hardcoded no código rotulados como "Receita Federal (Oficial)" sem
+      // consultar nada de verdade — não reintroduzir esse padrão.
+      const apiResponse = await fetch(`https://tabelasfiscais.com.br/api/v1/ncm/${cleanNcm}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
 
-        // Simulação de alíquotas oficiais baseadas em NCMs para demonstração do fluxo real-time
-        // Em produção, aqui o parser extrai os valores reais do HTML da Receita Federal.
-        
-        // Lógica de Alíquota Máxima (Conservadora):
-        // Conforme solicitado, se houver múltiplas alíquotas (ex: acordos ou reduções),
-        // o sistema prioriza a alíquota cheia (mais alta) para evitar subestimar custos.
-        
-        let rates = { ii: 16, ipi: 15, pis: 2.1, cofins: 9.65 }; // Valores base elevados para segurança
-        
-        if (cleanNcm === '85171300') {
-          // Exemplo: Se houvesse 11.2% (acordo) e 16% (geral), pegamos 16%
-          rates = { ii: 16, ipi: 15, pis: 2.1, cofins: 9.65 };
-        } else if (cleanNcm.startsWith('8471')) {
-          // Mesmo para informática, se houver dúvida, mantemos uma margem ou a alíquota cheia
-          rates = { ii: 12, ipi: 10, pis: 2.1, cofins: 9.65 };
-        } else if (cleanNcm.startsWith('3921')) {
-          rates = { ii: 18, ipi: 10, pis: 2.1, cofins: 9.65 };
-        }
-
-        return new Response(JSON.stringify({ 
-          success: true, 
-          source: 'Receita Federal (Oficial)',
-          timestamp: new Date().toISOString(),
-          rates 
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        })
-
-      } catch (fetchError) {
-        console.error('Erro ao acessar simulador:', fetchError);
-        throw new Error('Não foi possível conectar ao simulador da Receita Federal no momento.');
+      if (apiResponse.status === 404) {
+        throw new Error(`NCM ${cleanNcm} não encontrado na tabela oficial.`);
       }
+      if (!apiResponse.ok) {
+        throw new Error(`Falha ao consultar Tabelas Fiscais (status ${apiResponse.status}).`);
+      }
+
+      const ncmData = await apiResponse.json();
+      const iiAliquota = ncmData?.ii?.aliquota != null ? parseFloat(ncmData.ii.aliquota) : null;
+      const ipiAliquota = ncmData?.ipi?.aliquota != null ? parseFloat(ncmData.ipi.aliquota) : null;
+
+      if (iiAliquota === null || ipiAliquota === null) {
+        throw new Error(`Alíquota de II/IPI indisponível para o NCM ${cleanNcm} na fonte consultada.`);
+      }
+
+      // PIS/COFINS-Importação: não há uma API pública gratuita de alíquota
+      // por NCM equivalente à do II/IPI (o regime monofásico/diferenciado
+      // depende de enquadramento específico do produto). Retornamos a
+      // alíquota geral do regime (Lei 10.865/2004) e sinalizamos isso
+      // explicitamente em vez de fingir que foi consultada por NCM.
+      const rates = {
+        ii: iiAliquota,
+        ipi: ipiAliquota,
+        pis: 2.1,
+        cofins: 9.65,
+      };
+
+      return new Response(JSON.stringify({
+        success: true,
+        source: 'II/IPI: Tabelas Fiscais (dados oficiais Siscomex/Receita Federal/MDIC-Gecex) — PIS/COFINS: alíquota geral do regime de importação (Lei 10.865/2004), não específica por NCM',
+        ncm_descricao: ncmData?.descricao || null,
+        timestamp: new Date().toISOString(),
+        rates,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      })
     }
 
 

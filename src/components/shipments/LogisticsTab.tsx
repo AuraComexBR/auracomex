@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -45,7 +47,17 @@ const INCOTERMS_BY_MODE: Record<string, string[]> = {
 // Supabase devolve timestamps num formato diferente de Date.toISOString()
 // (ex: "+00:00" em vez de "Z"), então comparar como texto detecta uma
 // "mudança" que não existe e trava o auto-save num loop infinito.
-const DATE_FIELDS = new Set(['etd', 'eta', 'atd', 'ata']);
+const DATE_FIELDS = new Set([
+  'etd', 'eta', 'atd', 'ata',
+  'customs_registration_date', 'terminal_entry_date', 'demurrage_deadline', 'storage_deadline',
+  'cargo_delivered_at', 'invoice_sent_at',
+]);
+
+const CUSTOMS_CHANNEL_OPTIONS: { value: string; label: string; badgeClass: string }[] = [
+  { value: 'green', label: 'Verde', badgeClass: 'bg-green-500/10 text-green-600' },
+  { value: 'yellow', label: 'Amarelo', badgeClass: 'bg-amber-500/10 text-amber-600' },
+  { value: 'red', label: 'Vermelho', badgeClass: 'bg-red-500/10 text-red-600' },
+];
 
 // Ordem alfabética por padrão (pedido do usuário) — o usuário ainda pode
 // reordenar arrastando na tela de Gerenciar Status, ou clicar em "Ordenar
@@ -306,6 +318,13 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     notify_id: (shipment as any).notify_id || '',
     courier_provider: (shipment as any).courier_provider || '',
     courier_tracking_number: (shipment as any).courier_tracking_number || '',
+    customs_channel: (shipment as any).customs_channel || '',
+    customs_registration_date: (shipment as any).customs_registration_date || '',
+    terminal_entry_date: (shipment as any).terminal_entry_date || '',
+    demurrage_deadline: (shipment as any).demurrage_deadline || '',
+    storage_deadline: (shipment as any).storage_deadline || '',
+    cargo_delivered_at: (shipment as any).cargo_delivered_at || '',
+    invoice_sent_at: (shipment as any).invoice_sent_at || '',
   });
 
   const [containerNumbers, setContainerNumbers] = useState<string[]>(() => {
@@ -395,6 +414,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
       'etd', 'eta', 'atd', 'ata', 'incoterm', 'transport_mode',
       'shipper_id', 'consignee_id', 'notify_id',
       'courier_provider', 'courier_tracking_number',
+      'customs_channel', 'customs_registration_date', 'terminal_entry_date',
+      'demurrage_deadline', 'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
     ];
     for (const key of fieldsToCheck) {
       const newVal = (form as any)[key] ?? '';
@@ -468,6 +489,13 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         notify_id: form.notify_id || null,
         courier_provider: form.courier_provider || null,
         courier_tracking_number: form.courier_tracking_number || null,
+        customs_channel: form.customs_channel || null,
+        customs_registration_date: form.customs_registration_date || null,
+        terminal_entry_date: form.terminal_entry_date || null,
+        demurrage_deadline: form.demurrage_deadline || null,
+        storage_deadline: form.storage_deadline || null,
+        cargo_delivered_at: form.cargo_delivered_at || null,
+        invoice_sent_at: form.invoice_sent_at || null,
         // Setado explicitamente em vez de depender só do trigger do banco,
         // pra "Última Atividade" na lista de Embarques sempre refletir a mudança.
         updated_at: new Date().toISOString(),
@@ -485,6 +513,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
         'shipper_id', 'consignee_id', 'notify_id',
         'courier_provider', 'courier_tracking_number',
+        'customs_channel', 'customs_registration_date', 'terminal_entry_date',
+        'demurrage_deadline', 'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
       ];
       for (const dbKey of allFields) {
         const oldVal = shipment[dbKey]?.toString() || '';
@@ -574,6 +604,58 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
             />
           </PopoverContent>
         </Popover>
+      </div>
+    );
+  }
+
+  // Salva na hora (igual ao Select de Status) em vez de esperar o blur do
+  // formulário — um clique em checkbox não "sai do campo" da mesma forma
+  // que um input de texto, então o auto-save por blur não é confiável aqui.
+  async function handleCheckboxDateSave(fieldKey: string, checked: boolean) {
+    const oldValue = (form as any)[fieldKey] || '';
+    const newValue = checked ? new Date().toISOString() : '';
+    updateField(fieldKey, newValue);
+    try {
+      const { error } = await (supabase.from('shipments') as any).update({
+        [fieldKey]: newValue || null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', shipment.id);
+      if (error) throw error;
+      if (profile) {
+        await (supabase.from('shipment_audit_log') as any).insert({
+          shipment_id: shipment.id,
+          quote_id: quoteId || null,
+          company_id: shipment.company_id,
+          user_id: user?.id || null,
+          field_name: fieldKey,
+          old_value: oldValue || null,
+          new_value: newValue || null,
+        });
+      }
+      toast.success(t('quotes.changes_saved'));
+      onUpdate?.();
+    } catch (err: any) {
+      updateField(fieldKey, oldValue);
+      toast.error(err.message);
+    }
+  }
+
+  function CheckboxDateField({ label, fieldKey }: { label: string; fieldKey: string }) {
+    const value = (form as any)[fieldKey];
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={!!value}
+            onCheckedChange={(checked) => handleCheckboxDateSave(fieldKey, !!checked)}
+          />
+          <Label className="text-xs cursor-pointer" onClick={() => handleCheckboxDateSave(fieldKey, !value)}>
+            {label}
+          </Label>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {value ? format(new Date(value), 'dd/MM/yyyy') : '—'}
+        </span>
       </div>
     );
   }
@@ -967,6 +1049,52 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
               </div>
             </>
           )}
+        </div>
+
+        {/* Desembaraço & Prazos — canal de parametrização, registro de DI,
+            entrada no terminal e os dois prazos que mais geram custo extra
+            se estourarem (demurrage e 1º período de armazenagem). Reproduz
+            os campos que antes só existiam numa planilha de follow-up
+            manual, ligados diretamente ao processo. */}
+        <div className="pt-4 border-t border-border space-y-2">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase">Desembaraço & Prazos</h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs">Canal</Label>
+              <Select value={form.customs_channel || '_none'} onValueChange={(v) => updateField('customs_channel', v === '_none' ? '' : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecionar..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">—</SelectItem>
+                  {CUSTOMS_CHANNEL_OPTIONS.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.customs_channel && (
+                <Badge className={CUSTOMS_CHANNEL_OPTIONS.find((c) => c.value === form.customs_channel)?.badgeClass}>
+                  Canal {CUSTOMS_CHANNEL_OPTIONS.find((c) => c.value === form.customs_channel)?.label}
+                </Badge>
+              )}
+            </div>
+            <DateField label="Registro DI" fieldKey="customs_registration_date" />
+            <DateField label="Entrada no Terminal" fieldKey="terminal_entry_date" />
+            <DateField label="Prazo Demurrage" fieldKey="demurrage_deadline" />
+            <DateField label="Prazo 1º Período de Armazenagem" fieldKey="storage_deadline" />
+          </div>
+        </div>
+
+        {/* Entrega & Faturamento — os dois marcos finais do processo, iguais
+            às colunas "CARGA ENTREGUE" / "FATURAMENTO ENVIADO" da planilha
+            de follow-up. Marcar a data acontece na hora do check, sem
+            precisar abrir o calendário. */}
+        <div className="pt-4 border-t border-border space-y-2">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase">Entrega & Faturamento</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CheckboxDateField label="Carga Entregue" fieldKey="cargo_delivered_at" />
+            <CheckboxDateField label="Faturamento Enviado" fieldKey="invoice_sent_at" />
+          </div>
         </div>
 
         {/* Indicador de auto-save — não tem mais botão "Salvar" próprio */}

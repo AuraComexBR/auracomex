@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -150,7 +150,7 @@ export type Database = {
           currency: string
           debit_note_id: string | null
           description: string
-          due_date: string
+          due_date: string | null
           id: string
           notes: string | null
           quote_id: string | null
@@ -173,7 +173,7 @@ export type Database = {
           currency?: string
           debit_note_id?: string | null
           description: string
-          due_date: string
+          due_date?: string | null
           id?: string
           notes?: string | null
           quote_id?: string | null
@@ -196,7 +196,7 @@ export type Database = {
           currency?: string
           debit_note_id?: string | null
           description?: string
-          due_date?: string
+          due_date?: string | null
           id?: string
           notes?: string | null
           quote_id?: string | null
@@ -255,6 +255,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      app_build_version: {
+        Row: {
+          id: number
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          id?: number
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          id?: number
+          updated_at?: string
+          version?: string
+        }
+        Relationships: []
       }
       app_releases: {
         Row: {
@@ -498,12 +516,15 @@ export type Database = {
           contact_person: string | null
           created_at: string
           email: string | null
+          exchange_spread_pct: number | null
           id: string
+          insurance_rate_pct: number | null
           is_foreign: boolean | null
           name: string
           partner_category: string | null
           phone: string | null
           salesperson_id: string | null
+          storage_rebate_percent: number | null
           tax_id: string | null
           tax_id_type: string | null
           type: Database["public"]["Enums"]["client_type"]
@@ -516,12 +537,15 @@ export type Database = {
           contact_person?: string | null
           created_at?: string
           email?: string | null
+          exchange_spread_pct?: number | null
           id?: string
+          insurance_rate_pct?: number | null
           is_foreign?: boolean | null
           name: string
           partner_category?: string | null
           phone?: string | null
           salesperson_id?: string | null
+          storage_rebate_percent?: number | null
           tax_id?: string | null
           tax_id_type?: string | null
           type?: Database["public"]["Enums"]["client_type"]
@@ -534,12 +558,15 @@ export type Database = {
           contact_person?: string | null
           created_at?: string
           email?: string | null
+          exchange_spread_pct?: number | null
           id?: string
+          insurance_rate_pct?: number | null
           is_foreign?: boolean | null
           name?: string
           partner_category?: string | null
           phone?: string | null
           salesperson_id?: string | null
+          storage_rebate_percent?: number | null
           tax_id?: string | null
           tax_id_type?: string | null
           type?: Database["public"]["Enums"]["client_type"]
@@ -563,6 +590,7 @@ export type Database = {
           brand_secondary_color: string | null
           cnpj: string | null
           created_at: string
+          document_alert_email: string | null
           email: string | null
           estimate_enabled: boolean
           id: string
@@ -575,6 +603,7 @@ export type Database = {
           quote_number_width: number
           quote_prefix: string
           quote_start_number: number
+          seguro_taxa_pct_default: number
           updated_at: string
         }
         Insert: {
@@ -584,6 +613,7 @@ export type Database = {
           brand_secondary_color?: string | null
           cnpj?: string | null
           created_at?: string
+          document_alert_email?: string | null
           email?: string | null
           estimate_enabled?: boolean
           id?: string
@@ -596,6 +626,7 @@ export type Database = {
           quote_number_width?: number
           quote_prefix?: string
           quote_start_number?: number
+          seguro_taxa_pct_default?: number
           updated_at?: string
         }
         Update: {
@@ -605,6 +636,7 @@ export type Database = {
           brand_secondary_color?: string | null
           cnpj?: string | null
           created_at?: string
+          document_alert_email?: string | null
           email?: string | null
           estimate_enabled?: boolean
           id?: string
@@ -617,6 +649,7 @@ export type Database = {
           quote_number_width?: number
           quote_prefix?: string
           quote_start_number?: number
+          seguro_taxa_pct_default?: number
           updated_at?: string
         }
         Relationships: []
@@ -733,6 +766,62 @@ export type Database = {
           },
         ]
       }
+      company_portalunico_configs: {
+        Row: {
+          certificate_password: string | null
+          certificate_path: string | null
+          client_id: string
+          client_secret: string
+          company_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          last_test_success: boolean | null
+          last_tested_at: string | null
+          role_type: string
+          updated_at: string
+        }
+        Insert: {
+          certificate_password?: string | null
+          certificate_path?: string | null
+          client_id: string
+          client_secret: string
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          last_test_success?: boolean | null
+          last_tested_at?: string | null
+          role_type?: string
+          updated_at?: string
+        }
+        Update: {
+          certificate_password?: string | null
+          certificate_path?: string | null
+          client_id?: string
+          client_secret?: string
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          last_test_success?: boolean | null
+          last_tested_at?: string | null
+          role_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_portalunico_configs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_siscomex_configs: {
         Row: {
           certificate_password: string | null
@@ -784,7 +873,9 @@ export type Database = {
           created_at: string
           current_period_end: string | null
           environment: string
+          mrr_cents: number
           plan: Database["public"]["Enums"]["subscription_plan"]
+          seats_active: number | null
           seats_limit: number | null
           shipments_limit: number | null
           status: Database["public"]["Enums"]["subscription_status"]
@@ -800,7 +891,9 @@ export type Database = {
           created_at?: string
           current_period_end?: string | null
           environment?: string
+          mrr_cents?: number
           plan?: Database["public"]["Enums"]["subscription_plan"]
+          seats_active?: number | null
           seats_limit?: number | null
           shipments_limit?: number | null
           status?: Database["public"]["Enums"]["subscription_status"]
@@ -816,7 +909,9 @@ export type Database = {
           created_at?: string
           current_period_end?: string | null
           environment?: string
+          mrr_cents?: number
           plan?: Database["public"]["Enums"]["subscription_plan"]
+          seats_active?: number | null
           seats_limit?: number | null
           shipments_limit?: number | null
           status?: Database["public"]["Enums"]["subscription_status"]
@@ -838,13 +933,14 @@ export type Database = {
       }
       cost_estimate_expenses: {
         Row: {
-          aduaneira: boolean
+          aduaneira: boolean | null
           category: string | null
           company_id: string
           created_at: string
           descricao: string
           estimate_id: string
           id: string
+          is_prepaid: boolean | null
           moeda_original: string | null
           ordem: number
           source_charge_id: string | null
@@ -852,13 +948,14 @@ export type Database = {
           valor_original: number | null
         }
         Insert: {
-          aduaneira?: boolean
+          aduaneira?: boolean | null
           category?: string | null
           company_id: string
           created_at?: string
           descricao: string
           estimate_id: string
           id?: string
+          is_prepaid?: boolean | null
           moeda_original?: string | null
           ordem?: number
           source_charge_id?: string | null
@@ -866,13 +963,14 @@ export type Database = {
           valor_original?: number | null
         }
         Update: {
-          aduaneira?: boolean
+          aduaneira?: boolean | null
           category?: string | null
           company_id?: string
           created_at?: string
           descricao?: string
           estimate_id?: string
           id?: string
+          is_prepaid?: boolean | null
           moeda_original?: string | null
           ordem?: number
           source_charge_id?: string | null
@@ -1004,7 +1102,9 @@ export type Database = {
           acrescimos_usd: number | null
           afrmm_auto: boolean
           afrmm_brl: number
+          armazem: string | null
           carrier: string | null
+          cbm_total: number | null
           cofins_usd: number | null
           company_id: string
           created_at: string
@@ -1019,6 +1119,8 @@ export type Database = {
           ii_usd: number | null
           incoterm: string | null
           ipi_usd: number | null
+          pais_origem: string | null
+          peso_liquido_kg: number | null
           pis_usd: number | null
           quote_id: string
           rateio_metodo: string
@@ -1027,12 +1129,15 @@ export type Database = {
           seguro_intl_usd: number | null
           status: string
           subtotal_usd: number | null
+          taxa_siscomex_auto: boolean
           taxa_siscomex_brl: number
           total_brl: number | null
           total_usd: number | null
           transito: string | null
           updated_at: string
           usd_brl: number | null
+          usd_brl_agencia: number | null
+          usd_brl_agencia_auto: boolean | null
           vmcv_brl: number | null
           vmcv_usd: number | null
           vmld_usd: number | null
@@ -1042,7 +1147,9 @@ export type Database = {
           acrescimos_usd?: number | null
           afrmm_auto?: boolean
           afrmm_brl?: number
+          armazem?: string | null
           carrier?: string | null
+          cbm_total?: number | null
           cofins_usd?: number | null
           company_id: string
           created_at?: string
@@ -1057,6 +1164,8 @@ export type Database = {
           ii_usd?: number | null
           incoterm?: string | null
           ipi_usd?: number | null
+          pais_origem?: string | null
+          peso_liquido_kg?: number | null
           pis_usd?: number | null
           quote_id: string
           rateio_metodo?: string
@@ -1065,12 +1174,15 @@ export type Database = {
           seguro_intl_usd?: number | null
           status?: string
           subtotal_usd?: number | null
+          taxa_siscomex_auto?: boolean
           taxa_siscomex_brl?: number
           total_brl?: number | null
           total_usd?: number | null
           transito?: string | null
           updated_at?: string
           usd_brl?: number | null
+          usd_brl_agencia?: number | null
+          usd_brl_agencia_auto?: boolean | null
           vmcv_brl?: number | null
           vmcv_usd?: number | null
           vmld_usd?: number | null
@@ -1080,7 +1192,9 @@ export type Database = {
           acrescimos_usd?: number | null
           afrmm_auto?: boolean
           afrmm_brl?: number
+          armazem?: string | null
           carrier?: string | null
+          cbm_total?: number | null
           cofins_usd?: number | null
           company_id?: string
           created_at?: string
@@ -1095,6 +1209,8 @@ export type Database = {
           ii_usd?: number | null
           incoterm?: string | null
           ipi_usd?: number | null
+          pais_origem?: string | null
+          peso_liquido_kg?: number | null
           pis_usd?: number | null
           quote_id?: string
           rateio_metodo?: string
@@ -1103,12 +1219,15 @@ export type Database = {
           seguro_intl_usd?: number | null
           status?: string
           subtotal_usd?: number | null
+          taxa_siscomex_auto?: boolean
           taxa_siscomex_brl?: number
           total_brl?: number | null
           total_usd?: number | null
           transito?: string | null
           updated_at?: string
           usd_brl?: number | null
+          usd_brl_agencia?: number | null
+          usd_brl_agencia_auto?: boolean | null
           vmcv_brl?: number | null
           vmcv_usd?: number | null
           vmld_usd?: number | null
@@ -1302,47 +1421,101 @@ export type Database = {
           },
         ]
       }
-      documents: {
+      document_custom_categories: {
         Row: {
           company_id: string
           created_at: string
+          created_by: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_custom_categories_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          client_id: string | null
+          company_id: string
+          created_at: string
+          custom_category: string | null
           document_type: Database["public"]["Enums"]["document_type"]
+          expires_at: string | null
           file_size: number | null
           file_url: string | null
           id: string
           name: string
+          notify_email: string | null
           quote_id: string | null
+          reminder_sent_at: string | null
           shipment_id: string | null
           uploaded_by: string | null
           visible_tracking: boolean
         }
         Insert: {
+          client_id?: string | null
           company_id: string
           created_at?: string
+          custom_category?: string | null
           document_type?: Database["public"]["Enums"]["document_type"]
+          expires_at?: string | null
           file_size?: number | null
           file_url?: string | null
           id?: string
           name: string
+          notify_email?: string | null
           quote_id?: string | null
+          reminder_sent_at?: string | null
           shipment_id?: string | null
           uploaded_by?: string | null
           visible_tracking?: boolean
         }
         Update: {
+          client_id?: string | null
           company_id?: string
           created_at?: string
+          custom_category?: string | null
           document_type?: Database["public"]["Enums"]["document_type"]
+          expires_at?: string | null
           file_size?: number | null
           file_url?: string | null
           id?: string
           name?: string
+          notify_email?: string | null
           quote_id?: string | null
+          reminder_sent_at?: string | null
           shipment_id?: string | null
           uploaded_by?: string | null
           visible_tracking?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "documents_company_id_fkey"
             columns: ["company_id"]
@@ -1537,6 +1710,7 @@ export type Database = {
           company_id: string
           created_at: string
           id: string
+          kind: string
           name: string
           updated_at: string
         }
@@ -1546,6 +1720,7 @@ export type Database = {
           company_id: string
           created_at?: string
           id?: string
+          kind?: string
           name: string
           updated_at?: string
         }
@@ -1555,6 +1730,7 @@ export type Database = {
           company_id?: string
           created_at?: string
           id?: string
+          kind?: string
           name?: string
           updated_at?: string
         }
@@ -1569,6 +1745,7 @@ export type Database = {
           currency: string
           due_date: string
           id: string
+          kind: string
           notes: string | null
           overhead_expense_id: string
           paid_at: string | null
@@ -1585,6 +1762,7 @@ export type Database = {
           currency?: string
           due_date: string
           id?: string
+          kind?: string
           notes?: string | null
           overhead_expense_id: string
           paid_at?: string | null
@@ -1601,6 +1779,7 @@ export type Database = {
           currency?: string
           due_date?: string
           id?: string
+          kind?: string
           notes?: string | null
           overhead_expense_id?: string
           paid_at?: string | null
@@ -1631,6 +1810,7 @@ export type Database = {
           due_day: number
           end_date: string | null
           id: string
+          kind: string
           name: string
           notes: string | null
           payment_method: string | null
@@ -1650,6 +1830,7 @@ export type Database = {
           due_day?: number
           end_date?: string | null
           id?: string
+          kind?: string
           name: string
           notes?: string | null
           payment_method?: string | null
@@ -1669,6 +1850,7 @@ export type Database = {
           due_day?: number
           end_date?: string | null
           id?: string
+          kind?: string
           name?: string
           notes?: string | null
           payment_method?: string | null
@@ -1693,6 +1875,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      platform_expenses: {
+        Row: {
+          amount_cents: number
+          category: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          description: string
+          expense_date: string
+          id: string
+          is_recurring: boolean
+          notes: string | null
+          recurring_frequency: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description: string
+          expense_date?: string
+          id?: string
+          is_recurring?: boolean
+          notes?: string | null
+          recurring_frequency?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description?: string
+          expense_date?: string
+          id?: string
+          is_recurring?: boolean
+          notes?: string | null
+          recurring_frequency?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       platform_settings: {
         Row: {
@@ -1753,6 +1980,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active_session_id: string | null
           avatar_url: string | null
           company_id: string
           created_at: string
@@ -1769,6 +1997,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          active_session_id?: string | null
           avatar_url?: string | null
           company_id: string
           created_at?: string
@@ -1785,6 +2014,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          active_session_id?: string | null
           avatar_url?: string | null
           company_id?: string
           created_at?: string
@@ -1812,7 +2042,7 @@ export type Database = {
       }
       quote_charges: {
         Row: {
-          aduaneira: boolean
+          aduaneira: boolean | null
           billing_unit: string
           buy_actual_confirmed_at: string | null
           buy_actual_confirmed_by: string | null
@@ -1830,15 +2060,17 @@ export type Database = {
           currency: string | null
           description: string
           id: string
+          is_auto_insurance: boolean
           leg: string
           partner_id: string | null
+          payment_term: string | null
           percent_base_charge_ids: string[] | null
           quote_id: string
           sell_amount: number | null
           sent_in_debit_note_id: string | null
         }
         Insert: {
-          aduaneira?: boolean
+          aduaneira?: boolean | null
           billing_unit?: string
           buy_actual_confirmed_at?: string | null
           buy_actual_confirmed_by?: string | null
@@ -1856,15 +2088,17 @@ export type Database = {
           currency?: string | null
           description: string
           id?: string
+          is_auto_insurance?: boolean
           leg?: string
           partner_id?: string | null
+          payment_term?: string | null
           percent_base_charge_ids?: string[] | null
           quote_id: string
           sell_amount?: number | null
           sent_in_debit_note_id?: string | null
         }
         Update: {
-          aduaneira?: boolean
+          aduaneira?: boolean | null
           billing_unit?: string
           buy_actual_confirmed_at?: string | null
           buy_actual_confirmed_by?: string | null
@@ -1882,8 +2116,10 @@ export type Database = {
           currency?: string | null
           description?: string
           id?: string
+          is_auto_insurance?: boolean
           leg?: string
           partner_id?: string | null
+          payment_term?: string | null
           percent_base_charge_ids?: string[] | null
           quote_id?: string
           sell_amount?: number | null
@@ -1916,6 +2152,13 @@ export type Database = {
             columns: ["quote_id"]
             isOneToOne: false
             referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_charges_sent_in_debit_note_id_fkey"
+            columns: ["sent_in_debit_note_id"]
+            isOneToOne: false
+            referencedRelation: "debit_notes"
             referencedColumns: ["id"]
           },
         ]
@@ -2099,10 +2342,12 @@ export type Database = {
         Row: {
           base_reference: string | null
           client_id: string | null
+          client_reference: string | null
           company_id: string
           created_at: string
           created_by: string | null
           currency: string | null
+          delivery_address: string | null
           destination: string | null
           direction: string | null
           free_time: number | null
@@ -2111,9 +2356,12 @@ export type Database = {
           notes: string | null
           origin: string | null
           payment_terms: string | null
+          pickup_address: string | null
           proposal_notes: string | null
           quote_number: string
           rejection_reason: string | null
+          seguro_auto: boolean
+          seguro_taxa_pct: number | null
           sent_at: string | null
           shipment_id: string | null
           status: Database["public"]["Enums"]["quote_status"]
@@ -2131,10 +2379,12 @@ export type Database = {
         Insert: {
           base_reference?: string | null
           client_id?: string | null
+          client_reference?: string | null
           company_id: string
           created_at?: string
           created_by?: string | null
           currency?: string | null
+          delivery_address?: string | null
           destination?: string | null
           direction?: string | null
           free_time?: number | null
@@ -2143,9 +2393,12 @@ export type Database = {
           notes?: string | null
           origin?: string | null
           payment_terms?: string | null
+          pickup_address?: string | null
           proposal_notes?: string | null
           quote_number: string
           rejection_reason?: string | null
+          seguro_auto?: boolean
+          seguro_taxa_pct?: number | null
           sent_at?: string | null
           shipment_id?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
@@ -2163,10 +2416,12 @@ export type Database = {
         Update: {
           base_reference?: string | null
           client_id?: string | null
+          client_reference?: string | null
           company_id?: string
           created_at?: string
           created_by?: string | null
           currency?: string | null
+          delivery_address?: string | null
           destination?: string | null
           direction?: string | null
           free_time?: number | null
@@ -2175,9 +2430,12 @@ export type Database = {
           notes?: string | null
           origin?: string | null
           payment_terms?: string | null
+          pickup_address?: string | null
           proposal_notes?: string | null
           quote_number?: string
           rejection_reason?: string | null
+          seguro_auto?: boolean
+          seguro_taxa_pct?: number | null
           sent_at?: string | null
           shipment_id?: string | null
           status?: Database["public"]["Enums"]["quote_status"]
@@ -2247,7 +2505,8 @@ export type Database = {
           id: string
           new_value: string | null
           old_value: string | null
-          shipment_id: string
+          quote_id: string | null
+          shipment_id: string | null
           user_id: string | null
         }
         Insert: {
@@ -2257,7 +2516,8 @@ export type Database = {
           id?: string
           new_value?: string | null
           old_value?: string | null
-          shipment_id: string
+          quote_id?: string | null
+          shipment_id?: string | null
           user_id?: string | null
         }
         Update: {
@@ -2267,7 +2527,8 @@ export type Database = {
           id?: string
           new_value?: string | null
           old_value?: string | null
-          shipment_id?: string
+          quote_id?: string | null
+          shipment_id?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -2279,7 +2540,65 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "shipment_audit_log_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "shipment_audit_log_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipment_events: {
+        Row: {
+          category: string
+          company_id: string
+          created_at: string
+          created_by: string | null
+          event_date: string
+          id: string
+          note: string
+          shipment_id: string
+          visible_tracking: boolean
+        }
+        Insert: {
+          category?: string
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          event_date?: string
+          id?: string
+          note: string
+          shipment_id: string
+          visible_tracking?: boolean
+        }
+        Update: {
+          category?: string
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          event_date?: string
+          id?: string
+          note?: string
+          shipment_id?: string
+          visible_tracking?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipment_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipment_events_shipment_id_fkey"
             columns: ["shipment_id"]
             isOneToOne: false
             referencedRelation: "shipments"
@@ -2335,6 +2654,7 @@ export type Database = {
       }
       shipment_status_options: {
         Row: {
+          category: string
           company_id: string
           created_at: string
           id: string
@@ -2343,6 +2663,7 @@ export type Database = {
           value: string
         }
         Insert: {
+          category?: string
           company_id: string
           created_at?: string
           id?: string
@@ -2351,6 +2672,7 @@ export type Database = {
           value: string
         }
         Update: {
+          category?: string
           company_id?: string
           created_at?: string
           id?: string
@@ -2373,6 +2695,7 @@ export type Database = {
           ata: string | null
           atd: string | null
           booking_number: string | null
+          cargo_delivered_at: string | null
           cargo_description: string | null
           carrier: string | null
           ce_mercante_house: string | null
@@ -2387,6 +2710,9 @@ export type Database = {
           courier_tracking_number: string | null
           created_at: string
           created_by: string | null
+          customs_channel: string | null
+          customs_registration_date: string | null
+          demurrage_deadline: string | null
           destination_city: string | null
           destination_country: string | null
           destination_port: string | null
@@ -2396,6 +2722,7 @@ export type Database = {
           house_bl: string | null
           id: string
           incoterm: string | null
+          invoice_sent_at: string | null
           last_accessed_at: string | null
           master_bl: string | null
           next_update: string | null
@@ -2407,7 +2734,9 @@ export type Database = {
           packages: number | null
           reference_number: string
           shipper_id: string | null
-          status: Database["public"]["Enums"]["shipment_status"]
+          status: string
+          storage_deadline: string | null
+          terminal_entry_date: string | null
           transport_mode: Database["public"]["Enums"]["transport_mode"]
           transshipment: string | null
           updated_at: string
@@ -2419,6 +2748,7 @@ export type Database = {
           ata?: string | null
           atd?: string | null
           booking_number?: string | null
+          cargo_delivered_at?: string | null
           cargo_description?: string | null
           carrier?: string | null
           ce_mercante_house?: string | null
@@ -2433,6 +2763,9 @@ export type Database = {
           courier_tracking_number?: string | null
           created_at?: string
           created_by?: string | null
+          customs_channel?: string | null
+          customs_registration_date?: string | null
+          demurrage_deadline?: string | null
           destination_city?: string | null
           destination_country?: string | null
           destination_port?: string | null
@@ -2442,6 +2775,7 @@ export type Database = {
           house_bl?: string | null
           id?: string
           incoterm?: string | null
+          invoice_sent_at?: string | null
           last_accessed_at?: string | null
           master_bl?: string | null
           next_update?: string | null
@@ -2453,7 +2787,9 @@ export type Database = {
           packages?: number | null
           reference_number: string
           shipper_id?: string | null
-          status?: Database["public"]["Enums"]["shipment_status"]
+          status?: string
+          storage_deadline?: string | null
+          terminal_entry_date?: string | null
           transport_mode?: Database["public"]["Enums"]["transport_mode"]
           transshipment?: string | null
           updated_at?: string
@@ -2465,6 +2801,7 @@ export type Database = {
           ata?: string | null
           atd?: string | null
           booking_number?: string | null
+          cargo_delivered_at?: string | null
           cargo_description?: string | null
           carrier?: string | null
           ce_mercante_house?: string | null
@@ -2479,6 +2816,9 @@ export type Database = {
           courier_tracking_number?: string | null
           created_at?: string
           created_by?: string | null
+          customs_channel?: string | null
+          customs_registration_date?: string | null
+          demurrage_deadline?: string | null
           destination_city?: string | null
           destination_country?: string | null
           destination_port?: string | null
@@ -2488,6 +2828,7 @@ export type Database = {
           house_bl?: string | null
           id?: string
           incoterm?: string | null
+          invoice_sent_at?: string | null
           last_accessed_at?: string | null
           master_bl?: string | null
           next_update?: string | null
@@ -2499,7 +2840,9 @@ export type Database = {
           packages?: number | null
           reference_number?: string
           shipper_id?: string | null
-          status?: Database["public"]["Enums"]["shipment_status"]
+          status?: string
+          storage_deadline?: string | null
+          terminal_entry_date?: string | null
           transport_mode?: Database["public"]["Enums"]["transport_mode"]
           transshipment?: string | null
           updated_at?: string
@@ -2763,55 +3106,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      company_has_addon: {
-        Args: {
-          _addon: Database["public"]["Enums"]["addon_key"]
-          _company_id: string
-        }
-        Returns: boolean
-      }
-      delete_email: {
-        Args: { message_id: number; queue_name: string }
-        Returns: boolean
-      }
-      email_queue_dispatch: { Args: never; Returns: undefined }
-      enqueue_email: {
-        Args: { payload: Json; queue_name: string }
+      generate_overhead_entries_for_month: {
+        Args: { p_month?: string }
         Returns: number
       }
-      get_user_company_id: { Args: { _user_id: string }; Returns: string }
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
-      move_to_dlq: {
-        Args: {
-          dlq_name: string
-          message_id: number
-          payload: Json
-          source_queue: string
-        }
-        Returns: number
-      }
+      is_superadmin: { Args: never; Returns: boolean }
+      my_company_id: { Args: never; Returns: string }
       next_dn_number: { Args: { p_company_id: string }; Returns: string }
-      next_reference: { Args: { p_company_id: string }; Returns: string }
-      read_email_batch: {
-        Args: { batch_size: number; queue_name: string; vt: number }
-        Returns: {
-          message: Json
-          msg_id: number
-          read_ct: number
-        }[]
-      }
-      scan_payables_due: { Args: never; Returns: undefined }
+      reset_demo_data: { Args: never; Returns: undefined }
     }
     Enums: {
       accounts_payable_source: "debit_note" | "overhead" | "manual"
       accounts_payable_status: "aberto" | "pago" | "atrasado" | "cancelado"
-      accounts_receivable_source: "debit_note" | "manual"
+      accounts_receivable_source: "debit_note" | "manual" | "storage_fee"
       accounts_receivable_status:
         | "aberto"
         | "recebido"
@@ -2883,6 +3190,8 @@ export type Database = {
         | "quoted"
         | "approved"
         | "booked"
+        | "collected_at_origin"
+        | "docs_at_origin"
         | "in_transit"
         | "arrived"
         | "delivered"
@@ -3024,7 +3333,7 @@ export const Constants = {
     Enums: {
       accounts_payable_source: ["debit_note", "overhead", "manual"],
       accounts_payable_status: ["aberto", "pago", "atrasado", "cancelado"],
-      accounts_receivable_source: ["debit_note", "manual"],
+      accounts_receivable_source: ["debit_note", "manual", "storage_fee"],
       accounts_receivable_status: [
         "aberto",
         "recebido",
@@ -3104,6 +3413,8 @@ export const Constants = {
         "quoted",
         "approved",
         "booked",
+        "collected_at_origin",
+        "docs_at_origin",
         "in_transit",
         "arrived",
         "delivered",
