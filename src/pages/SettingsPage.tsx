@@ -15,6 +15,7 @@ import { DataManagementSection } from '@/components/settings/DataManagementSecti
 import { UserRolesSection } from '@/components/settings/UserRolesSection';
 import { InviteUserSection } from '@/components/settings/InviteUserSection';
 import { SiscomexConfigWizard } from '@/components/settings/SiscomexConfigWizard';
+import { PortalUnicoConfigWizard } from '@/components/settings/PortalUnicoConfigWizard';
 import { BankAccountsSection } from '@/components/settings/BankAccountsSection';
 import { BackupSection } from '@/components/settings/BackupSection';
 import Billing from './Billing';
@@ -548,6 +549,21 @@ export default function SettingsPage() {
                   onComplete={() => queryClient.invalidateQueries({ queryKey: ['company', profile.company_id] })}
                 />
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="glass overflow-hidden border-primary/20">
+            <CardHeader className="bg-primary/5 pb-6">
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">Integração Portal Único Siscomex (Desembaraço)</CardTitle>
+              </div>
+              <CardDescription>
+                Consulte canal de parametrização e status de DI/DUIMP direto do Portal Único, usando a Chave de Acesso da sua própria empresa (gerada com seu certificado digital). Diferente da integração Serpro acima.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+              {profile?.company_id && <PortalUnicoConfigWizard companyId={profile.company_id} />}
             </CardContent>
           </Card>
         </TabsContent>

@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { ArrowLeft, MapPin, DollarSign, FileText, History, AlertTriangle, Package, Info, Users, ShoppingCart, Undo2, Copy } from 'lucide-react';
+import { ArrowLeft, MapPin, DollarSign, FileText, History, AlertTriangle, Package, Info, Users, ShoppingCart, Undo2, Copy, NotebookPen } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,7 @@ import { ModeIcon } from '@/components/shared/ModeIcon';
 import { FinancialTab } from './FinancialTab';
 import { LogisticsTab } from './LogisticsTab';
 import { DocumentsTab } from './DocumentsTab';
+import { ShipmentEventsTab } from './ShipmentEventsTab';
 import { HistoryPanel } from '@/components/quotes/HistoryPanel';
 import { QuoteDetail } from '@/components/quotes/QuoteDetail';
 import { DuplicateShipmentDialog } from './DuplicateShipmentDialog';
@@ -185,6 +186,9 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
           <TabsTrigger value="logistics" className="gap-1.5">
             <MapPin className="w-4 h-4" /> {t('shipments.logistics')}
           </TabsTrigger>
+          <TabsTrigger value="events" className="gap-1.5">
+            <NotebookPen className="w-4 h-4" /> Diário
+          </TabsTrigger>
           <TabsTrigger value="financial" className="gap-1.5">
             <DollarSign className="w-4 h-4" /> {t('charges.tab')}
           </TabsTrigger>
@@ -261,6 +265,10 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
             queryClient.invalidateQueries({ queryKey: ['shipments'] });
           }} />
         </TabsContent>
+        <TabsContent value="events">
+          <ShipmentEventsTab shipmentId={id} companyId={shipment.company_id} />
+        </TabsContent>
+
         <TabsContent value="financial">
           <FinancialTab
             shipmentId={id}

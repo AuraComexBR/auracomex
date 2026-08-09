@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
 
       let query = adminClient
         .from("shipments")
-        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, transshipment, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, next_update, courier_provider, courier_tracking_number, company_id")
+        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, transshipment, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, next_update, courier_provider, courier_tracking_number, company_id, customs_channel, customs_registration_date, terminal_entry_date, demurrage_deadline, storage_deadline, cargo_delivered_at, invoice_sent_at")
         .eq("client_id", client_id);
 
       query = filter === "active"
@@ -189,6 +189,23 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: false });
 
       return jsonResponse({ quotes: data || [] });
+    }
+
+    // Diário do processo — só as entradas marcadas como visíveis no
+    // tracking (visible_tracking = true), mesmo padrão de "documents".
+    if (action === "events") {
+      if (!shipment_ids || shipment_ids.length === 0) {
+        return jsonResponse({ events: [] });
+      }
+
+      const { data } = await adminClient
+        .from("shipment_events")
+        .select("id, shipment_id, event_date, category, note")
+        .in("shipment_id", shipment_ids)
+        .eq("visible_tracking", true)
+        .order("event_date", { ascending: false });
+
+      return jsonResponse({ events: data || [] });
     }
 
     if (action === "documents") {

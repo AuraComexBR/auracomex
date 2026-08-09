@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ModeIcon } from '@/components/shared/ModeIcon';
-import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown } from 'lucide-react';
+import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown, NotebookPen } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusTimeline } from '@/components/tracking/StatusTimeline';
 import { buildTimeline } from '@/lib/shipmentTimeline';
@@ -36,6 +36,29 @@ const quoteStatusColors: Record<string, string> = {
 };
 
 type FilterTab = 'active' | 'finished' | 'quotes';
+
+const CUSTOMS_CHANNEL_LABELS: Record<string, { label: string; badgeClass: string }> = {
+  green: { label: 'Canal Verde', badgeClass: 'bg-green-500/10 text-green-600' },
+  yellow: { label: 'Canal Amarelo', badgeClass: 'bg-amber-500/10 text-amber-600' },
+  red: { label: 'Canal Vermelho', badgeClass: 'bg-red-500/10 text-red-600' },
+};
+
+const EVENT_CATEGORY_LABELS: Record<string, string> = {
+  booking: 'Reserva',
+  origin: 'Origem',
+  transit: 'Trânsito',
+  customs: 'Desembaraço',
+  delivery: 'Entrega',
+  billing: 'Faturamento',
+  update: 'Atualização',
+};
+
+/** Dias até uma data-limite (negativo = já venceu). */
+function daysUntil(dateStr?: string | null): number | null {
+  if (!dateStr) return null;
+  const ms = new Date(dateStr).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
+  return Math.round(ms / (1000 * 60 * 60 * 24));
+}
 
 async function callTracking(body: any) {
   const { data, error } = await supabase.functions.invoke('tracking', { body });
@@ -100,6 +123,17 @@ export default function Tracking() {
       if (shipmentIds.length === 0) return [];
       const result = await callTracking({ action: 'documents', shipment_ids: shipmentIds });
       return result.documents || [];
+    },
+    enabled: shipmentIds.length > 0 && authenticated,
+  });
+
+  // Diário do processo — só as atualizações marcadas como visíveis no tracking
+  const { data: trackingEvents = [] } = useQuery({
+    queryKey: ['tracking-events', shipmentIds],
+    queryFn: async () => {
+      if (shipmentIds.length === 0) return [];
+      const result = await callTracking({ action: 'events', shipment_ids: shipmentIds });
+      return result.events || [];
     },
     enabled: shipmentIds.length > 0 && authenticated,
   });
@@ -251,6 +285,7 @@ export default function Tracking() {
                     key={s.id}
                     shipment={s}
                     docs={trackingDocs.filter((d: any) => d.shipment_id === s.id)}
+                    events={trackingEvents.filter((e: any) => e.shipment_id === s.id)}
                     statusOptions={statusOptions}
                     defaultExpanded={shipments.length === 1 || idx === 0}
                   />
@@ -283,7 +318,7 @@ export default function Tracking() {
   );
 }
 
-function ShipmentCard({ shipment: s, docs, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
+function ShipmentCard({ shipment: s, docs, events, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { steps, kpis } = buildTimeline(s, statusOptions);
   const category = resolveStatusCategory(s.status, statusOptions);
@@ -292,6 +327,9 @@ function ShipmentCard({ shipment: s, docs, statusOptions, defaultExpanded }: { s
   const statusBadgeClass = STATUS_CATEGORY_COLORS[category] || '';
   const containers = parseContainerNumbers(s.container_number);
   const carrierLabel = CARRIER_LABEL_BY_MODE[s.transport_mode] || 'Armador';
+  const channelMeta = s.customs_channel ? CUSTOMS_CHANNEL_LABELS[s.customs_channel] : null;
+  const demurrageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(s.demurrage_deadline) : null;
+  const storageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(s.storage_deadline) : null;
 
   return (
     <Card className="glass hover:shadow-md transition-shadow">
@@ -334,6 +372,7 @@ function ShipmentCard({ shipment: s, docs, statusOptions, defaultExpanded }: { s
                 <Badge variant="outline" className="font-mono font-normal">{s.client_reference}</Badge>
               )}
               <Badge className={statusBadgeClass}>{statusLabel}</Badge>
+              {channelMeta && <Badge className={channelMeta.badgeClass}>{channelMeta.label}</Badge>}
               <ModeIcon mode={s.transport_mode} showLabel />
               <span className="flex items-center gap-1.5 font-medium">
                 <FlagIcon country={s.origin_country} />
@@ -462,6 +501,62 @@ function ShipmentCard({ shipment: s, docs, statusOptions, defaultExpanded }: { s
             {s.next_update && (
               <div className="text-xs text-muted-foreground">
                 Próxima atualização: {format(new Date(s.next_update), 'dd/MM/yyyy')}
+              </div>
+            )}
+
+            {/* Alertas de prazo — demurrage e 1º período de armazenagem geram
+                custo extra se estourarem, por isso ganham o mesmo destaque
+                visual do alerta de atraso. */}
+            {demurrageDays !== null && (
+              <div className={cn(
+                'flex items-center gap-2 text-xs rounded-md px-3 py-2',
+                demurrageDays < 0 ? 'text-red-600 bg-red-500/10' : demurrageDays <= 3 ? 'text-amber-700 bg-amber-500/10' : 'hidden'
+              )}>
+                <AlertTriangle className="w-4 h-4" />
+                <span>
+                  {demurrageDays < 0
+                    ? `Prazo de demurrage vencido há ${Math.abs(demurrageDays)} dia(s).`
+                    : `Prazo de demurrage vence em ${demurrageDays} dia(s).`}
+                </span>
+              </div>
+            )}
+            {storageDays !== null && (
+              <div className={cn(
+                'flex items-center gap-2 text-xs rounded-md px-3 py-2',
+                storageDays < 0 ? 'text-red-600 bg-red-500/10' : storageDays <= 3 ? 'text-amber-700 bg-amber-500/10' : 'hidden'
+              )}>
+                <AlertTriangle className="w-4 h-4" />
+                <span>
+                  {storageDays < 0
+                    ? `1º período de armazenagem vencido há ${Math.abs(storageDays)} dia(s).`
+                    : `1º período de armazenagem vence em ${storageDays} dia(s).`}
+                </span>
+              </div>
+            )}
+
+            {/* Diário do processo — atualizações que a empresa marcou como
+                visíveis no tracking, equivalente ao histórico datado que
+                antes só existia numa planilha interna. */}
+            {events.length > 0 && (
+              <div className="pt-2 border-t border-border space-y-1.5">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                  <NotebookPen className="w-3 h-3" /> Diário do Processo
+                </p>
+                <div className="space-y-2">
+                  {events.map((ev: any) => (
+                    <div key={ev.id} className="flex items-start gap-3 text-sm">
+                      <span className="text-xs text-muted-foreground shrink-0 w-20 pt-0.5">
+                        {format(new Date(ev.event_date), 'dd/MM/yyyy')}
+                      </span>
+                      <div className="min-w-0">
+                        <Badge variant="outline" className="mb-1 font-normal">
+                          {EVENT_CATEGORY_LABELS[ev.category] || ev.category}
+                        </Badge>
+                        <p className="whitespace-pre-wrap">{ev.note}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

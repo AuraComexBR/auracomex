@@ -7,7 +7,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useHasAddon } from '@/hooks/useSubscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, Package, Info, Users, ShoppingCart, Undo2, Calculator, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, Package, Info, Users, ShoppingCart, Undo2, Calculator, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History, NotebookPen } from 'lucide-react';
 import { CostEstimateTab } from './estimate/CostEstimateTab';
 import { FloatingSaveButton } from './estimate/FloatingSaveButton';
 import { QuotePdfPreviewDialog } from './QuotePdfPreviewDialog';
@@ -45,6 +45,7 @@ import { collectPercentUpdates, computePercentCharge, isCollectFeeName, isPercen
 import { PercentBaseDialog } from '@/components/quotes/PercentBaseDialog';
 
 import { DocumentsTab } from '@/components/shipments/DocumentsTab';
+import { ShipmentEventsTab } from '@/components/shipments/ShipmentEventsTab';
 import { HistoryPanel } from './HistoryPanel';
 // ActivityTab removida como aba própria: histórico agora é unificado no HistoryPanel (botão no header).
 import { logAuditChanges, logAuditEvent } from '@/lib/auditLog';
@@ -1872,6 +1873,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     <MapPin className={iconCls} /> {t('shipments.logistics')}
                   </TabsTrigger>
                 )}
+                {isShipmentMode && (
+                  <TabsTrigger value="events" className={triggerCls}>
+                    <NotebookPen className={iconCls} /> Diário
+                  </TabsTrigger>
+                )}
               </>
             );
           })()}
@@ -2803,6 +2809,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               quoteId={quoteId}
               onUpdate={() => queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] })}
             />
+          </TabsContent>
+        )}
+        {isShipmentMode && shipment && (
+          <TabsContent value="events">
+            <ShipmentEventsTab shipmentId={shipment.id} companyId={shipment.company_id} />
           </TabsContent>
         )}
       </Tabs>

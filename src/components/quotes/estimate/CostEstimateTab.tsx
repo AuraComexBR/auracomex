@@ -192,7 +192,7 @@ export function CostEstimateTab({
           aliq_pis: data.rates.pis,
           aliq_cofins: data.rates.cofins
         });
-        toast.success(`Alíquotas oficiais para o NCM ${ncm} atualizadas diretamente da Receita Federal.`);
+        toast.success(`NCM ${ncm}: II/IPI atualizados com dados oficiais (TEC/TIPI). PIS/COFINS aplicados na alíquota geral do regime — confira se o produto tem enquadramento monofásico/diferenciado.`);
 
       } else {
         throw new Error(data?.error || 'NCM não encontrado ou erro na consulta');
