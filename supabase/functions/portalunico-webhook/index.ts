@@ -48,6 +48,19 @@ const SITUACOES_ENTREGUE = new Set([
   "ENTREGA_ANTECIPADA_CARGA_ENTREGUE",
 ]);
 
+const CANAL_LABEL: Record<string, string> = {
+  VERDE: "Verde",
+  AMARELO: "Amarelo",
+  VERMELHO: "Vermelho",
+  CINZA: "Cinza",
+};
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c
+  ));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -104,7 +117,7 @@ Deno.serve(async (req) => {
 
     const { data: shipmentsFound, error: shipmentsError } = await supabase
       .from("shipments")
-      .select("id, customs_channel, customs_registration_date, cargo_delivered_at")
+      .select("id, reference_number, customs_channel, customs_registration_date, cargo_delivered_at")
       .eq("company_id", config.company_id)
       .eq("duimp_number", numero);
 
@@ -115,6 +128,17 @@ Deno.serve(async (req) => {
       // pra atualizar, mas não é erro.
       return jsonResponse({ received: true, matched: false }, 200);
     }
+
+    // E-mail de alerta pra equipe interna — reaproveita o mesmo endereço já
+    // usado pros lembretes de documento vencendo (companies.document_alert_email),
+    // configurado em Configurações. Só uma consulta pra todos os embarques
+    // dessa notificação.
+    const { data: companyRow } = await supabase
+      .from("companies")
+      .select("document_alert_email")
+      .eq("id", config.company_id)
+      .maybeSingle();
+    const alertEmail = (companyRow as any)?.document_alert_email as string | undefined;
 
     for (const shipment of shipmentsFound) {
       const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -146,6 +170,41 @@ Deno.serve(async (req) => {
         visible_tracking: true,
       });
       if (eventError) throw eventError;
+
+      if (alertEmail) {
+        const reference = (shipment as any).reference_number as string | undefined;
+        const canalLabel = canalRaw ? CANAL_LABEL[canalRaw] || canalRaw : undefined;
+        const subject = reference
+          ? `DUIMP ${numero} — Embarque ${reference}${canalLabel ? ` — Canal ${canalLabel}` : ""}`
+          : `DUIMP ${numero} — atualização de status`;
+        const html = `
+          <p>${escapeHtml(message || "A DUIMP teve uma atualização de status.")}</p>
+          <p>
+            <strong>DUIMP:</strong> ${escapeHtml(numero)}<br/>
+            ${reference ? `<strong>Embarque:</strong> ${escapeHtml(reference)}<br/>` : ""}
+            ${canalLabel ? `<strong>Canal:</strong> ${escapeHtml(canalLabel)}<br/>` : ""}
+            ${situacaoDuimp ? `<strong>Situação:</strong> ${escapeHtml(situacaoDuimp)}<br/>` : ""}
+          </p>
+          <p>Notificação automática do Portal Único Siscomex, recebida pelo Aura Comex.</p>
+        `.trim();
+
+        const { error: enqueueError } = await supabase.rpc("enqueue_email", {
+          queue_name: "transactional_emails",
+          payload: {
+            to: alertEmail,
+            subject,
+            html,
+            label: "duimp_status_change",
+            message_id: crypto.randomUUID(),
+            queued_at: new Date().toISOString(),
+          },
+        });
+        if (enqueueError) {
+          // Não deixa a falha de e-mail derrubar a atualização do embarque
+          // que já foi feita com sucesso — só loga.
+          console.error("portalunico-webhook: falha ao enfileirar e-mail", enqueueError);
+        }
+      }
     }
 
     return jsonResponse({ received: true, matched: true, shipments: shipmentsFound.length }, 200);
