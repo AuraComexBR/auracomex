@@ -110,8 +110,31 @@ Deno.serve(async (req) => {
       .update({ webhook_last_event_at: new Date().toISOString() })
       .eq("id", config.id);
 
+    // Log durável de todo evento recebido (corpo completo incluso), pra dar
+    // pra investigar depois por que uma DUIMP não bateu com nenhum embarque
+    // (ex: número digitado errado em Logística, ou evento chegou antes do
+    // número ser cadastrado) — os logs efêmeros da function não guardam o
+    // corpo da requisição, e sem isso não tinha como diagnosticar.
+    async function logEvent(matched: boolean, shipmentIds: string[]) {
+      const { error } = await supabase.from("portalunico_webhook_events").insert({
+        company_id: config.company_id,
+        event_type: eventType,
+        numero: numero ?? null,
+        versao: versao ?? null,
+        situacao_duimp: situacaoDuimp ?? null,
+        canal: canalRaw ?? null,
+        message: message ?? null,
+        data_evento: dataEvento ?? null,
+        matched,
+        shipment_ids: shipmentIds,
+        raw_body: body,
+      });
+      if (error) console.error("portalunico-webhook: falha ao gravar log do evento", error);
+    }
+
     if (!numero) {
       // Evento sem número de DUIMP identificável — só registra que chegou.
+      await logEvent(false, []);
       return jsonResponse({ received: true, matched: false }, 200);
     }
 
@@ -126,6 +149,7 @@ Deno.serve(async (req) => {
     if (!shipmentsFound || shipmentsFound.length === 0) {
       // DUIMP ainda não foi vinculada a nenhum embarque cadastrado — nada
       // pra atualizar, mas não é erro.
+      await logEvent(false, []);
       return jsonResponse({ received: true, matched: false }, 200);
     }
 
@@ -206,6 +230,8 @@ Deno.serve(async (req) => {
         }
       }
     }
+
+    await logEvent(true, shipmentsFound.map((s) => s.id));
 
     return jsonResponse({ received: true, matched: true, shipments: shipmentsFound.length }, 200);
   } catch (err) {
