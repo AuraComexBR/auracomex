@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,6 @@ import { buildTimeline } from '@/lib/shipmentTimeline';
 import { FlagIcon } from '@/components/shared/FlagIcon';
 import { usePlatformSettings } from '@/hooks/usePlatformSettings';
 import { buildCourierTrackingUrl, cn } from '@/lib/utils';
-import { CARRIER_LABEL_BY_MODE } from '@/lib/carrierLabel';
 import { STATUS_CATEGORY_COLORS, DEFAULT_STATUS_OPTIONS, resolveStatusCategory, type StatusOption } from '@/lib/shipmentStatusCategory';
 import { parseContainerNumbers } from '@/lib/containerNumbers';
 import { DOC_TYPE_LABELS } from '@/lib/documentCategory';
@@ -279,18 +279,41 @@ export default function Tracking() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4">
-                {shipments.map((s: any, idx: number) => (
-                  <ShipmentCard
-                    key={s.id}
-                    shipment={s}
-                    docs={trackingDocs.filter((d: any) => d.shipment_id === s.id)}
-                    events={trackingEvents.filter((e: any) => e.shipment_id === s.id)}
-                    statusOptions={statusOptions}
-                    defaultExpanded={shipments.length === 1 || idx === 0}
-                  />
-                ))}
-              </div>
+              <Card className="glass overflow-hidden">
+                <CardContent className="p-0 overflow-x-auto">
+                  <Table className="text-sm">
+                    <TableHeader>
+                      <TableRow className="whitespace-nowrap">
+                        <TableHead className="h-8 px-3 text-xs">Ref.</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">Ref. Cliente</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">Status</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">Invoice</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">Armador</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">Navio</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">FreeTime</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">ETD</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">ETA</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">Registro DI</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">Canal</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">Demurrage</TableHead>
+                        <TableHead className="h-8 px-3 text-xs">Faturamento</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {shipments.map((s: any, idx: number) => (
+                        <ShipmentRow
+                          key={s.id}
+                          shipment={s}
+                          docs={trackingDocs.filter((d: any) => d.shipment_id === s.id)}
+                          events={trackingEvents.filter((e: any) => e.shipment_id === s.id)}
+                          statusOptions={statusOptions}
+                          defaultExpanded={shipments.length === 1 || idx === 0}
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             )}
           </>
         )}
@@ -318,7 +341,13 @@ export default function Tracking() {
   );
 }
 
-function ShipmentCard({ shipment: s, docs, events, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
+// Formata datas curtas nas células da lista (dd/MM/yy) — mais compacto que o
+// detalhe expandido (dd/MM/yyyy), já que aqui competem por espaço com 13 colunas.
+function shortDate(value?: string | null) {
+  return value ? format(new Date(value), 'dd/MM/yy') : '—';
+}
+
+function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { steps, kpis } = buildTimeline(s, statusOptions);
   const category = resolveStatusCategory(s.status, statusOptions);
@@ -326,53 +355,55 @@ function ShipmentCard({ shipment: s, docs, events, statusOptions, defaultExpande
   const statusLabel = statusMeta?.label || s.status;
   const statusBadgeClass = STATUS_CATEGORY_COLORS[category] || '';
   const containers = parseContainerNumbers(s.container_number);
-  const carrierLabel = CARRIER_LABEL_BY_MODE[s.transport_mode] || 'Armador';
   const channelMeta = s.customs_channel ? CUSTOMS_CHANNEL_LABELS[s.customs_channel] : null;
   const demurrageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(s.demurrage_deadline) : null;
   const storageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(s.storage_deadline) : null;
+  const demurrageUrgent = demurrageDays !== null && demurrageDays <= 3;
 
   return (
-    <Card className="glass hover:shadow-md transition-shadow">
-      {/* Cabeçalho — sempre visível, clicável pra expandir/colapsar. Colapsado
-          mostra o resumo completo (ref Aura, ref cliente, origem, destino,
-          status); expandido mostra só a referência, pra não repetir a linha
-          de baixo (que já traz tudo isso, mais completo). */}
-      <button
-        type="button"
+    <>
+      {/* Linha resumo — sempre visível, clicável pra expandir/colapsar o
+          detalhe completo abaixo (accordion), igual à lista interna de
+          Embarques. */}
+      <TableRow
+        className="cursor-pointer whitespace-nowrap hover:bg-muted/40"
         onClick={() => setExpanded((e) => !e)}
-        className="w-full text-left p-5 flex items-center justify-between gap-3"
       >
-        {expanded ? (
-          <span className="font-mono font-bold text-lg">{s.reference_number}</span>
-        ) : (
-          <div className="flex items-center gap-3 flex-wrap min-w-0">
-            <span className="font-mono font-bold text-lg shrink-0">{s.reference_number}</span>
-            {s.client_reference && (
-              <Badge variant="outline" className="font-mono font-normal shrink-0">{s.client_reference}</Badge>
-            )}
-            <span className="flex items-center gap-1.5 text-sm min-w-0">
-              <FlagIcon country={s.origin_country} />
-              <span className="truncate">{s.origin_city || s.origin_port || '—'}</span>
-              <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              <FlagIcon country={s.destination_country} />
-              <span className="truncate">{s.destination_city || s.destination_port || '—'}</span>
-            </span>
-            <Badge className={cn(statusBadgeClass, 'shrink-0')}>{statusLabel}</Badge>
-          </div>
-        )}
-        <ChevronDown className={cn('w-5 h-5 text-muted-foreground shrink-0 transition-transform', expanded && 'rotate-180')} />
-      </button>
+        <TableCell className="py-1.5 px-3 font-mono font-semibold">
+          <span className="inline-flex items-center gap-1.5">
+            <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform', expanded && 'rotate-180')} />
+            {s.reference_number}
+          </span>
+        </TableCell>
+        <TableCell className="py-1.5 px-3">
+          {s.client_reference ? <Badge variant="outline" className="font-mono font-normal">{s.client_reference}</Badge> : '—'}
+        </TableCell>
+        <TableCell className="py-1.5 px-3"><Badge className={statusBadgeClass}>{statusLabel}</Badge></TableCell>
+        <TableCell className="py-1.5 px-3">{s.invoice_number || '—'}</TableCell>
+        <TableCell className="py-1.5 px-3 max-w-[160px] truncate">{s.carrier || '—'}</TableCell>
+        <TableCell className="py-1.5 px-3 max-w-[160px] truncate">{s.vessel_flight || '—'}</TableCell>
+        <TableCell className="py-1.5 px-3">{s.free_time != null ? `${s.free_time}d` : '—'}</TableCell>
+        <TableCell className="py-1.5 px-3">{shortDate(s.etd)}</TableCell>
+        <TableCell className="py-1.5 px-3">{shortDate(s.eta)}</TableCell>
+        <TableCell className="py-1.5 px-3">{shortDate(s.customs_registration_date)}</TableCell>
+        <TableCell className="py-1.5 px-3">
+          {channelMeta ? <Badge className={channelMeta.badgeClass}>{channelMeta.label.replace('Canal ', '')}</Badge> : '—'}
+        </TableCell>
+        <TableCell className={cn('py-1.5 px-3', demurrageUrgent && 'text-red-600 font-semibold')}>
+          {shortDate(s.demurrage_deadline)}
+        </TableCell>
+        <TableCell className="py-1.5 px-3">
+          {s.invoice_sent_at ? shortDate(s.invoice_sent_at) : <span className="text-muted-foreground">Pendente</span>}
+        </TableCell>
+      </TableRow>
 
       {expanded && (
-        <CardContent className="pt-0">
-          <div className="space-y-4 border-t border-border pt-4">
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={13} className="p-0">
+            <div className="space-y-4 p-5 bg-muted/20 border-t border-border">
             {/* Status - Modal - Origem - Transbordo(se houver) - Destino - Incoterm */}
             <div className="flex items-center gap-2 text-sm flex-wrap">
-              {s.client_reference && (
-                <Badge variant="outline" className="font-mono font-normal">{s.client_reference}</Badge>
-              )}
               <Badge className={statusBadgeClass}>{statusLabel}</Badge>
-              {channelMeta && <Badge className={channelMeta.badgeClass}>{channelMeta.label}</Badge>}
               <ModeIcon mode={s.transport_mode} showLabel />
               <span className="flex items-center gap-1.5 font-medium">
                 <FlagIcon country={s.origin_country} />
@@ -394,10 +425,8 @@ function ShipmentCard({ shipment: s, docs, events, statusOptions, defaultExpande
               {s.incoterm && <Badge variant="outline">{s.incoterm}</Badge>}
             </div>
 
-            {/* ETD - ETA - Transit Time - Restam */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 rounded-lg bg-muted/30">
-              <Kpi label="ETD" value={s.etd ? format(new Date(s.etd), 'dd/MM/yyyy') : '—'} />
-              <Kpi label="ETA" value={s.eta ? format(new Date(s.eta), 'dd/MM/yyyy') : '—'} />
+            {/* Transit Time - Restam */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 rounded-lg bg-background">
               <Kpi
                 label="Transit Time"
                 value={kpis.transitTime !== null ? `${kpis.transitTime} dias` : '—'}
@@ -417,6 +446,8 @@ function ShipmentCard({ shipment: s, docs, events, statusOptions, defaultExpande
                 }
                 tone={kpis.isDelayed ? 'danger' : kpis.arrivingSoon ? 'warning' : 'default'}
               />
+              <Kpi label="Nº Master (BL/AWB)" value={s.master_bl || '—'} />
+              <Kpi label="Qtd. Container" value={s.container_quantity != null ? String(s.container_quantity) : (containers.length || '—').toString()} />
             </div>
 
             {/* Linha do tempo — 5 marcos genéricos, orientados pela categoria do status */}
@@ -429,26 +460,11 @@ function ShipmentCard({ shipment: s, docs, events, statusOptions, defaultExpande
               </div>
             )}
 
-            {/* Armador - Navio - Nº Master */}
-            {(s.carrier || s.vessel_flight || s.master_bl) && (
+            {/* Ent. Terminal — único campo do bloco de Logística que ainda não
+                aparece em nenhuma coluna da lista. */}
+            {s.terminal_entry_date && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-1 text-xs pt-2 border-t border-border">
-                <DetailItem label={carrierLabel} value={s.carrier || '—'} />
-                <DetailItem label="Navio/Voo" value={s.vessel_flight || '—'} />
-                <DetailItem label="Nº Master (BL/AWB)" value={s.master_bl || '—'} />
-              </div>
-            )}
-
-            {/* Referências e prazos — mesmos campos da aba Logística interna,
-                pra o cliente acompanhar sem precisar perguntar. Só aparecem
-                quando preenchidos. */}
-            {(s.invoice_number || s.container_quantity || s.free_time != null || s.terminal_entry_date || s.customs_registration_date || s.demurrage_deadline) && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs pt-2 border-t border-border">
-                {s.invoice_number && <DetailItem label="Nº Invoice" value={s.invoice_number} />}
-                {s.container_quantity != null && <DetailItem label="Qtd. Container" value={String(s.container_quantity)} />}
-                {s.free_time != null && <DetailItem label="FreeTime" value={`${s.free_time} dias`} />}
-                {s.terminal_entry_date && <DetailItem label="Ent. Terminal" value={format(new Date(s.terminal_entry_date), 'dd/MM/yyyy')} />}
-                {s.customs_registration_date && <DetailItem label="Registro DI" value={format(new Date(s.customs_registration_date), 'dd/MM/yyyy')} />}
-                {s.demurrage_deadline && <DetailItem label="Demurrage" value={format(new Date(s.demurrage_deadline), 'dd/MM/yyyy')} />}
+                <DetailItem label="Ent. Terminal" value={format(new Date(s.terminal_entry_date), 'dd/MM/yyyy')} />
               </div>
             )}
 
@@ -576,10 +592,11 @@ function ShipmentCard({ shipment: s, docs, events, statusOptions, defaultExpande
 
             {/* Lista de documentos */}
             <DocsSection docs={docs} />
-          </div>
-        </CardContent>
+            </div>
+          </TableCell>
+        </TableRow>
       )}
-    </Card>
+    </>
   );
 }
 
