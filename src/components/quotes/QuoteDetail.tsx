@@ -742,14 +742,20 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // Helper: check if a charge is a discount (DESCONTO in description)
   const isDiscount = (c: any) => (c.description || '').toUpperCase().includes('DESCONTO');
 
+  // Taxa prepaid (já paga na origem) continua aparecendo nas listas de
+  // compra/venda e na Estimativa/Numerário — só não conta no Lucro do
+  // processo. Por isso filtra aqui, na base do cálculo de lucro, e não em
+  // `charges` (que alimenta as tabelas de exibição mais abaixo).
+  const profitCharges = charges.filter((c: any) => c.payment_term !== 'prepaid');
+
   // Currency-grouped totals (accounting for billing unit multipliers and DESCONTO)
-  const buyByCurrency = groupByCurrency(charges, (c: any) => c.currency || 'USD', (c: any) => {
+  const buyByCurrency = groupByCurrency(profitCharges, (c: any) => c.currency || 'USD', (c: any) => {
     const val = c.billing_unit === 'percent'
       ? (Number(c.computed_buy_amount) || 0)
       : (Number(c.buy_amount) || 0) * getChargeMultiplier(c.billing_unit || 'fixed');
     return isDiscount(c) ? -val : val;
   });
-  const sellByCurrency = groupByCurrency(charges, (c: any) => c.currency || 'USD', (c: any) => {
+  const sellByCurrency = groupByCurrency(profitCharges, (c: any) => c.currency || 'USD', (c: any) => {
     const val = c.billing_unit === 'percent'
       ? (Number(c.computed_sell_amount) || 0)
       : (Number(c.sell_amount) || 0) * getChargeMultiplier(c.billing_unit || 'fixed');
@@ -813,11 +819,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   };
 
   // Legacy totals for backward compat (syncTotals, BenchmarkCard) - with DESCONTO support
-  const totalBuy = charges.reduce((s: number, c: any) => {
+  const totalBuy = profitCharges.reduce((s: number, c: any) => {
     const val = c.buy_amount || 0;
     return s + (isDiscount(c) ? -val : val);
   }, 0);
-  const totalSell = charges.reduce((s: number, c: any) => {
+  const totalSell = profitCharges.reduce((s: number, c: any) => {
     const val = c.sell_amount || 0;
     return s + (isDiscount(c) ? -val : val);
   }, 0);

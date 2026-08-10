@@ -83,8 +83,13 @@ function computeQuoteProfitBrl(q: any, usdBrl: number, eurBrl: number): number {
       default: return 1;
     }
   };
-  const sellMap = groupByCurrency(qCharges, (c: any) => c.currency || 'USD', (c: any) => (c.sell_amount || 0) * mult(c.billing_unit || 'fixed'));
-  const buyMap = groupByCurrency(qCharges, (c: any) => c.currency || 'USD', (c: any) => (c.buy_amount || 0) * mult(c.billing_unit || 'fixed'));
+  // Taxas prepaid (já pagas na origem) não entram no Lucro Estimado — mesma
+  // regra que já exclui prepaid do Numerário em estimateSync.ts. Filtra aqui
+  // antes de somar, pra não duplicar essa checagem em cada lugar que soma
+  // quote_charges.
+  const profitCharges = qCharges.filter((c: any) => c.payment_term !== 'prepaid');
+  const sellMap = groupByCurrency(profitCharges, (c: any) => c.currency || 'USD', (c: any) => (c.sell_amount || 0) * mult(c.billing_unit || 'fixed'));
+  const buyMap = groupByCurrency(profitCharges, (c: any) => c.currency || 'USD', (c: any) => (c.buy_amount || 0) * mult(c.billing_unit || 'fixed'));
   const allCurs = [...new Set([...Object.keys(sellMap), ...Object.keys(buyMap)])];
   let totalBrl = 0;
   allCurs.forEach((cur) => {
@@ -145,7 +150,7 @@ export default function Quotes() {
     queryFn: async () => {
       let query = supabase
         .from('quotes')
-        .select('id, quote_number, status, transport_mode, origin, destination, valid_until, created_at, sent_at, client_id, currency, clients(name), quote_charges(id, sell_amount, buy_amount, currency, billing_unit), quote_items(container_type, container_qty, weight_kg, volume_cbm, chargeable_weight, length_cm, width_cm, height_cm, packages, commodity, dangerous_goods, vehicle_type)')
+        .select('id, quote_number, status, transport_mode, origin, destination, valid_until, created_at, sent_at, client_id, currency, clients(name), quote_charges(id, sell_amount, buy_amount, currency, billing_unit, payment_term), quote_items(container_type, container_qty, weight_kg, volume_cbm, chargeable_weight, length_cm, width_cm, height_cm, packages, commodity, dangerous_goods, vehicle_type)')
         .order('created_at', { ascending: false });
 
       if (activeTab === 'rejected') {
