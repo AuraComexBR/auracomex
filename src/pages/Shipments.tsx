@@ -168,11 +168,43 @@ export default function Shipments() {
     },
   });
 
+  // Origem/Destino às vezes só têm o porto preenchido (sem cidade nem país
+  // digitados manualmente — comum quando o processo veio de uma cotação
+  // onde só o porto foi escolhido). Sem isso, a coluna ficava em branco
+  // mesmo com o porto certinho selecionado no processo.
+  const portCodes = [...new Set(
+    shipments.flatMap((s: any) => [s.origin_port, s.destination_port]).filter(Boolean)
+  )];
+  const { data: portsInfo = [] } = useQuery({
+    queryKey: ['shipments-list-ports', portCodes.join(',')],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ports')
+        .select('code, name, city, country_code')
+        .in('code', portCodes);
+      if (error) throw error;
+      return data;
+    },
+    enabled: portCodes.length > 0,
+  });
+  const portMap = new Map<string, { code: string; name: string; city: string | null; country_code: string }>(
+    portsInfo.map((p: any) => [p.code, p])
+  );
+  function locationLabel(city: string | null, country: string | null, portCode: string | null) {
+    if (city) return city;
+    const port = portCode ? portMap.get(portCode) : undefined;
+    if (port?.city) return port.city;
+    if (port?.name) return port.name;
+    const countryName = countryCodeToName(country);
+    if (countryName) return countryName;
+    return portCode || '-';
+  }
+
   const filtered = shipments.filter((s: any) => {
     const matchesRef = !searchRef || s.reference_number?.toLowerCase().includes(searchRef.toLowerCase());
     const matchesClient = !searchClient || (s.clients as any)?.name?.toLowerCase().includes(searchClient.toLowerCase());
-    const matchesOrigin = !searchOrigin || s.origin_city?.toLowerCase().includes(searchOrigin.toLowerCase());
-    const matchesDestination = !searchDestination || s.destination_city?.toLowerCase().includes(searchDestination.toLowerCase());
+    const matchesOrigin = !searchOrigin || locationLabel(s.origin_city, s.origin_country, s.origin_port).toLowerCase().includes(searchOrigin.toLowerCase());
+    const matchesDestination = !searchDestination || locationLabel(s.destination_city, s.destination_country, s.destination_port).toLowerCase().includes(searchDestination.toLowerCase());
     const matchesStatus = statusFilter.length === 0 || statusFilter.includes(s.status);
     const matchesMode = modeFilter.length === 0 || modeFilter.includes(s.transport_mode);
     return matchesRef && matchesClient && matchesOrigin && matchesDestination && matchesStatus && matchesMode;
@@ -199,8 +231,8 @@ export default function Shipments() {
   const { sorted, sortState, toggleSort } = useTableSort<any>(filtered, {
     reference_number: (r) => r.reference_number,
     client: (r) => r.clients?.name,
-    origin: (r) => r.origin_city,
-    destination: (r) => r.destination_city,
+    origin: (r) => locationLabel(r.origin_city, r.origin_country, r.origin_port),
+    destination: (r) => locationLabel(r.destination_city, r.destination_country, r.destination_port),
     transport_mode: (r) => r.transport_mode,
     etd: (r) => r.atd || r.etd,
     eta: (r) => r.ata || r.eta,
@@ -349,14 +381,14 @@ export default function Shipments() {
                     </TableCell>
                     <TableCell className="py-0.5 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
                       <span className="inline-flex items-center gap-1.5">
-                        <FlagIcon country={s.origin_country} />
-                        <span>{s.origin_city || countryCodeToName(s.origin_country) || '-'}</span>
+                        <FlagIcon country={s.origin_country || portMap.get(s.origin_port)?.country_code} />
+                        <span>{locationLabel(s.origin_city, s.origin_country, s.origin_port)}</span>
                       </span>
                     </TableCell>
                     <TableCell className="py-0.5 px-3 cursor-pointer" onClick={() => setSelectedId(s.id)}>
                       <span className="inline-flex items-center gap-1.5">
-                        <FlagIcon country={s.destination_country} />
-                        <span>{s.destination_city || countryCodeToName(s.destination_country) || '-'}</span>
+                        <FlagIcon country={s.destination_country || portMap.get(s.destination_port)?.country_code} />
+                        <span>{locationLabel(s.destination_city, s.destination_country, s.destination_port)}</span>
                       </span>
                     </TableCell>
                     <TableCell className="py-0.5 px-1.5" onClick={(e) => e.stopPropagation()}>
