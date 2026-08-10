@@ -2721,9 +2721,11 @@ export type Database = {
           ce_mercante_master: string | null
           charges_verified: boolean
           client_id: string | null
+          client_reference: string | null
           company_id: string
           consignee_id: string | null
           container_number: string | null
+          container_quantity: number | null
           courier_provider: string | null
           courier_tracking_number: string | null
           created_at: string
@@ -2739,9 +2741,11 @@ export type Database = {
           eta: string | null
           etd: string | null
           financial_released: boolean
+          free_time: number | null
           house_bl: string | null
           id: string
           incoterm: string | null
+          invoice_number: string | null
           invoice_sent_at: string | null
           last_accessed_at: string | null
           master_bl: string | null
@@ -2776,9 +2780,11 @@ export type Database = {
           ce_mercante_master?: string | null
           charges_verified?: boolean
           client_id?: string | null
+          client_reference?: string | null
           company_id: string
           consignee_id?: string | null
           container_number?: string | null
+          container_quantity?: number | null
           courier_provider?: string | null
           courier_tracking_number?: string | null
           created_at?: string
@@ -2794,9 +2800,11 @@ export type Database = {
           eta?: string | null
           etd?: string | null
           financial_released?: boolean
+          free_time?: number | null
           house_bl?: string | null
           id?: string
           incoterm?: string | null
+          invoice_number?: string | null
           invoice_sent_at?: string | null
           last_accessed_at?: string | null
           master_bl?: string | null
@@ -2831,9 +2839,11 @@ export type Database = {
           ce_mercante_master?: string | null
           charges_verified?: boolean
           client_id?: string | null
+          client_reference?: string | null
           company_id?: string
           consignee_id?: string | null
           container_number?: string | null
+          container_quantity?: number | null
           courier_provider?: string | null
           courier_tracking_number?: string | null
           created_at?: string
@@ -2849,9 +2859,11 @@ export type Database = {
           eta?: string | null
           etd?: string | null
           financial_released?: boolean
+          free_time?: number | null
           house_bl?: string | null
           id?: string
           incoterm?: string | null
+          invoice_number?: string | null
           invoice_sent_at?: string | null
           last_accessed_at?: string | null
           master_bl?: string | null

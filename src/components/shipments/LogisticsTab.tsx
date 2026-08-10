@@ -267,21 +267,32 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     },
   });
 
+  // Cotação vinculada ao embarque — fonte de "espelho" pra Ref. Cliente e
+  // FreeTime, que já existem lá (preenchidos na Comercial/Proposta) antes
+  // de existirem aqui. Também usada pra achar os itens (containers) da FCL.
+  const { data: linkedQuote } = useQuery({
+    queryKey: ['logistics-linked-quote', shipment.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('quotes')
+        .select('id, client_reference, free_time')
+        .eq('shipment_id', shipment.id)
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; client_reference: string | null; free_time: number | null } | null;
+    },
+  });
+
   // Fetch quote_items to know container count for FCL
   const { data: quoteItems = [] } = useQuery({
-    queryKey: ['logistics-quote-items', shipment.id],
+    queryKey: ['logistics-quote-items', linkedQuote?.id],
+    enabled: !!linkedQuote?.id,
     queryFn: async () => {
-      // Find the quote linked to this shipment
-      const { data: quotes } = await supabase
-        .from('quotes')
-        .select('id')
-        .eq('shipment_id', shipment.id)
-        .limit(1);
-      if (!quotes || quotes.length === 0) return [];
       const { data, error } = await supabase
         .from('quote_items')
         .select('*')
-        .eq('quote_id', quotes[0].id)
+        .eq('quote_id', linkedQuote!.id)
         .order('created_at');
       if (error) throw error;
       return data || [];
@@ -292,6 +303,10 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   const containerCount = isFCL ? Math.max(quoteItems.length, 1) : 0;
 
   const [form, setForm] = useState({
+    client_reference: (shipment as any).client_reference || '',
+    invoice_number: (shipment as any).invoice_number || '',
+    container_quantity: (shipment as any).container_quantity != null ? String((shipment as any).container_quantity) : '',
+    free_time: (shipment as any).free_time != null ? String((shipment as any).free_time) : '',
     origin_city: shipment.origin_city || '',
     origin_country: shipment.origin_country || '',
     origin_port: shipment.origin_port || '',
@@ -409,6 +424,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   // disparar o auto-save — Logística não tem mais botão "Salvar" próprio.
   const hasChanges = useMemo(() => {
     const fieldsToCheck: (keyof typeof form)[] = [
+      'client_reference', 'invoice_number', 'container_quantity', 'free_time',
       'origin_city', 'origin_country', 'origin_port', 'transshipment',
       'destination_city', 'destination_country', 'destination_port',
       'carrier', 'vessel_flight', 'booking_number',
@@ -463,6 +479,10 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         : null;
 
       const updates: Record<string, any> = {
+        client_reference: form.client_reference || null,
+        invoice_number: form.invoice_number || null,
+        container_quantity: form.container_quantity ? parseInt(form.container_quantity, 10) : null,
+        free_time: form.free_time ? parseInt(form.free_time, 10) : null,
         origin_city: form.origin_city || null,
         origin_country: form.origin_country || null,
         origin_port: form.origin_port || null,
@@ -509,6 +529,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
       const auditLogs: { field_name: string; old_value: string | null; new_value: string | null }[] = [];
       const allFields = [
+        'client_reference', 'invoice_number', 'container_quantity', 'free_time',
         'origin_city', 'origin_country', 'origin_port', 'transshipment',
         'destination_city', 'destination_country', 'destination_port',
         'carrier', 'vessel_flight', 'booking_number',
@@ -538,14 +559,19 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
       const { error } = await (supabase.from('shipments') as any).update(updates).eq('id', shipment.id);
       if (error) throw error;
 
-      // Modal e Incoterm são espelhados com a aba Geral (tabela quotes) — editar
-      // aqui também atualiza a cotação de origem, pra nunca ficarem divergentes.
-      if (quoteId) {
+      // Modal, Incoterm, Ref. Cliente e FreeTime são espelhados com a aba Geral
+      // (tabela quotes) — editar aqui também atualiza a cotação de origem, pra
+      // nunca ficarem divergentes.
+      const quoteIdToSync = quoteId || linkedQuote?.id;
+      if (quoteIdToSync) {
         await supabase.from('quotes').update({
           transport_mode: updates.transport_mode,
           incoterm: updates.incoterm,
-        } as any).eq('id', quoteId);
-        queryClient.invalidateQueries({ queryKey: ['quote-detail', quoteId] });
+          client_reference: updates.client_reference,
+          free_time: updates.free_time,
+        } as any).eq('id', quoteIdToSync);
+        queryClient.invalidateQueries({ queryKey: ['quote-detail', quoteIdToSync] });
+        queryClient.invalidateQueries({ queryKey: ['logistics-linked-quote', shipment.id] });
       }
 
       if (auditLogs.length > 0 && profile) {
@@ -583,6 +609,30 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partnerOptions.map((p: any) => p.id).join(','), form.transport_mode, form.carrier]);
+
+  // Espelha Ref. Cliente e FreeTime da cotação de origem na primeira vez que
+  // o embarque ainda não tem valor próprio salvo — mesma ideia do
+  // auto-preenchimento do Armador logo acima. Depois disso o campo aqui vira
+  // independente (o usuário pode ajustar sem afetar a cotação retroativamente).
+  useEffect(() => {
+    if (!linkedQuote) return;
+    if (!form.client_reference && linkedQuote.client_reference) {
+      updateField('client_reference', linkedQuote.client_reference);
+    }
+    if (!form.free_time && linkedQuote.free_time != null) {
+      updateField('free_time', String(linkedQuote.free_time));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedQuote]);
+
+  // Sugere a quantidade de containers a partir dos itens da cotação (FCL)
+  // enquanto o usuário não tiver digitado um valor manual.
+  useEffect(() => {
+    if (isFCL && containerCount > 0 && !form.container_quantity) {
+      updateField('container_quantity', String(containerCount));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFCL, containerCount]);
 
   function DateField({ label, fieldKey }: { label: string; fieldKey: string }) {
     const value = (form as any)[fieldKey];
@@ -869,6 +919,39 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           </DialogContent>
         </Dialog>
 
+        {/* Referências — Referência é só leitura (mesma do topo da página,
+            gerada automaticamente); Ref. Cliente e Qtd. Container espelham/
+            sugerem valores de outros lugares (cotação e itens FCL) mas podem
+            ser ajustados aqui sem afetar a origem; Nº Invoice é próprio do
+            embarque. */}
+        <div className="pt-4 border-t border-border space-y-2">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase">Referências</h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs">Referência</Label>
+              <Input value={shipment.reference_number || ''} readOnly disabled className="font-mono" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Ref. Cliente</Label>
+              <Input value={form.client_reference} onChange={e => updateField('client_reference', e.target.value)} placeholder="Referência do cliente..." />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Nº Invoice</Label>
+              <Input value={form.invoice_number} onChange={e => updateField('invoice_number', e.target.value)} placeholder="Número da invoice..." />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Qtd. Container</Label>
+              <Input
+                type="number"
+                min={0}
+                value={form.container_quantity}
+                onChange={e => updateField('container_quantity', e.target.value)}
+                placeholder="Quantidade..."
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Coleta - Porto/Aeroporto Origem - Porto/Aeroporto Destino - Entrega */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-border">
           <div className="space-y-1">
@@ -1007,6 +1090,16 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           <div className="space-y-1">
             <Label className="text-xs">Vessel/Flight</Label>
             <Input value={form.vessel_flight} onChange={e => updateField('vessel_flight', e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">FreeTime (dias)</Label>
+            <Input
+              type="number"
+              min={0}
+              value={form.free_time}
+              onChange={e => updateField('free_time', e.target.value)}
+              placeholder="Ex: 14"
+            />
           </div>
           {shipment.transport_mode === 'air' && (
             <>
