@@ -212,6 +212,11 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shipment-partners', shipmentId] });
+      // A aba Logística tem sua própria query (cache separado) pra montar as
+      // opções de Shipper/Armador/Notify/Consignee — sem invalidar aqui
+      // também, uma empresa recém-adicionada não aparecia lá (nem disparava
+      // o auto-preenchimento do Armador) até a página ser recarregada.
+      queryClient.invalidateQueries({ queryKey: ['shipment-partners-logistics', shipmentId] });
       setPartnerSearch('');
       toast.success(t('financial.add_partner'));
     },
@@ -225,6 +230,7 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shipment-partners', shipmentId] });
+      queryClient.invalidateQueries({ queryKey: ['shipment-partners-logistics', shipmentId] });
     },
     onError: (err: any) => toast.error(err.message),
   });

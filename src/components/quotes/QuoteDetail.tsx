@@ -2300,7 +2300,15 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 companyId={profile?.company_id || ''}
                 partners={partners}
                 quotePartners={quotePartners}
-                onChanged={() => queryClient.invalidateQueries({ queryKey: ['quote-partners', quoteId] })}
+                onChanged={() => {
+                  queryClient.invalidateQueries({ queryKey: ['quote-partners', quoteId] });
+                  // A aba Logística usa sua própria query (cache separado) pra
+                  // montar as opções de Shipper/Armador/Notify/Consignee — sem
+                  // invalidar aqui também, uma empresa recém-adicionada em
+                  // Empresas não aparecia lá (nem disparava o auto-preenchimento
+                  // do Armador) até a página ser recarregada.
+                  queryClient.invalidateQueries({ queryKey: ['quote-partners-logistics', quoteId] });
+                }}
               />
             </CardContent>
           </Card>
