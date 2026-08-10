@@ -144,7 +144,7 @@ export default function Tracking() {
 
   // Shipments query via edge function — vem junto a categoria de cada status
   // da empresa (statusOptions), usada pra orientar a linha do tempo genérica.
-  const { data: shipmentsResult } = useQuery({
+  const { data: shipmentsResult, dataUpdatedAt: shipmentsUpdatedAt } = useQuery({
     queryKey: ['tracking-shipments', clientId, filter],
     queryFn: async () => {
       const result = await callTracking({ action: 'shipments', client_id: clientId, filter });
@@ -195,7 +195,7 @@ export default function Tracking() {
   });
 
   // Quotes query via edge function
-  const { data: quotes = [] } = useQuery({
+  const { data: quotes = [], dataUpdatedAt: quotesUpdatedAt } = useQuery({
     queryKey: ['tracking-quotes', clientId],
     queryFn: async () => {
       const result = await callTracking({ action: 'quotes', client_id: clientId });
@@ -203,6 +203,10 @@ export default function Tracking() {
     },
     enabled: !!clientId && authenticated && filter === 'quotes',
   });
+
+  // "Atualizado às" reflete a query que está ativa pra aba corrente (a outra
+  // fica em 0 enquanto desabilitada) — pega sempre o timestamp mais recente.
+  const lastUpdatedAt = Math.max(shipmentsUpdatedAt || 0, quotesUpdatedAt || 0);
 
   // Documents for shipments
   const shipmentIds = shipments.map((s: any) => s.id);
@@ -349,15 +353,22 @@ export default function Tracking() {
             <h1 className="text-xl font-bold">{company?.name || 'Rastreamento'}</h1>
             <p className="text-sm text-muted-foreground">{clientName} — Portal de Rastreamento</p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-              <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', refreshing && 'animate-spin')} />
-              Atualizar
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleLogout} title="Sair">
-              <LogOut className="w-3.5 h-3.5 mr-1.5" />
-              Sair
-            </Button>
+          <div className="ml-auto flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+                <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', refreshing && 'animate-spin')} />
+                Atualizar
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleLogout} title="Sair">
+                <LogOut className="w-3.5 h-3.5 mr-1.5" />
+                Sair
+              </Button>
+            </div>
+            {lastUpdatedAt > 0 && (
+              <p className="text-[10px] text-muted-foreground">
+                Atualizado às {format(new Date(lastUpdatedAt), 'HH:mm:ss')}
+              </p>
+            )}
           </div>
         </div>
       </header>
