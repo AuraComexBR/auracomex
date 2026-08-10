@@ -1869,6 +1869,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 <TabsTrigger value="partners" className={triggerCls}>
                   <Users className={iconCls} /> {t('quotes.partners_tab')}
                 </TabsTrigger>
+                {isShipmentMode && (
+                  <TabsTrigger value="logistics" className={triggerCls}>
+                    <MapPin className={iconCls} /> {t('shipments.logistics')}
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="charges" className={triggerCls}>
                   <ShoppingCart className={iconCls} /> Taxas
                 </TabsTrigger>
@@ -1881,11 +1886,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 <TabsTrigger value="documents" className={triggerCls}>
                   <FileText className={iconCls} /> {t('shipments.documents')}
                 </TabsTrigger>
-                {isShipmentMode && (
-                  <TabsTrigger value="logistics" className={triggerCls}>
-                    <MapPin className={iconCls} /> {t('shipments.logistics')}
-                  </TabsTrigger>
-                )}
                 {isShipmentMode && (
                   <TabsTrigger value="events" className={triggerCls}>
                     <NotebookPen className={iconCls} /> Diário
