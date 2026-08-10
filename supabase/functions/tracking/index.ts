@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
 
       let query = adminClient
         .from("shipments")
-        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, transshipment, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, next_update, courier_provider, courier_tracking_number, company_id, customs_channel, customs_registration_date, terminal_entry_date, demurrage_deadline, storage_deadline, cargo_delivered_at, invoice_sent_at")
+        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, transshipment, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, next_update, courier_provider, courier_tracking_number, company_id, customs_channel, customs_registration_date, terminal_entry_date, demurrage_deadline, storage_deadline, cargo_delivered_at, invoice_sent_at, client_reference, invoice_number, container_quantity, free_time")
         .eq("client_id", client_id);
 
       query = filter === "active"
@@ -141,8 +141,10 @@ Deno.serve(async (req) => {
         statusOptions = opts || [];
       }
 
-      // Referência do cliente vive na cotação de origem (quotes.client_reference),
-      // não no embarque — busca em lote pelos shipment_id.
+      // Referência do cliente agora também é gravada direto no embarque
+      // (shipments.client_reference), espelhada da cotação de origem. Pra
+      // embarques antigos que nunca passaram pela aba Logística depois desse
+      // espelho existir, cai de volta pro valor da cotação (quotes.client_reference).
       const shipmentIds = shipments.map((s: any) => s.id);
       const refMap = new Map<string, string>();
       if (shipmentIds.length > 0) {
@@ -169,7 +171,7 @@ Deno.serve(async (req) => {
 
       const enrichedShipments = shipments.map((s: any) => ({
         ...s,
-        client_reference: refMap.get(s.id) || null,
+        client_reference: s.client_reference || refMap.get(s.id) || null,
         transshipment_info: s.transshipment ? (portMap.get(s.transshipment) || { code: s.transshipment, name: s.transshipment, city: null, country_code: "" }) : null,
       }));
 

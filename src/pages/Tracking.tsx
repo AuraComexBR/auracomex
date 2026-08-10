@@ -438,6 +438,20 @@ function ShipmentCard({ shipment: s, docs, events, statusOptions, defaultExpande
               </div>
             )}
 
+            {/* Referências e prazos — mesmos campos da aba Logística interna,
+                pra o cliente acompanhar sem precisar perguntar. Só aparecem
+                quando preenchidos. */}
+            {(s.invoice_number || s.container_quantity || s.free_time != null || s.terminal_entry_date || s.customs_registration_date || s.demurrage_deadline) && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs pt-2 border-t border-border">
+                {s.invoice_number && <DetailItem label="Nº Invoice" value={s.invoice_number} />}
+                {s.container_quantity != null && <DetailItem label="Qtd. Container" value={String(s.container_quantity)} />}
+                {s.free_time != null && <DetailItem label="FreeTime" value={`${s.free_time} dias`} />}
+                {s.terminal_entry_date && <DetailItem label="Ent. Terminal" value={format(new Date(s.terminal_entry_date), 'dd/MM/yyyy')} />}
+                {s.customs_registration_date && <DetailItem label="Registro DI" value={format(new Date(s.customs_registration_date), 'dd/MM/yyyy')} />}
+                {s.demurrage_deadline && <DetailItem label="Demurrage" value={format(new Date(s.demurrage_deadline), 'dd/MM/yyyy')} />}
+              </div>
+            )}
+
             {/* Containers — sempre 3 por linha */}
             {containers.length > 0 && (
               <div className="pt-2 border-t border-border space-y-1.5">
