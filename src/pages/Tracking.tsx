@@ -398,37 +398,37 @@ export default function Tracking() {
             ) : (
               <Card className="glass overflow-hidden">
                 <CardContent className="p-0 overflow-x-auto">
-                  <Table className="text-sm">
+                  <Table className="text-xs">
                     <TableHeader>
                       <TableRow className="whitespace-nowrap">
                         <SortableHeader
-                          label="Ref." sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          label="Ref." sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
                           right={<ColumnSearch value={searchRef} onChange={setSearchRef} open={searchRefOpen} onOpenChange={setSearchRefOpen} />}
                         />
                         <SortableHeader
-                          label="Ref. Cliente" sortKey="client_reference" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          label="Ref. Cliente" sortKey="client_reference" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
                           right={<ColumnSearch value={searchClientRef} onChange={setSearchClientRef} open={searchClientRefOpen} onOpenChange={setSearchClientRefOpen} />}
                         />
-                        <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                        <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
                         <SortableHeader
-                          label="Invoice" sortKey="invoice_number" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          label="Invoice" sortKey="invoice_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
                           right={<ColumnSearch value={searchInvoice} onChange={setSearchInvoice} open={searchInvoiceOpen} onOpenChange={setSearchInvoiceOpen} />}
                         />
                         <SortableHeader
-                          label="Armador" sortKey="carrier" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          label="Armador" sortKey="carrier" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
                           right={<ColumnSearch value={searchCarrier} onChange={setSearchCarrier} open={searchCarrierOpen} onOpenChange={setSearchCarrierOpen} />}
                         />
                         <SortableHeader
-                          label="Navio" sortKey="vessel_flight" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          label="Navio" sortKey="vessel_flight" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
                           right={<ColumnSearch value={searchVessel} onChange={setSearchVessel} open={searchVesselOpen} onOpenChange={setSearchVesselOpen} />}
                         />
-                        <SortableHeader label="FreeTime" sortKey="free_time" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
-                        <SortableHeader label="ETD" sortKey="etd" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
-                        <SortableHeader label="ETA" sortKey="eta" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
-                        <SortableHeader label="Registro DI" sortKey="customs_registration_date" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
-                        <SortableHeader label="Canal" sortKey="customs_channel" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
-                        <SortableHeader label="Demurrage" sortKey="demurrage_deadline" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
-                        <SortableHeader label="Faturamento" sortKey="invoice_sent_at" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                        <SortableHeader label="FreeTime" sortKey="free_time" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        <SortableHeader label="ETD" sortKey="etd" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        <SortableHeader label="ETA" sortKey="eta" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        <SortableHeader label="Registro DI" sortKey="customs_registration_date" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        <SortableHeader label="Canal" sortKey="customs_channel" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        <SortableHeader label="Demurrage" sortKey="demurrage_deadline" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        <SortableHeader label="Faturamento" sortKey="invoice_sent_at" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -509,34 +509,34 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
         className="cursor-pointer whitespace-nowrap hover:bg-muted/40"
         onClick={() => setExpanded((e) => !e)}
       >
-        <TableCell className="py-1.5 px-3 font-mono font-semibold">
+        <TableCell className="py-1 px-2 font-mono font-semibold">
           <span className="inline-flex items-center gap-1.5">
             <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform', expanded && 'rotate-180')} />
             {s.reference_number}
           </span>
         </TableCell>
-        <TableCell className="py-1.5 px-3">
-          {s.client_reference ? <Badge variant="outline" className="font-mono font-normal">{s.client_reference}</Badge> : '—'}
+        <TableCell className="py-1 px-2">
+          {s.client_reference ? <Badge variant="outline" className="font-mono font-normal text-[10px] px-1.5 py-0">{s.client_reference}</Badge> : '—'}
         </TableCell>
-        <TableCell className="py-1.5 px-3"><Badge className={statusBadgeClass}>{statusLabel}</Badge></TableCell>
-        <TableCell className="py-1.5 px-3">{s.invoice_number || '—'}</TableCell>
-        <TableCell className="py-1.5 px-3 max-w-[160px] truncate">{s.carrier || '—'}</TableCell>
-        <TableCell className="py-1.5 px-3 max-w-[160px] truncate">{s.vessel_flight || '—'}</TableCell>
-        <TableCell className="py-1.5 px-3">{s.free_time != null ? `${s.free_time}d` : '—'}</TableCell>
-        <TableCell className={cn('py-1.5 px-3', s.atd && 'font-semibold text-emerald-600')} title={s.atd ? 'Data real' : 'Estimativa'}>
+        <TableCell className="py-1 px-2"><Badge className={cn(statusBadgeClass, 'text-[10px] px-1.5 py-0 whitespace-nowrap')}>{statusLabel}</Badge></TableCell>
+        <TableCell className="py-1 px-2 max-w-[90px] truncate">{s.invoice_number || '—'}</TableCell>
+        <TableCell className="py-1 px-2 max-w-[90px] truncate">{s.carrier || '—'}</TableCell>
+        <TableCell className="py-1 px-2 max-w-[90px] truncate">{s.vessel_flight || '—'}</TableCell>
+        <TableCell className="py-1 px-2">{s.free_time != null ? `${s.free_time}d` : '—'}</TableCell>
+        <TableCell className={cn('py-1 px-2', s.atd && 'font-semibold text-emerald-600')} title={s.atd ? 'Data real' : 'Estimativa'}>
           {shortDate(s.atd || s.etd)}
         </TableCell>
-        <TableCell className={cn('py-1.5 px-3', s.ata && 'font-semibold text-emerald-600')} title={s.ata ? 'Data real' : 'Estimativa'}>
+        <TableCell className={cn('py-1 px-2', s.ata && 'font-semibold text-emerald-600')} title={s.ata ? 'Data real' : 'Estimativa'}>
           {shortDate(s.ata || s.eta)}
         </TableCell>
-        <TableCell className="py-1.5 px-3">{shortDate(s.customs_registration_date)}</TableCell>
-        <TableCell className="py-1.5 px-3">
-          {channelMeta ? <Badge className={channelMeta.badgeClass}>{channelMeta.label.replace('Canal ', '')}</Badge> : '—'}
+        <TableCell className="py-1 px-2">{shortDate(s.customs_registration_date)}</TableCell>
+        <TableCell className="py-1 px-2">
+          {channelMeta ? <Badge className={cn(channelMeta.badgeClass, 'text-[10px] px-1.5 py-0')}>{channelMeta.label.replace('Canal ', '')}</Badge> : '—'}
         </TableCell>
-        <TableCell className={cn('py-1.5 px-3', demurrageUrgent && 'text-red-600 font-semibold')}>
+        <TableCell className={cn('py-1 px-2', demurrageUrgent && 'text-red-600 font-semibold')}>
           {shortDate(s.demurrage_deadline)}
         </TableCell>
-        <TableCell className="py-1.5 px-3">
+        <TableCell className="py-1 px-2">
           {s.invoice_sent_at ? shortDate(s.invoice_sent_at) : <span className="text-muted-foreground">Pendente</span>}
         </TableCell>
       </TableRow>
