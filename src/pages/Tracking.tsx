@@ -4,6 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useTableSort } from '@/hooks/useTableSort';
+import { SortableHeader } from '@/components/shared/SortableHeader';
+import { ColumnSearch } from '@/components/shared/ColumnSearch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,6 +107,45 @@ export default function Tracking() {
   });
   const shipments = shipmentsResult?.shipments ?? [];
   const statusOptions = shipmentsResult?.statusOptions?.length ? shipmentsResult.statusOptions : DEFAULT_STATUS_OPTIONS;
+  const statusLabelMap = new Map<string, string>(statusOptions.map((o) => [o.value, o.label]));
+
+  // Busca por coluna e ordenação — mesmo padrão das listas internas de
+  // Embarques e Cotações (lupa no cabeçalho + clique pra ordenar).
+  const [searchRef, setSearchRef] = useState('');
+  const [searchClientRef, setSearchClientRef] = useState('');
+  const [searchInvoice, setSearchInvoice] = useState('');
+  const [searchCarrier, setSearchCarrier] = useState('');
+  const [searchVessel, setSearchVessel] = useState('');
+  const [searchRefOpen, setSearchRefOpen] = useState(false);
+  const [searchClientRefOpen, setSearchClientRefOpen] = useState(false);
+  const [searchInvoiceOpen, setSearchInvoiceOpen] = useState(false);
+  const [searchCarrierOpen, setSearchCarrierOpen] = useState(false);
+  const [searchVesselOpen, setSearchVesselOpen] = useState(false);
+
+  const filteredShipments = shipments.filter((s: any) => {
+    const matchesRef = !searchRef || s.reference_number?.toLowerCase().includes(searchRef.toLowerCase());
+    const matchesClientRef = !searchClientRef || s.client_reference?.toLowerCase().includes(searchClientRef.toLowerCase());
+    const matchesInvoice = !searchInvoice || s.invoice_number?.toLowerCase().includes(searchInvoice.toLowerCase());
+    const matchesCarrier = !searchCarrier || s.carrier?.toLowerCase().includes(searchCarrier.toLowerCase());
+    const matchesVessel = !searchVessel || s.vessel_flight?.toLowerCase().includes(searchVessel.toLowerCase());
+    return matchesRef && matchesClientRef && matchesInvoice && matchesCarrier && matchesVessel;
+  });
+
+  const { sorted: sortedShipments, sortState, toggleSort } = useTableSort<any>(filteredShipments, {
+    reference_number: (r) => r.reference_number,
+    client_reference: (r) => r.client_reference,
+    status: (r) => statusLabelMap.get(r.status) || r.status,
+    invoice_number: (r) => r.invoice_number,
+    carrier: (r) => r.carrier,
+    vessel_flight: (r) => r.vessel_flight,
+    free_time: (r) => r.free_time,
+    etd: (r) => r.etd,
+    eta: (r) => r.eta,
+    customs_registration_date: (r) => r.customs_registration_date,
+    customs_channel: (r) => r.customs_channel,
+    demurrage_deadline: (r) => r.demurrage_deadline,
+    invoice_sent_at: (r) => r.invoice_sent_at,
+  });
 
   // Quotes query via edge function
   const { data: quotes = [] } = useQuery({
@@ -284,32 +326,55 @@ export default function Tracking() {
                   <Table className="text-sm">
                     <TableHeader>
                       <TableRow className="whitespace-nowrap">
-                        <TableHead className="h-8 px-3 text-xs">Ref.</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">Ref. Cliente</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">Status</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">Invoice</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">Armador</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">Navio</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">FreeTime</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">ETD</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">ETA</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">Registro DI</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">Canal</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">Demurrage</TableHead>
-                        <TableHead className="h-8 px-3 text-xs">Faturamento</TableHead>
+                        <SortableHeader
+                          label="Ref." sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          right={<ColumnSearch value={searchRef} onChange={setSearchRef} open={searchRefOpen} onOpenChange={setSearchRefOpen} />}
+                        />
+                        <SortableHeader
+                          label="Ref. Cliente" sortKey="client_reference" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          right={<ColumnSearch value={searchClientRef} onChange={setSearchClientRef} open={searchClientRefOpen} onOpenChange={setSearchClientRefOpen} />}
+                        />
+                        <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                        <SortableHeader
+                          label="Invoice" sortKey="invoice_number" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          right={<ColumnSearch value={searchInvoice} onChange={setSearchInvoice} open={searchInvoiceOpen} onOpenChange={setSearchInvoiceOpen} />}
+                        />
+                        <SortableHeader
+                          label="Armador" sortKey="carrier" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          right={<ColumnSearch value={searchCarrier} onChange={setSearchCarrier} open={searchCarrierOpen} onOpenChange={setSearchCarrierOpen} />}
+                        />
+                        <SortableHeader
+                          label="Navio" sortKey="vessel_flight" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs"
+                          right={<ColumnSearch value={searchVessel} onChange={setSearchVessel} open={searchVesselOpen} onOpenChange={setSearchVesselOpen} />}
+                        />
+                        <SortableHeader label="FreeTime" sortKey="free_time" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                        <SortableHeader label="ETD" sortKey="etd" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                        <SortableHeader label="ETA" sortKey="eta" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                        <SortableHeader label="Registro DI" sortKey="customs_registration_date" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                        <SortableHeader label="Canal" sortKey="customs_channel" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                        <SortableHeader label="Demurrage" sortKey="demurrage_deadline" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
+                        <SortableHeader label="Faturamento" sortKey="invoice_sent_at" state={sortState} onToggle={toggleSort} className="h-8 px-3 text-xs" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {shipments.map((s: any, idx: number) => (
-                        <ShipmentRow
-                          key={s.id}
-                          shipment={s}
-                          docs={trackingDocs.filter((d: any) => d.shipment_id === s.id)}
-                          events={trackingEvents.filter((e: any) => e.shipment_id === s.id)}
-                          statusOptions={statusOptions}
-                          defaultExpanded={shipments.length === 1 || idx === 0}
-                        />
-                      ))}
+                      {sortedShipments.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                            Nenhum resultado encontrado para a busca.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        sortedShipments.map((s: any) => (
+                          <ShipmentRow
+                            key={s.id}
+                            shipment={s}
+                            docs={trackingDocs.filter((d: any) => d.shipment_id === s.id)}
+                            events={trackingEvents.filter((e: any) => e.shipment_id === s.id)}
+                            statusOptions={statusOptions}
+                            defaultExpanded={false}
+                          />
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </CardContent>
