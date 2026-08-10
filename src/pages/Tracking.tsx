@@ -230,7 +230,7 @@ export default function Tracking() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className="max-w-5xl mx-auto px-4 py-6 flex items-center gap-4">
+        <div className="max-w-[1600px] mx-auto px-4 py-6 flex items-center gap-4">
           {company?.logo_url && !logoError ? (
             <img
               src={company.logo_url}
@@ -256,7 +256,7 @@ export default function Tracking() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      <main className="max-w-[1600px] mx-auto px-4 py-8 space-y-6">
         <div className="flex gap-2">
           <Button variant={filter === 'active' ? 'default' : 'outline'} onClick={() => setFilter('active')} size="sm">
             Em Andamento
