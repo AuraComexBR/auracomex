@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useTableSort } from '@/hooks/useTableSort';
@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ModeIcon } from '@/components/shared/ModeIcon';
-import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown, NotebookPen } from 'lucide-react';
+import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown, NotebookPen, RefreshCw, LogOut } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusTimeline } from '@/components/tracking/StatusTimeline';
 import { buildTimeline } from '@/lib/shipmentTimeline';
@@ -70,8 +70,17 @@ async function callTracking(body: any) {
   return data;
 }
 
+// Sessão do tracking fica guardada no sessionStorage (por CNPJ), não em
+// localStorage: sobrevive a um F5 na mesma aba (o problema relatado), mas
+// some ao fechar a aba/navegador — não vira um "login permanente" num PIN
+// de 4 dígitos guardado no navegador do cliente.
+function trackingSessionKey(clientCnpj: string) {
+  return `aura:tracking:auth:${clientCnpj}`;
+}
+
 export default function Tracking() {
   const { clientCnpj } = useParams<{ clientCnpj: string }>();
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<FilterTab>('active');
   const [authenticated, setAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
@@ -80,7 +89,45 @@ export default function Tracking() {
   const [clientName, setClientName] = useState<string>('');
   const [company, setCompany] = useState<any>(null);
   const [logoError, setLogoError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const { data: platformSettings } = usePlatformSettings();
+
+  // Restaura a sessão ao recarregar a página, sem pedir o PIN de novo.
+  useEffect(() => {
+    if (!clientCnpj) return;
+    try {
+      const raw = sessionStorage.getItem(trackingSessionKey(clientCnpj));
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved?.authenticated) {
+          setAuthenticated(true);
+          setCompany(saved.company || null);
+        }
+      }
+    } catch {
+      // ignore (sessionStorage indisponível / corrompido)
+    }
+  }, [clientCnpj]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({
+        predicate: (q) => typeof q.queryKey[0] === 'string' && (q.queryKey[0] as string).startsWith('tracking-'),
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function handleLogout() {
+    if (clientCnpj) {
+      try { sessionStorage.removeItem(trackingSessionKey(clientCnpj)); } catch { /* ignore */ }
+    }
+    setAuthenticated(false);
+    setCompany(null);
+    setPin('');
+  }
 
   // Step 1: Lookup client by CNPJ via edge function
   const { data: lookupResult, isLoading: lookupLoading } = useQuery({
@@ -226,6 +273,13 @@ export default function Tracking() {
         setAuthenticated(true);
         setCompany(result.company);
         setPinError(false);
+        if (clientCnpj) {
+          try {
+            sessionStorage.setItem(trackingSessionKey(clientCnpj), JSON.stringify({ authenticated: true, company: result.company }));
+          } catch {
+            // ignore (sessionStorage indisponível / quota)
+          }
+        }
       }
     } catch {
       setPinError(true);
@@ -294,6 +348,16 @@ export default function Tracking() {
           <div>
             <h1 className="text-xl font-bold">{company?.name || 'Rastreamento'}</h1>
             <p className="text-sm text-muted-foreground">{clientName} — Portal de Rastreamento</p>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', refreshing && 'animate-spin')} />
+              Atualizar
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleLogout} title="Sair">
+              <LogOut className="w-3.5 h-3.5 mr-1.5" />
+              Sair
+            </Button>
           </div>
         </div>
       </header>
