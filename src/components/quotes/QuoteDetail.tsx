@@ -1252,7 +1252,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         destination_country: destCountry || null,
         status: 'approved' as any,
         created_by: profile.user_id,
-      }).select('id').single();
+        // Espelhados da cotação de origem — sem isso o embarque nascia sem
+        // Incoterm (e sem Ref. Cliente/FreeTime), só pegando esses valores
+        // depois que alguém abrisse a aba Logística e o auto-preenchimento
+        // rodasse. Agora já nasce certo.
+        incoterm: (form.incoterm && (form.incoterm as any) !== 'NONE') ? form.incoterm : null,
+        client_reference: form.client_reference || null,
+        free_time: parseInt(form.free_time) || null,
+      } as any).select('id').single();
       if (shipError) throw shipError;
 
       // Copy quote_charges to charge_lines

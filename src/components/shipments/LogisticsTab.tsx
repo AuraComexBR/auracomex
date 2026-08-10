@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PortSelect } from '@/components/shared/PortSelect';
 import { CountrySelect } from '@/components/shared/CountrySelect';
-import { MapPin, Ship, Plane, Truck, ArrowRight, CalendarIcon, Settings, Plus, Trash2, GripVertical, ExternalLink, ArrowDownAZ, Loader2 } from 'lucide-react';
+import { CalendarIcon, Settings, Plus, Trash2, GripVertical, ExternalLink, ArrowDownAZ, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -30,10 +30,6 @@ interface Props {
   quoteId?: string;
   onUpdate?: () => void;
 }
-
-const modeIcons: Record<string, typeof Ship> = {
-  ocean_fcl: Ship, ocean_lcl: Ship, air: Plane, road: Truck, multimodal: Ship,
-};
 
 const INCOTERMS_BY_MODE: Record<string, string[]> = {
   ocean_fcl: ['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'],
@@ -72,7 +68,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   const { user, profile } = useAuth();
   const { isFullAccess } = usePermissions();
   const queryClient = useQueryClient();
-  const Icon = modeIcons[shipment.transport_mode] || Ship;
 
   // Fetch custom status options from DB
   const { data: dbStatusOptions = [] } = useQuery({
@@ -412,14 +407,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     return ` (${label})`;
   }
 
-  const stops = [
-    { label: t('shipments.origin'), city: form.origin_city, country: form.origin_country, active: true },
-    ...(form.origin_port ? [{ label: 'Port/Airport', city: form.origin_port, country: '', active: form.status === 'booked' || form.status === 'in_transit' }] : []),
-    ...(form.transshipment ? [{ label: 'Transbordo', city: form.transshipment, country: '', active: form.status === 'in_transit' }] : []),
-    ...(form.destination_port ? [{ label: 'Port/Airport', city: form.destination_port, country: '', active: form.status === 'arrived' }] : []),
-    { label: t('shipments.destination'), city: form.destination_city, country: form.destination_country, active: form.status === 'delivered' },
-  ];
-
   // Detecta alterações pendentes (contra o que já está salvo no embarque) pra
   // disparar o auto-save — Logística não tem mais botão "Salvar" próprio.
   const hasChanges = useMemo(() => {
@@ -736,31 +723,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   return (
     <Card className="glass">
       <CardContent className="p-6 space-y-6" onBlur={handleAutoSaveBlur}>
-        {/* Visual route — altura reduzida à metade de novo (largura e fontes seguem originais) */}
-        <div className="flex items-center justify-between py-0">
-          {stops.map((stop, i) => (
-            <div key={i} className="flex items-center">
-              <div className="flex flex-col items-center">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${
-                  stop.active ? 'border-status-transit bg-status-transit/10 text-status-transit' : 'border-border bg-secondary text-muted-foreground'
-                }`}>
-                  {i === 0 || i === stops.length - 1 ? <MapPin className="w-6 h-6" /> : <Icon className="w-6 h-6" />}
-                </div>
-                <p className="mt-1 text-sm font-semibold text-center leading-none uppercase">{stop.city}</p>
-              </div>
-              {i < stops.length - 1 && (
-                <div className="flex-1 mx-4 flex items-center">
-                  <div className={`h-0.5 flex-1 ${stop.active ? 'bg-status-transit' : 'bg-border'}`} />
-                  <ArrowRight className={`w-8 h-8 mx-1 ${stop.active ? 'text-status-transit' : 'text-muted-foreground'}`} />
-                  <div className={`h-0.5 flex-1 ${stop.active ? 'bg-status-transit' : 'bg-border'}`} />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
         {/* Status - Incoterm - Modal */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Label className="text-xs font-semibold">Status</Label>
