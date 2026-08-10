@@ -448,8 +448,12 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
         <TableCell className="py-1.5 px-3 max-w-[160px] truncate">{s.carrier || '—'}</TableCell>
         <TableCell className="py-1.5 px-3 max-w-[160px] truncate">{s.vessel_flight || '—'}</TableCell>
         <TableCell className="py-1.5 px-3">{s.free_time != null ? `${s.free_time}d` : '—'}</TableCell>
-        <TableCell className="py-1.5 px-3">{shortDate(s.etd)}</TableCell>
-        <TableCell className="py-1.5 px-3">{shortDate(s.eta)}</TableCell>
+        <TableCell className={cn('py-1.5 px-3', s.atd && 'font-semibold text-emerald-600')} title={s.atd ? 'Data real' : 'Estimativa'}>
+          {shortDate(s.atd || s.etd)}
+        </TableCell>
+        <TableCell className={cn('py-1.5 px-3', s.ata && 'font-semibold text-emerald-600')} title={s.ata ? 'Data real' : 'Estimativa'}>
+          {shortDate(s.ata || s.eta)}
+        </TableCell>
         <TableCell className="py-1.5 px-3">{shortDate(s.customs_registration_date)}</TableCell>
         <TableCell className="py-1.5 px-3">
           {channelMeta ? <Badge className={channelMeta.badgeClass}>{channelMeta.label.replace('Canal ', '')}</Badge> : '—'}
