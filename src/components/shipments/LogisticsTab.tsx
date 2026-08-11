@@ -222,7 +222,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   // FreeTime, Transit Time e Validade, que já existem lá (preenchidos na
   // Comercial/Proposta) antes de existirem aqui. Também usada pra achar os
   // itens (containers) da FCL.
-  const { data: linkedQuote } = useQuery({
+  const { data: linkedQuote, isLoading: linkedQuoteLoading } = useQuery({
     queryKey: ['logistics-linked-quote', shipment.id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -237,7 +237,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   });
 
   // Fetch quote_items to know container count for FCL
-  const { data: quoteItems = [] } = useQuery({
+  const { data: quoteItems = [], isLoading: quoteItemsLoading } = useQuery({
     queryKey: ['logistics-quote-items', linkedQuote?.id],
     enabled: !!linkedQuote?.id,
     queryFn: async () => {
@@ -252,10 +252,16 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   });
 
   const isFCL = shipment.transport_mode === 'ocean_fcl' || shipment.transport_mode === 'multimodal';
+  // Só considera a contagem de containers "definitiva" depois que a query da
+  // cotação vinculada E a de itens da carga terminarem de carregar — sem
+  // isso, o card piscava com uma contagem errada (ou desatualizada) por uma
+  // fração de segundo enquanto os dados ainda vinham do banco.
+  const containerDataReady = !linkedQuoteLoading && (!linkedQuote?.id || !quoteItemsLoading);
   // Quantidade de containers vem sempre da aba Resumo da Carga (soma de
   // container_qty de cada item — um item pode representar "3x 40HC", por
-  // exemplo, não é 1 container por linha). Não é mais editável aqui.
-  const containerCount = isFCL
+  // exemplo, não é 1 container por linha), e SEMPRE acompanha o que está lá
+  // agora — inclusive pra menos, se um container for removido na Carga.
+  const containerCount = isFCL && containerDataReady
     ? Math.max(quoteItems.reduce((sum: number, it: any) => sum + (Number(it.container_qty) || 1), 0), 1)
     : 0;
 
@@ -311,12 +317,24 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   // não um campo único do embarque.
   const [containerDemurrage, setContainerDemurrage] = useState<string[]>(() => parseContainerDates((shipment as any).container_demurrage_deadlines));
 
-  // Quantidade de campos de container exibidos: sempre o maior entre o que
-  // a Resumo da Carga diz que deveria ter (containerCount) e o que já está
-  // preenchido/salvo (pra nunca "sumir" um container antigo se a Resumo da
-  // Carga mudar pra menos, ou 3 aparecer no lugar de 4 enquanto o
-  // containerCount ainda não terminou de carregar).
-  const containerSlotCount = Math.max(containerCount, containerNumbers.length, containerDemurrage.length);
+  // Quantidade de campos de container exibidos: acompanha exatamente a
+  // Resumo da Carga (containerCount) uma vez que os dados terminaram de
+  // carregar — inclusive encolhendo se um container for removido lá. Antes
+  // disso (containerDataReady ainda false), usa o que já está salvo, só pra
+  // não piscar "1 container" por uma fração de segundo enquanto carrega.
+  const containerSlotCount = containerDataReady
+    ? containerCount
+    : Math.max(containerNumbers.length, containerDemurrage.length);
+
+  // Se a Resumo da Carga encolheu (ex: um container foi removido), corta os
+  // números/prazos que sobraram além da nova quantidade — sem isso, o
+  // container removido lá continuava aparecendo aqui (só a Carga refletia a
+  // remoção, a Logística ficava presa na quantidade antiga).
+  useEffect(() => {
+    if (!isFCL || !containerDataReady) return;
+    setContainerNumbers(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
+    setContainerDemurrage(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
+  }, [isFCL, containerDataReady, containerCount]);
 
   // "Achata" os itens da Resumo da Carga em uma lista de 1 tipo por
   // container (um item com container_qty=3 vira 3 entradas) — usada só pra
