@@ -2823,7 +2823,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     onUpdate={canEditCharges ? handleUpdateCharge : async () => {}}
                     onClone={(charge, amount, partnerId) => handleCloneCharge(charge, amount, 'sell', partnerId)}
                     colorClass="text-blue-600"
-                    borderClass="border-blue-500/20"
+                    borderClass="border-red-500/20"
+                    bgClass="bg-red-50/40 dark:bg-red-950/10"
                     cloneLabel={t('quotes.clone_to_sell')}
                     partners={combinedPartners}
                     defaultClonePartnerId={form.client_id || ''}
@@ -2848,6 +2849,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     onClone={(charge, amount, partnerId) => handleCloneCharge(charge, amount, 'buy', partnerId)}
                     colorClass="text-emerald-600"
                     borderClass="border-emerald-500/20"
+                    bgClass="bg-emerald-50/40 dark:bg-emerald-950/10"
                     cloneLabel={t('quotes.clone_to_buy')}
                     partners={combinedPartners}
                     cargoMetrics={cargoMetrics}
@@ -3141,6 +3143,9 @@ interface ChargeColumnProps {
   onUpdate: (id: string, updates: Record<string, any>) => Promise<void>;
   colorClass: string;
   borderClass: string;
+  /** Fundo levemente colorido do card inteiro (ex.: vermelho p/ Compra,
+   *  verde p/ Venda) — substitui o título "Total Compra"/"Total Venda". */
+  bgClass?: string;
   cloneLabel: string;
   partners: any[];
   defaultClonePartnerId?: string;
@@ -3165,7 +3170,7 @@ interface ChargeColumnProps {
   onReopenSellCharge?: (charge: any, partnerName: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
-function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, legColors, legBorderLeftColors, onDelete, onClone, onUpdate, colorClass, borderClass, cloneLabel, partners, defaultClonePartnerId, cargoMetrics, readOnly, showReconciliation, currentUserId, onPercentClick, onSendDn, onGenerateNd, onReopenCharge, onReopenSellCharge }: ChargeColumnProps) {
+function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, legColors, legBorderLeftColors, onDelete, onClone, onUpdate, colorClass, borderClass, bgClass, cloneLabel, partners, defaultClonePartnerId, cargoMetrics, readOnly, showReconciliation, currentUserId, onPercentClick, onSendDn, onGenerateNd, onReopenCharge, onReopenSellCharge }: ChargeColumnProps) {
   const { t } = useLanguage();
   const [cloningId, setCloningId] = useState<string | null>(null);
   const [cloneAmount, setCloneAmount] = useState('');
@@ -3263,11 +3268,8 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
   }, [charges, amountKey, cargoMetrics]);
 
   return (
-    <Card className={`glass border ${borderClass}`}>
-      <CardHeader className="py-2">
-        <CardTitle className={`text-sm ${colorClass}`}>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
+    <Card className={`glass border ${borderClass} ${bgClass || ''}`}>
+      <CardContent className="p-0 pt-2">
         <Table>
           <TableHeader>
             <TableRow>
