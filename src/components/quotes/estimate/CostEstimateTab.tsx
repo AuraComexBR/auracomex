@@ -813,7 +813,11 @@ export function CostEstimateTab({
   ), [expenses]);
   const lastSyncedNumerarioRef = useRef<{ estimateId: string; value: number } | null>(null);
   useEffect(() => {
-    if (!serverEstimate || hasDirty || !usdBrl) return;
+    // breakdown vem de computeBreakdown(estimate, ...) e é null sempre que
+    // não existe estimativa ainda (quote sem cost_estimates) — precisa
+    // checar aqui também, não só serverEstimate, porque em teoria os dois
+    // deveriam andar juntos, mas é mais seguro não assumir.
+    if (!serverEstimate || !breakdown || hasDirty || !usdBrl) return;
     const taxaSiscomexBrlNow = Number((estimate as any)?.taxa_siscomex_brl || 0);
     const afrmmBrlNow = Number((estimate as any)?.afrmm_brl || 0);
     const taxaSiscomexUsdNow = taxaSiscomexBrlNow / usdBrl;
@@ -851,7 +855,7 @@ export function CostEstimateTab({
         }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverEstimate?.id, hasDirty, usdBrl, armazenagemDestinoBrl, numerarioExpensesKey, breakdown.ii_usd, breakdown.ipi_usd, breakdown.pis_usd, breakdown.cofins_usd, breakdown.icms_usd]);
+  }, [serverEstimate?.id, hasDirty, usdBrl, armazenagemDestinoBrl, numerarioExpensesKey, breakdown?.ii_usd, breakdown?.ipi_usd, breakdown?.pis_usd, breakdown?.cofins_usd, breakdown?.icms_usd]);
 
   // Não bloqueia mais por "estar em modo edição" (a aba é sempre editável
   // agora) — só evita rodar enquanto há uma alteração local ainda não salva,
