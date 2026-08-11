@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -163,12 +163,68 @@ function columnOrderKey(clientCnpj: string) {
   return `aura:trackingv2:columnorder:${clientCnpj}`;
 }
 
+/** Largura de coluna redimensionada manualmente — mesmo padrão de
+ *  persistência da ordem (localStorage, por CNPJ). */
+function columnWidthsKey(clientCnpj: string) {
+  return `aura:trackingv2:columnwidths:${clientCnpj}`;
+}
+
+const MIN_COLUMN_WIDTH = 60;
+
+// Larguras padrão (px) — usadas até o cliente redimensionar manualmente.
+// __ref__/__status__ são as colunas estruturais, sempre presentes.
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  __ref__: 110,
+  __status__: 120,
+  client_reference: 110,
+  etd: 90,
+  eta: 90,
+  demurrage_deadline_calc: 130,
+  duimp_number: 130,
+  physical_location: 140,
+  cargo_container_type: 110,
+  cargo_value: 140,
+  invoice_number: 110,
+  free_time: 90,
+  transit_time_calc: 100,
+  route: 200,
+  vessel_flight: 130,
+  booking_number: 110,
+  bl: 130,
+  ce_mercante: 130,
+  incoterm: 90,
+  transport_mode: 90,
+  courier: 160,
+  customs_channel: 110,
+  customs_registration_date: 110,
+  cargo_delivered_at: 110,
+  invoice_sent_at: 130,
+  container_numbers: 160,
+  container_seals: 140,
+  container_terminal_entry: 140,
+  container_return: 140,
+  storage_deadline_calc: 150,
+  next_update: 130,
+  shipper_name: 140,
+  carrier: 140,
+  cargo_weight: 100,
+  cargo_volume: 100,
+  cargo_chargeable_weight: 110,
+  cargo_dimensions: 100,
+  cargo_packages: 90,
+  cargo_commodity: 160,
+  cargo_dangerous_goods: 110,
+  cargo_vehicle_type: 130,
+  cargo_ncm: 100,
+};
+
 /** Cabeçalho de coluna arrastável (drag-and-drop pra reordenar) — ordenável
  *  por clique também quando `sortKey` é passado (mesmo visual do
  *  SortableHeader, só que dentro de um único <th> que também é draggable —
  *  não dá pra aninhar outro <th> dentro do componente compartilhado). */
 function DraggableColumnHeader({
   label, sortKey, sortState, onToggleSort, isDragging, isDragOver, onDragStart, onDragEnd, onDragEnter, onDrop, right,
+  onResizeStart, isResizing,
 }: {
   label: string;
   sortKey?: string;
@@ -181,6 +237,8 @@ function DraggableColumnHeader({
   onDragEnter: () => void;
   onDrop: () => void;
   right?: React.ReactNode;
+  onResizeStart: (e: React.MouseEvent) => void;
+  isResizing: boolean;
 }) {
   const active = !!sortKey && sortState.key === sortKey && sortState.dir !== null;
   const Icon = !active ? ArrowUpDown : sortState.dir === 'asc' ? ArrowUp : ArrowDown;
@@ -194,30 +252,43 @@ function DraggableColumnHeader({
       onDrop={(e) => { e.preventDefault(); onDrop(); }}
       title="Arraste para reordenar a coluna"
       className={cn(
-        'h-7 px-2 text-[11px] whitespace-nowrap cursor-move select-none',
+        'relative h-7 px-2 pr-3 text-[11px] whitespace-nowrap cursor-move select-none overflow-hidden',
         isDragging && 'opacity-40',
         isDragOver && 'bg-primary/10',
       )}
     >
-      <div className="inline-flex items-center gap-1">
+      <div className="inline-flex items-center gap-1 truncate">
         <GripVertical className="w-3 h-3 text-muted-foreground/40 shrink-0" />
         {sortKey ? (
           <button
             type="button"
             onClick={() => onToggleSort(sortKey)}
             className={cn(
-              'inline-flex items-center gap-1.5 hover:text-foreground transition-colors select-none',
+              'inline-flex items-center gap-1.5 hover:text-foreground transition-colors select-none min-w-0 truncate',
               active ? 'text-foreground' : 'text-muted-foreground',
             )}
           >
-            <span>{label}</span>
-            <Icon className={cn('w-3.5 h-3.5', active ? 'opacity-100' : 'opacity-50')} />
+            <span className="truncate">{label}</span>
+            <Icon className={cn('w-3.5 h-3.5 shrink-0', active ? 'opacity-100' : 'opacity-50')} />
           </button>
         ) : (
-          <span className="text-muted-foreground">{label}</span>
+          <span className="text-muted-foreground truncate">{label}</span>
         )}
         {right}
       </div>
+      {/* Puxador de redimensionar — separado do drag de reordenar (que é o
+          <th> inteiro), por isso cancela o dragstart nativo pra não brigar
+          com o gesto de arrastar a coluna inteira. */}
+      <div
+        onMouseDown={(e) => { e.stopPropagation(); onResizeStart(e); }}
+        onClick={(e) => e.stopPropagation()}
+        draggable
+        onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        className={cn(
+          'absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none z-10',
+          isResizing ? 'bg-primary/60' : 'hover:bg-primary/40',
+        )}
+      />
     </TableHead>
   );
 }
@@ -258,6 +329,9 @@ export default function TrackingV2() {
   const [columnOrder, setColumnOrder] = useState<string[]>([]);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null);
+  const resizeStartRef = useRef({ x: 0, width: 0 });
   const { data: platformSettings } = usePlatformSettings();
 
   // Ordem de colunas escolhida pelo cliente — carregada uma vez do
@@ -274,6 +348,56 @@ export default function TrackingV2() {
       // ignore
     }
   }, [clientCnpj]);
+
+  // Largura de coluna redimensionada manualmente — mesmo esquema de
+  // persistência (localStorage por CNPJ).
+  useEffect(() => {
+    if (!clientCnpj) return;
+    try {
+      const raw = localStorage.getItem(columnWidthsKey(clientCnpj));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          const clean: Record<string, number> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === 'number' && v > 0) clean[k] = v;
+          }
+          setColumnWidths(clean);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [clientCnpj]);
+
+  // Arrastar o puxador de uma coluna: escuta mousemove/mouseup no
+  // documento inteiro enquanto o redimensionamento estiver ativo.
+  useEffect(() => {
+    if (!resizingColumn) return;
+    const key = resizingColumn;
+    const startX = resizeStartRef.current.x;
+    const startWidth = resizeStartRef.current.width;
+
+    function handleMouseMove(e: MouseEvent) {
+      const nextWidth = Math.max(MIN_COLUMN_WIDTH, startWidth + (e.clientX - startX));
+      setColumnWidths((prev) => ({ ...prev, [key]: nextWidth }));
+    }
+    function handleMouseUp() {
+      setResizingColumn(null);
+      setColumnWidths((prev) => {
+        if (clientCnpj) {
+          try { localStorage.setItem(columnWidthsKey(clientCnpj), JSON.stringify(prev)); } catch { /* ignore */ }
+        }
+        return prev;
+      });
+    }
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingColumn, clientCnpj]);
 
   useEffect(() => {
     if (!clientCnpj) return;
@@ -434,6 +558,15 @@ export default function TrackingV2() {
     persistColumnOrder(next);
     setDraggedColumn(null);
     setDragOverColumn(null);
+  }
+
+  function getColumnWidth(key: string): number {
+    return columnWidths[key] ?? DEFAULT_COLUMN_WIDTHS[key] ?? 140;
+  }
+
+  function startResize(key: string, e: React.MouseEvent) {
+    resizeStartRef.current = { x: e.clientX, width: getColumnWidth(key) };
+    setResizingColumn(key);
   }
 
   const shipmentIds = shipments.map((s: any) => s.id);
@@ -625,20 +758,28 @@ export default function TrackingV2() {
             ) : (
               <Card className="glass overflow-hidden">
                 <CardContent className="p-0 overflow-x-auto">
-                  <Table className="text-xs">
+                  <Table className="text-xs table-fixed">
+                    <colgroup>
+                      <col style={{ width: getColumnWidth('__ref__') }} />
+                      <col style={{ width: getColumnWidth('__status__') }} />
+                      {orderedVisibleKeys.map((key) => (
+                        <col key={key} style={{ width: getColumnWidth(key) }} />
+                      ))}
+                    </colgroup>
                     <TableHeader>
                       <TableRow className="whitespace-nowrap">
                         {/* Ref. e Status são sempre exibidos — identidade da
                             linha e categoria do status são estruturais, não
-                            dá pra esconder do jeito que o resto dos campos dá. */}
+                            dá pra esconder do jeito que o resto dos campos dá
+                            (largura fixa, sem arrastar/redimensionar). */}
                         <SortableHeader
-                          label="Ref." sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
+                          label="Ref." sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px] truncate"
                           right={<ColumnSearch value={searchRef} onChange={setSearchRef} open={searchRefOpen} onOpenChange={setSearchRefOpen} />}
                         />
-                        <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        {/* Colunas opcionais — arrastáveis (clique e arraste
-                            pra reordenar; a ordem escolhida fica salva pras
-                            próximas visitas desse cliente). */}
+                        <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px] truncate" />
+                        {/* Colunas opcionais — arrastáveis (reordenar) e com
+                            puxador de redimensionar na borda direita; ambos
+                            ficam salvos pras próximas visitas desse cliente. */}
                         {orderedVisibleKeys.map((key) => (
                           <DraggableColumnHeader
                             key={key}
@@ -652,6 +793,8 @@ export default function TrackingV2() {
                             onDragEnd={() => { setDraggedColumn(null); setDragOverColumn(null); }}
                             onDragEnter={() => setDragOverColumn(key)}
                             onDrop={() => handleColumnDrop(key)}
+                            onResizeStart={(e) => startResize(key, e)}
+                            isResizing={resizingColumn === key}
                             right={key === 'client_reference' ? (
                               <ColumnSearch value={searchClientRef} onChange={setSearchClientRef} open={searchClientRefOpen} onOpenChange={setSearchClientRefOpen} />
                             ) : undefined}
@@ -949,16 +1092,16 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
       case 'demurrage_deadline_calc':
         return { content: shortDate(demurrageDeadline), className: demurrageUrgent ? 'text-red-600 font-semibold' : undefined };
       case 'duimp_number':
-        return { content: s.duimp_number || '—', className: cn('font-mono max-w-[130px] truncate', channelMeta?.textClass || ''), title: channelMeta?.label };
+        return { content: s.duimp_number || '—', className: cn('font-mono truncate', channelMeta?.textClass || ''), title: channelMeta?.label };
       case 'physical_location':
-        return { content: s.physical_location || '—', className: 'max-w-[140px] truncate', title: s.physical_location || '' };
+        return { content: s.physical_location || '—', className: 'truncate', title: s.physical_location || '' };
       case 'cargo_container_type':
         return { content: cargoContainerTotal(s.cargo_items) != null ? `${cargoContainerTotal(s.cargo_items)} container(s)` : '—' };
       case 'cargo_value':
         return { content: cargoValueTotal(s.cargo_items) || '—' };
       default: {
         const content = renderExtraCollapsedCell(key);
-        return { content, className: 'max-w-[180px] truncate', title: typeof content === 'string' ? content : undefined };
+        return { content, className: 'truncate', title: typeof content === 'string' ? content : undefined };
       }
     }
   }
@@ -971,7 +1114,7 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
         className="cursor-pointer whitespace-nowrap hover:bg-muted/40"
         onClick={() => setExpanded((e) => !e)}
       >
-        <TableCell className="py-1 px-2 font-mono font-semibold">
+        <TableCell className="py-1 px-2 font-mono font-semibold truncate">
           <span className="inline-flex items-center gap-1.5">
             <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform', expanded && 'rotate-180')} />
             {s.reference_number}
