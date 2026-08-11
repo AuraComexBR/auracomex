@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { ShieldCheck, Info, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -313,17 +312,19 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
             <span className="text-xs text-muted-foreground font-mono ml-1">US$ {fmtUSD(breakdown.valorSeguro)}</span>
           )}
         </button>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id={`seguro-auto-${quoteId}`}
-            checked={auto}
-            disabled={readOnly || !hasRate}
-            onCheckedChange={(c) => handleToggle(!!c)}
-          />
-          <Label htmlFor={`seguro-auto-${quoteId}`} className="text-xs cursor-pointer select-none">
-            Incluir no processo
-          </Label>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center">
+              <Checkbox
+                id={`seguro-auto-${quoteId}`}
+                checked={auto}
+                disabled={readOnly || !hasRate}
+                onCheckedChange={(c) => handleToggle(!!c)}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent className="text-xs">Incluir no processo</TooltipContent>
+        </Tooltip>
       </CardHeader>
       {!hasRate ? (
         <CardContent className="pt-0">
