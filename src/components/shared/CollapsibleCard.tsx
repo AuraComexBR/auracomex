@@ -15,7 +15,7 @@ interface Props {
 /** Card colapsável reutilizável — usado nas abas Logística/Geral do embarque
  * (aba Geral mesclada na Logística após "virar embarque") pra permitir
  * expandir/colapsar cada bloco de campos independentemente. */
-export function CollapsibleCard({ title, children, defaultOpen = true, headerExtra, contentClassName }: Props) {
+export function CollapsibleCard({ title, children, defaultOpen = false, headerExtra, contentClassName }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <Card className="glass">
