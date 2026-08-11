@@ -114,6 +114,12 @@ export function TrackingVisibilityDialog({ client, onClose }: Props) {
                     </label>
                   </div>
                 </div>
+                {group === 'cargo' && (
+                  <p className="text-[11px] text-muted-foreground -mt-1">
+                    Esses campos não têm coluna na lista — aparecem só no card de detalhe do embarque.
+                    Marcar em qualquer uma das duas colunas (Colapsada ou Expandida) já libera o campo.
+                  </p>
+                )}
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-[11px] uppercase tracking-wide text-muted-foreground">
