@@ -15,7 +15,6 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PortSelect } from '@/components/shared/PortSelect';
-import { CountrySelect } from '@/components/shared/CountrySelect';
 import { CalendarIcon, Settings, Plus, Trash2, GripVertical, ExternalLink, ArrowDownAZ, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
@@ -298,40 +297,57 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     invoice_sent_at: (shipment as any).invoice_sent_at || '',
   });
 
-  const [containerNumbers, setContainerNumbers] = useState<string[]>(() => {
-    const existing = parseContainerNumbers(shipment.container_number);
-    // Pad to containerCount
-    const arr = [...existing];
-    while (arr.length < containerCount) arr.push('');
-    return arr;
-  });
+  // Números/prazos de demurrage salvos no embarque — guarda só o que já
+  // existe no banco, sem "pré-encher" pra containerCount aqui. containerCount
+  // só fica correto depois que a query de quote_items (Resumo da Carga)
+  // carrega (é assíncrona), então prender o tamanho do array a esse valor
+  // logo na montagem do componente cortava containers ainda não numerados —
+  // a quantidade de campos exibidos é sempre recalculada no render (ver
+  // containerSlotCount abaixo), não depende de um efeito rodar a tempo.
+  const [containerNumbers, setContainerNumbers] = useState<string[]>(() => parseContainerNumbers(shipment.container_number));
 
   // Prazo de demurrage POR container — cada container pode vencer em uma
   // data diferente, então fica um array paralelo ao de números (por índice),
   // não um campo único do embarque.
-  const [containerDemurrage, setContainerDemurrage] = useState<string[]>(() => {
-    const existing = parseContainerDates((shipment as any).container_demurrage_deadlines);
-    const arr = [...existing];
-    while (arr.length < containerCount) arr.push('');
-    return arr;
-  });
+  const [containerDemurrage, setContainerDemurrage] = useState<string[]>(() => parseContainerDates((shipment as any).container_demurrage_deadlines));
 
-  // Update container numbers/demurrage arrays when containerCount changes
-  useEffect(() => {
-    if (containerCount > 0) {
-      setContainerNumbers(prev => {
-        const arr = [...prev];
-        while (arr.length < containerCount) arr.push('');
-        return arr.slice(0, Math.max(containerCount, arr.filter(Boolean).length));
-      });
-      setContainerDemurrage(prev => {
-        const arr = [...prev];
-        while (arr.length < containerCount) arr.push('');
-        return arr.slice(0, Math.max(containerCount, containerNumbers.filter(Boolean).length));
-      });
+  // Quantidade de campos de container exibidos: sempre o maior entre o que
+  // a Resumo da Carga diz que deveria ter (containerCount) e o que já está
+  // preenchido/salvo (pra nunca "sumir" um container antigo se a Resumo da
+  // Carga mudar pra menos, ou 3 aparecer no lugar de 4 enquanto o
+  // containerCount ainda não terminou de carregar).
+  const containerSlotCount = Math.max(containerCount, containerNumbers.length, containerDemurrage.length);
+
+  // "Achata" os itens da Resumo da Carga em uma lista de 1 tipo por
+  // container (um item com container_qty=3 vira 3 entradas) — usada só pra
+  // mostrar o tipo (ex: "40HC") ao lado de cada container aqui, alinhado
+  // pelo índice.
+  const containerTypesFlat = useMemo(() => {
+    const flat: string[] = [];
+    for (const it of quoteItems as any[]) {
+      const qty = Number(it.container_qty) || 1;
+      for (let i = 0; i < qty; i++) flat.push(it.container_type);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerCount]);
+    return flat;
+  }, [quoteItems]);
+
+  function setContainerNumberAt(idx: number, value: string) {
+    setContainerNumbers(prev => {
+      const arr = [...prev];
+      while (arr.length <= idx) arr.push('');
+      arr[idx] = value;
+      return arr;
+    });
+  }
+
+  function setContainerDemurrageAt(idx: number, value: string) {
+    setContainerDemurrage(prev => {
+      const arr = [...prev];
+      while (arr.length <= idx) arr.push('');
+      arr[idx] = value;
+      return arr;
+    });
+  }
 
   const [saving, setSaving] = useState(false);
 
@@ -355,6 +371,30 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedQuote]);
+
+  // País não tem mais campo próprio na tela — já fica implícito no porto
+  // escolhido. Preenche origin_country/destination_country sozinho em
+  // segundo plano (usado em outros lugares, ex: bandeira na lista de
+  // Embarques), buscando o country_code do porto selecionado.
+  useEffect(() => {
+    if (!form.origin_port) return;
+    let cancelled = false;
+    supabase.from('ports').select('country_code').eq('code', form.origin_port).maybeSingle().then(({ data }) => {
+      if (!cancelled && data?.country_code) updateField('origin_country', data.country_code);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.origin_port]);
+
+  useEffect(() => {
+    if (!form.destination_port) return;
+    let cancelled = false;
+    supabase.from('ports').select('country_code').eq('code', form.destination_port).maybeSingle().then(({ data }) => {
+      if (!cancelled && data?.country_code) updateField('destination_country', data.country_code);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.destination_port]);
 
   // Detecta alterações pendentes (contra o que já está salvo no embarque/
   // cotação vinculada) pra disparar o auto-save — Logística não tem mais
@@ -423,11 +463,15 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   async function handleSave() {
     setSaving(true);
     try {
+      // Números e prazos de demurrage são arrays paralelos (mesmo índice =
+      // mesmo container) — alinha os dois no mesmo tamanho antes de salvar,
+      // pra nunca desalinhar o prazo do container #2 com o número do #1.
+      const alignedLength = Math.max(containerNumbers.length, containerDemurrage.length);
       const containerNumberValue = containerNumbers.filter(Boolean).length > 0
-        ? JSON.stringify(containerNumbers.map(s => s.trim()))
+        ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => (containerNumbers[i] || '').trim()))
         : null;
       const containerDemurrageValue = containerDemurrage.some(Boolean)
-        ? JSON.stringify(containerDemurrage.slice(0, Math.max(containerCount, containerNumbers.length)))
+        ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => containerDemurrage[i] || ''))
         : null;
 
       const updates: Record<string, any> = {
@@ -909,12 +953,13 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
           </div>
         </div>
 
-        {/* Origem - Transbordo - Destino */}
+        {/* Origem - Transbordo - Destino — país não aparece mais aqui, já
+            fica implícito no porto escolhido (auto-preenchido em segundo
+            plano, ver efeito abaixo). */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border">
           <div className="space-y-1">
             <Label className="text-xs">Porto/Aeroporto Origem</Label>
             <PortSelect value={form.origin_port} onChange={(code) => updateField('origin_port', code)} transportMode={form.transport_mode} placeholder="Buscar porto/aeroporto..." />
-            <CountrySelect value={form.origin_country} onChange={(v) => updateField('origin_country', v)} placeholder="País..." />
           </div>
           {form.transport_mode !== 'road' ? (
             <div className="space-y-1">
@@ -925,7 +970,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
           <div className="space-y-1">
             <Label className="text-xs">Porto/Aeroporto Destino</Label>
             <PortSelect value={form.destination_port} onChange={(code) => updateField('destination_port', code)} transportMode={form.transport_mode} placeholder="Buscar porto/aeroporto..." />
-            <CountrySelect value={form.destination_country} onChange={(v) => updateField('destination_country', v)} placeholder="País..." />
           </div>
         </div>
 
@@ -993,34 +1037,26 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
       </CollapsibleCard>
 
       {/* CARD 3 — Containers (qtd vem da Resumo da Carga) + Prazo Demurrage por container */}
-      {isFCL && containerCount > 0 && (
-        <CollapsibleCard title={`3. Containers (${containerCount})`}>
+      {isFCL && containerSlotCount > 0 && (
+        <CollapsibleCard title={`3. Containers (${containerSlotCount})`}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {containerNumbers.slice(0, Math.max(containerCount, containerNumbers.length)).map((cn, idx) => (
+            {Array.from({ length: containerSlotCount }).map((_, idx) => (
               <div key={idx} className="space-y-2 rounded-md border border-border p-3">
                 <Label className="text-xs">
                   Container #{idx + 1}
-                  {quoteItems[idx]?.container_type && (
-                    <span className="ml-1 text-muted-foreground">({quoteItems[idx].container_type})</span>
+                  {containerTypesFlat[idx] && (
+                    <span className="ml-1 text-muted-foreground">({containerTypesFlat[idx]})</span>
                   )}
                 </Label>
                 <Input
                   placeholder="Ex: MSKU1234567"
-                  value={cn}
-                  onChange={(e) => {
-                    const updated = [...containerNumbers];
-                    updated[idx] = e.target.value.toUpperCase();
-                    setContainerNumbers(updated);
-                  }}
+                  value={containerNumbers[idx] || ''}
+                  onChange={(e) => setContainerNumberAt(idx, e.target.value.toUpperCase())}
                 />
                 <InlineDateField
                   label="Prazo Demurrage"
                   value={containerDemurrage[idx] || ''}
-                  onChange={(v) => {
-                    const updated = [...containerDemurrage];
-                    updated[idx] = v;
-                    setContainerDemurrage(updated);
-                  }}
+                  onChange={(v) => setContainerDemurrageAt(idx, v)}
                 />
               </div>
             ))}
