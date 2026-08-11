@@ -884,13 +884,21 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
-  // Regra de negócio: todo embarque LCL com armazenagem lançada deve gerar
-  // (ou atualizar) uma conta a receber automática, tendo como pagador o
-  // Co-loader cadastrado no processo (aba Empresas). Se o valor for zerado
-  // e a conta ainda não tiver sido recebida, ela é removida.
+  // Regra de negócio: todo embarque LCL ou FCL com armazenagem lançada deve
+  // gerar (ou atualizar) uma conta a receber automática. Se o valor for
+  // zerado e a conta ainda não tiver sido recebida, ela é removida.
+  //
+  // LCL: pagador é o Co-loader (aba Empresas) e o valor é um PERCENTUAL de
+  // rebate cadastrado nele, calculado em cima da armazenagem lançada aqui.
+  //
+  // FCL: pagador é o Terminal (aba Empresas) e o valor é FIXO, cadastrado
+  // direto no Terminal (não é calculado a partir da armazenagem lançada
+  // aqui — é o rebate fixo que ele repassa por container/processo).
   async function syncStorageFeeReceivable() {
     if (!isShipmentMode || !shipmentId || !profile) return;
-    if (form.transport_mode !== 'ocean_lcl') return;
+    const isLCL = form.transport_mode === 'ocean_lcl';
+    const isFCL = form.transport_mode === 'ocean_fcl';
+    if (!isLCL && !isFCL) return;
 
     const amount = form.storage_fee_amount ? parseFloat(form.storage_fee_amount) : 0;
 
@@ -909,31 +917,57 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       return;
     }
 
-    const coLoader = (quotePartners as any[]).find((qp) => qp.clients?.partner_category === 'co_loader');
-    if (!coLoader) {
-      toast.warning('Armazenagem lançada, mas nenhum Co-loader cadastrado neste processo — a conta a receber não foi gerada. Cadastre o Co-loader na aba Empresas.');
-      return;
-    }
+    let payerId: string | undefined;
+    let payerName: string | undefined;
+    let rebateAmount: number | undefined;
+    let description: string;
 
-    // A conta a receber não é o valor cheio da armazenagem: é o rebate negociado
-    // com esse Co-loader, um percentual cadastrado no fornecedor (aba Cadastros).
-    const rebatePercent = coLoader.clients?.storage_rebate_percent;
-    if (rebatePercent == null) {
-      toast.warning(`Armazenagem lançada, mas o Co-loader "${coLoader.clients?.name}" não tem o percentual de rebate cadastrado — a conta a receber não foi gerada. Cadastre o rebate na aba Cadastros.`);
-      return;
+    if (isLCL) {
+      const coLoader = (quotePartners as any[]).find((qp) => qp.clients?.partner_category === 'co_loader');
+      if (!coLoader) {
+        toast.warning('Armazenagem lançada, mas nenhum Co-loader cadastrado neste processo — a conta a receber não foi gerada. Cadastre o Co-loader na aba Empresas.');
+        return;
+      }
+      // A conta a receber não é o valor cheio da armazenagem: é o rebate negociado
+      // com esse Co-loader, um percentual cadastrado no fornecedor (aba Cadastros).
+      const rebatePercent = coLoader.clients?.storage_rebate_percent;
+      if (rebatePercent == null) {
+        toast.warning(`Armazenagem lançada, mas o Co-loader "${coLoader.clients?.name}" não tem o percentual de rebate cadastrado — a conta a receber não foi gerada. Cadastre o rebate na aba Cadastros.`);
+        return;
+      }
+      payerId = coLoader.clients.id;
+      payerName = coLoader.clients?.name;
+      rebateAmount = Math.round(amount * (Number(rebatePercent) / 100) * 100) / 100;
+      description = `Rebate de armazenagem (${rebatePercent}% de ${form.storage_fee_currency || 'BRL'} ${amount.toFixed(2)}) - ${(quote as any)?.quote_number || ''}`;
+    } else {
+      const terminal = (quotePartners as any[]).find((qp) => qp.clients?.partner_category === 'terminal');
+      if (!terminal) {
+        toast.warning('Armazenagem lançada, mas nenhum Terminal cadastrado neste processo — a conta a receber não foi gerada. Cadastre o Terminal na aba Empresas.');
+        return;
+      }
+      // FCL não calcula em cima do valor lançado — é um valor fixo cadastrado
+      // direto no Terminal (aba Cadastros).
+      const fixedValue = terminal.clients?.storage_fixed_value;
+      if (fixedValue == null) {
+        toast.warning(`Armazenagem lançada, mas o Terminal "${terminal.clients?.name}" não tem o valor fixo de rebate cadastrado — a conta a receber não foi gerada. Cadastre o valor fixo na aba Cadastros.`);
+        return;
+      }
+      payerId = terminal.clients.id;
+      payerName = terminal.clients?.name;
+      rebateAmount = Number(fixedValue);
+      description = `Rebate de armazenagem (valor fixo do Terminal ${payerName || ''}) - ${(quote as any)?.quote_number || ''}`;
     }
-    const rebateAmount = Math.round(amount * (Number(rebatePercent) / 100) * 100) / 100;
 
     const payload = {
       company_id: profile.company_id,
       source: 'storage_fee' as any,
       quote_id: quoteId,
       shipment_id: shipmentId,
-      client_id: coLoader.clients.id,
-      description: `Rebate de armazenagem (${rebatePercent}% de ${form.storage_fee_currency || 'BRL'} ${amount.toFixed(2)}) - ${(quote as any)?.quote_number || ''}`,
+      client_id: payerId,
+      description,
       currency: form.storage_fee_currency || 'BRL',
       amount: rebateAmount,
-      // Armazenagem não tem data de vencimento fixa (é cobrada quando o co-loader repassa o rebate).
+      // Armazenagem não tem data de vencimento fixa (é cobrada quando o Co-loader/Terminal repassa o rebate).
       due_date: null,
       created_by: profile.user_id,
     };
@@ -2411,7 +2445,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                                 <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
                               </TooltipTrigger>
                               <TooltipContent className="max-w-64 text-xs">
-                                Não compõe o total da cotação. Em LCL, gera automaticamente uma conta a receber com o rebate negociado (% cadastrado no fornecedor Co-loader do processo).
+                                Não compõe o total da cotação. Gera automaticamente uma conta a receber com o rebate: em LCL, um percentual cadastrado no Co-loader do processo; em FCL, um valor fixo cadastrado no Terminal do processo.
                               </TooltipContent>
                             </Tooltip>
                           </div>

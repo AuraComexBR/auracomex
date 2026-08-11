@@ -524,6 +524,7 @@ export type Database = {
           partner_category: string | null
           phone: string | null
           salesperson_id: string | null
+          storage_fixed_value: number | null
           storage_rebate_percent: number | null
           tax_id: string | null
           tax_id_type: string | null
@@ -545,6 +546,7 @@ export type Database = {
           partner_category?: string | null
           phone?: string | null
           salesperson_id?: string | null
+          storage_fixed_value?: number | null
           storage_rebate_percent?: number | null
           tax_id?: string | null
           tax_id_type?: string | null
@@ -566,6 +568,7 @@ export type Database = {
           partner_category?: string | null
           phone?: string | null
           salesperson_id?: string | null
+          storage_fixed_value?: number | null
           storage_rebate_percent?: number | null
           tax_id?: string | null
           tax_id_type?: string | null
