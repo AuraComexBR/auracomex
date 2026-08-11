@@ -534,6 +534,19 @@ function pendingDemurrageDeadline(s: any): string | null {
   return s.demurrage_deadline || null;
 }
 
+// Prazo 1º Período de Armazenagem = Entrada no Terminal + 10 dias, por
+// container (mesma lógica do Limite Devolução, mas com prazo fixo de 10 dias
+// em vez do FreeTime). Cai no campo antigo storage_deadline só quando não há
+// nenhuma Entrada no Terminal por container (embarques legados).
+function earliestStorageDeadline(s: any): string | null {
+  const terminalEntries = parseContainerDates(s.container_terminal_entry_dates);
+  const deadlines = terminalEntries.filter(Boolean).map((d) => addDays(new Date(d), 10).toISOString());
+  if (deadlines.length > 0) {
+    return deadlines.reduce((min, d) => (new Date(d).getTime() < new Date(min).getTime() ? d : min));
+  }
+  return s.storage_deadline || null;
+}
+
 function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { kpis } = buildTimeline(s, statusOptions);
@@ -547,7 +560,7 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
   const demurrageDeadline = earliestDemurrageDeadline(s);
   const pendingDeadline = pendingDemurrageDeadline(s);
   const demurrageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(pendingDeadline) : null;
-  const storageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(s.storage_deadline) : null;
+  const storageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(earliestStorageDeadline(s)) : null;
   const demurrageUrgent = demurrageDays !== null && demurrageDays <= 3;
 
   return (

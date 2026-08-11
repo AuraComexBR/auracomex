@@ -54,7 +54,7 @@ const INCOTERMS_BY_MODE: Record<string, string[]> = {
 // "mudança" que não existe e trava o auto-save num loop infinito.
 const DATE_FIELDS = new Set([
   'etd', 'eta', 'atd', 'ata',
-  'customs_registration_date', 'terminal_entry_date', 'storage_deadline',
+  'customs_registration_date',
   'cargo_delivered_at', 'invoice_sent_at',
 ]);
 
@@ -298,8 +298,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     duimp_number: (shipment as any).duimp_number || '',
     physical_location: (shipment as any).physical_location || '',
     customs_registration_date: (shipment as any).customs_registration_date || '',
-    terminal_entry_date: (shipment as any).terminal_entry_date || '',
-    storage_deadline: (shipment as any).storage_deadline || '',
     cargo_delivered_at: (shipment as any).cargo_delivered_at || '',
     invoice_sent_at: (shipment as any).invoice_sent_at || '',
   });
@@ -468,8 +466,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
       'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
       'etd', 'eta', 'atd', 'ata', 'incoterm', 'transport_mode',
       'courier_provider', 'courier_tracking_number',
-      'customs_channel', 'duimp_number', 'physical_location', 'customs_registration_date', 'terminal_entry_date',
-      'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
+      'customs_channel', 'duimp_number', 'physical_location', 'customs_registration_date',
+      'cargo_delivered_at', 'invoice_sent_at',
     ];
     for (const key of fieldsToCheck) {
       const newVal = (form as any)[key] ?? '';
@@ -592,8 +590,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         duimp_number: form.duimp_number.trim() || null,
         physical_location: form.physical_location.trim() || null,
         customs_registration_date: form.customs_registration_date || null,
-        terminal_entry_date: form.terminal_entry_date || null,
-        storage_deadline: form.storage_deadline || null,
         cargo_delivered_at: form.cargo_delivered_at || null,
         invoice_sent_at: form.invoice_sent_at || null,
         // Setado explicitamente em vez de depender só do trigger do banco,
@@ -614,8 +610,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
         'container_seals', 'container_terminal_entry_dates', 'container_return_dates',
         'courier_provider', 'courier_tracking_number',
-        'customs_channel', 'duimp_number', 'physical_location', 'customs_registration_date', 'terminal_entry_date',
-        'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
+        'customs_channel', 'duimp_number', 'physical_location', 'customs_registration_date',
+        'cargo_delivered_at', 'invoice_sent_at',
       ];
       for (const dbKey of allFields) {
         const oldVal = shipment[dbKey]?.toString() || '';
@@ -1146,6 +1142,17 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
                   value={containerTerminalEntry[idx] || ''}
                   onChange={(v) => setContainerTerminalEntryAt(idx, v)}
                 />
+                {/* Prazo 1º Período de Armazenagem: calculado sozinho a partir
+                    da Entrada no Terminal (+10 dias) — não é mais um campo
+                    digitado, então só exibe (sem input) quando dá pra calcular. */}
+                {containerTerminalEntry[idx] && (
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground">Prazo 1º Período de Armazenagem</Label>
+                    <p className="h-8 flex items-center text-xs text-muted-foreground">
+                      {format(addDays(new Date(containerTerminalEntry[idx]), 10), 'dd/MM/yyyy')}
+                    </p>
+                  </div>
+                )}
                 <InlineDateField
                   label="Devolvido em"
                   value={containerReturnDates[idx] || ''}
@@ -1157,7 +1164,10 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         </CollapsibleCard>
       )}
 
-      {/* CARD 4 — Vessel/Flight/ETD/ETA/ATD/ATA/Ent.Terminal/1oPer.Armazenagem + Courier (aéreo) */}
+      {/* CARD 4 — Vessel/Flight/ETD/ETA/ATD/ATA + Courier (aéreo). Entrada no
+          Terminal e Prazo 1º Período de Armazenagem saíram daqui — viraram
+          por container no Card 3 (Entrada no Terminal já vive lá; Prazo 1º
+          Período é calculado a partir dela, Entrada + 10 dias). */}
       <CollapsibleCard title="4. Transporte & Datas">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
@@ -1168,8 +1178,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
           <DateField label="Arrive (ETA)" fieldKey="eta" />
           <DateField label="Departure (ATD)" fieldKey="atd" />
           <DateField label="Arrive (ATA)" fieldKey="ata" />
-          <DateField label="Entrada no Terminal" fieldKey="terminal_entry_date" />
-          <DateField label="Prazo 1º Período de Armazenagem" fieldKey="storage_deadline" />
 
           {shipment.transport_mode === 'air' && (
             <>
