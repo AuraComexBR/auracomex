@@ -2380,30 +2380,28 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 <div className="flex flex-wrap items-start gap-3">
                   {showStorageFee && (
                     <Card className="glass w-full sm:w-auto shrink-0">
-                      <CardContent className="py-3" onBlur={() => handleAutoSaveBlur('charges')}>
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Label className="text-xs whitespace-nowrap">Armazenagem no destino (R$)</Label>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-64 text-xs">
-                                Não compõe o total da cotação. Gera automaticamente uma conta a receber com o rebate: em LCL, um percentual cadastrado no Co-loader do processo; em FCL, um valor fixo cadastrado no Terminal do processo.
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={form.storage_fee_amount}
-                            onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value, storage_fee_currency: 'BRL' })}
-                            placeholder="0,00"
-                            className="w-32 h-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            disabled={!canEditGeneral}
-                          />
+                      <CardHeader className="py-3 flex flex-row items-center gap-2 space-y-0 flex-wrap" onBlur={() => handleAutoSaveBlur('charges')}>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Label className="text-xs whitespace-nowrap leading-none">Armazenagem no destino (R$)</Label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-64 text-xs">
+                              Não compõe o total da cotação. Gera automaticamente uma conta a receber com o rebate: em LCL, um percentual cadastrado no Co-loader do processo; em FCL, um valor fixo cadastrado no Terminal do processo.
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
-                      </CardContent>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={form.storage_fee_amount}
+                          onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value, storage_fee_currency: 'BRL' })}
+                          placeholder="0,00"
+                          className="w-28 h-6 py-0 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          disabled={!canEditGeneral}
+                        />
+                      </CardHeader>
                     </Card>
                   )}
                   {profile?.company_id && (
