@@ -1089,6 +1089,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       queryClient.invalidateQueries({ queryKey: ['quote-items', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['cost-estimate', quoteId] });
+      // Aba Logística usa sua própria query (cache separado) pra saber a
+      // quantidade de containers — sem invalidar aqui também, adicionar ou
+      // remover item na Resumo da Carga só refletia lá depois de recarregar
+      // a página inteira (F5), em vez de só trocar de aba.
+      queryClient.invalidateQueries({ queryKey: ['logistics-quote-items'] });
       toast.success(t('quotes.changes_saved'));
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 2000);
