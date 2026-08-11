@@ -151,8 +151,15 @@ export function mapChargesToEstimate(
     if (isSeguro) {
       const usd = toUSD(rawAmount, cur, fx);
       if (usd == null) { out.ignored.push({ description: desc, currency: cur, amount: rawAmount }); continue; }
-      out.seguro_intl_usd += usd;
-      
+      // Mesma regra do frete: Seguro Prepaid já foi pago na origem e está
+      // embutido no valor da mercadoria (VMCV) cobrado do importador — somar
+      // de novo em seguro_intl_usd duplicaria o seguro na base do VMLD/II.
+      // Só Seguro Collect entra na base de cálculo dos impostos. O valor
+      // ainda aparece na lista de despesas (Numerário/PDF).
+      if (!isPrepaid) {
+        out.seguro_intl_usd += usd;
+      }
+
       if (brl != null) {
         out.expenses.push({
           descricao: desc.toUpperCase(),
