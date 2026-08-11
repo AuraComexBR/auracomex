@@ -21,7 +21,7 @@ import { PortsTab } from '@/components/registrations/PortsTab';
 import { ClientDocumentsSection } from '@/components/registrations/ClientDocumentsSection';
 import { formatCpf, isValidCpf, onlyDigits, formatTaxId } from '@/lib/utils';
 
-const CLIENT_TYPES = ['client', 'carrier', 'agent'] as const;
+const CLIENT_TYPES = ['client', 'carrier', 'agent', 'shipper'] as const;
 type ClientType = typeof CLIENT_TYPES[number];
 
 function formatCnpj(value: string) {
@@ -198,7 +198,7 @@ export default function Registrations() {
         salesperson_id: form.salesperson_id || null,
         commission_rate: form.commission_rate ? parseFloat(form.commission_rate) : null,
         is_foreign: form.is_foreign,
-        partner_category: form.type === 'client' ? null : (form.partner_category || null),
+        partner_category: form.type === 'client' || form.type === 'shipper' ? null : (form.partner_category || null),
         storage_rebate_percent: form.partner_category === 'co_loader' && form.storage_rebate_percent
           ? parseFloat(form.storage_rebate_percent)
           : null,
@@ -298,8 +298,8 @@ export default function Registrations() {
       address: '', 
       tax_id: '', 
       tax_id_type: 'CNPJ',
-      type: (activeTab === 'client' ? 'client' : 'supplier') as ClientType, 
-      salesperson_id: '', 
+      type: (activeTab === 'client' ? 'client' : activeTab === 'shipper' ? 'shipper' : 'supplier') as ClientType,
+      salesperson_id: '',
       commission_rate: '',
       is_foreign: false,
       partner_category: '',
@@ -378,6 +378,7 @@ export default function Registrations() {
     supplier: t('registrations.type_supplier'),
     carrier: t('registrations.type_carrier'),
     agent: t('registrations.type_agent'),
+    shipper: t('registrations.type_shipper'),
   };
 
   const typeColors: Record<string, string> = {
@@ -385,6 +386,7 @@ export default function Registrations() {
     supplier: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
     carrier: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
     agent: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+    shipper: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
   };
 
   const filtered = registrations.filter((c: any) => {
@@ -394,11 +396,12 @@ export default function Registrations() {
       c.email?.toLowerCase().includes(search.toLowerCase());
     if (activeTab === 'all') return matchesSearch;
     if (activeTab === 'client') return matchesSearch && c.type === 'client';
-    if (activeTab === 'supplier') return matchesSearch && c.type !== 'client';
+    if (activeTab === 'shipper') return matchesSearch && c.type === 'shipper';
+    if (activeTab === 'supplier') return matchesSearch && c.type !== 'client' && c.type !== 'shipper';
     return matchesSearch;
   });
 
-  const showClientControls = activeTab === 'client' || activeTab === 'supplier';
+  const showClientControls = activeTab === 'client' || activeTab === 'supplier' || activeTab === 'shipper';
 
   return (
     <div className="space-y-6 animate-slide-in">
@@ -406,7 +409,8 @@ export default function Registrations() {
       <Tabs value={activeTab} onValueChange={(v) => {
         setActiveTab(v);
         if (!editingId) {
-          setForm(prev => ({ ...prev, type: (v === 'client' ? 'client' : 'supplier') as ClientType }));
+          const nextType = v === 'client' ? 'client' : v === 'shipper' ? 'shipper' : 'supplier';
+          setForm(prev => ({ ...prev, type: nextType as ClientType }));
         }
       }}>
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -414,6 +418,7 @@ export default function Registrations() {
             <TabsList className="bg-secondary/50">
               <TabsTrigger value="client">{t('registrations.clients')}</TabsTrigger>
               <TabsTrigger value="supplier">{t('registrations.suppliers')}</TabsTrigger>
+              <TabsTrigger value="shipper">{t('registrations.shippers')}</TabsTrigger>
               <TabsTrigger value="charges">{t('charges.tab')}</TabsTrigger>
               <TabsTrigger value="ports">Portos</TabsTrigger>
             </TabsList>
@@ -446,7 +451,7 @@ export default function Registrations() {
           <PortsTab />
         </TabsContent>
 
-        {(['client', 'supplier'] as const).map((tabValue) => (
+        {(['client', 'supplier', 'shipper'] as const).map((tabValue) => (
           <TabsContent key={tabValue} value={tabValue} className="mt-4">
             <Card className="glass">
               <CardContent className="p-0">
@@ -593,8 +598,8 @@ export default function Registrations() {
             )}
 
             {/* Type - Hidden as it is inferred from tab but kept in state */}
-            {/* Partner Category - Only for non-client types */}
-            {form.type !== 'client' && (
+            {/* Partner Category - Only for non-client, non-shipper types */}
+            {form.type !== 'client' && form.type !== 'shipper' && (
               <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
                 <Label>{t('registrations.partner_category')}</Label>
                 {isAddingNewType ? (
@@ -631,7 +636,6 @@ export default function Registrations() {
                         <SelectValue placeholder={t('common.select') || 'Selecionar...'} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="shipper">{t('registrations.category_shipper')}</SelectItem>
                         <SelectItem value="road_carrier">{t('registrations.category_road_carrier')}</SelectItem>
                         <SelectItem value="ocean_carrier">{t('registrations.category_ocean_carrier')}</SelectItem>
                         <SelectItem value="air_carrier">{t('registrations.category_air_carrier')}</SelectItem>
@@ -641,7 +645,7 @@ export default function Registrations() {
                         <SelectItem value="other">{t('registrations.category_other')}</SelectItem>
                         {/* Dynamic categories */}
                         {existingCategories
-                          .filter((cat: string) => !['shipper', 'road_carrier', 'ocean_carrier', 'air_carrier', 'insurance', 'co_loader', 'terminal', 'other'].includes(cat))
+                          .filter((cat: string) => !['road_carrier', 'ocean_carrier', 'air_carrier', 'insurance', 'co_loader', 'terminal', 'other'].includes(cat))
                           .map((cat: string) => (
                             <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                           ))

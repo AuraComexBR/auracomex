@@ -3194,7 +3194,7 @@ export type Database = {
         | "documentation"
         | "storage"
         | "other"
-      client_type: "client" | "supplier" | "carrier" | "agent"
+      client_type: "client" | "supplier" | "carrier" | "agent" | "shipper"
       debit_note_kind: "partner_incoming" | "client_outgoing"
       debit_note_status:
         | "pendente"
@@ -3413,7 +3413,7 @@ export const Constants = {
         "storage",
         "other",
       ],
-      client_type: ["client", "supplier", "carrier", "agent"],
+      client_type: ["client", "supplier", "carrier", "agent", "shipper"],
       debit_note_kind: ["partner_incoming", "client_outgoing"],
       debit_note_status: [
         "pendente",
