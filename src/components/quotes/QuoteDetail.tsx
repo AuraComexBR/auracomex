@@ -1965,44 +1965,44 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           ) : null}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <Card className="glass">
-              <CardContent className="p-1 sm:p-1.5 flex flex-col items-center justify-center text-center min-h-[34px]">
+              <CardContent className="p-1 flex flex-col items-center justify-center text-center min-h-[24px]">
                 {ratesAvailable ? (
                   <p className="flex items-baseline justify-center gap-1 flex-wrap" title={detailLine(buyByCurrency)}>
                     <span className="text-[10px] text-muted-foreground shrink-0">Compra -</span>
-                    <span className="text-base font-bold font-mono truncate">{fmtBRL(buyBRL.total)}</span>
+                    <span className="text-sm font-bold font-mono truncate">{fmtBRL(buyBRL.total)}</span>
                   </p>
                 ) : (
                   <p className="flex items-baseline justify-center gap-1 flex-wrap">
                     <span className="text-[10px] text-muted-foreground shrink-0">Compra -</span>
-                    <span className="text-base font-bold font-mono break-words">{formatCurrencyMap(buyByCurrency)}</span>
+                    <span className="text-sm font-bold font-mono break-words">{formatCurrencyMap(buyByCurrency)}</span>
                   </p>
                 )}
               </CardContent>
             </Card>
             <Card className="glass">
-              <CardContent className="p-1 sm:p-1.5 flex flex-col items-center justify-center text-center min-h-[34px]">
+              <CardContent className="p-1 flex flex-col items-center justify-center text-center min-h-[24px]">
                 {ratesAvailable ? (
                   <p className="flex items-baseline justify-center gap-1 flex-wrap" title={detailLine(sellByCurrency)}>
                     <span className="text-[10px] text-muted-foreground shrink-0">Venda -</span>
-                    <span className="text-base font-bold font-mono truncate">{fmtBRL(sellBRL.total)}</span>
+                    <span className="text-sm font-bold font-mono truncate">{fmtBRL(sellBRL.total)}</span>
                   </p>
                 ) : (
                   <p className="flex items-baseline justify-center gap-1 flex-wrap">
                     <span className="text-[10px] text-muted-foreground shrink-0">Venda -</span>
-                    <span className="text-base font-bold font-mono break-words">{formatCurrencyMap(sellByCurrency)}</span>
+                    <span className="text-sm font-bold font-mono break-words">{formatCurrencyMap(sellByCurrency)}</span>
                   </p>
                 )}
               </CardContent>
             </Card>
             <Card className="glass">
-              <CardContent className="p-1 sm:p-1.5 flex flex-col items-center justify-center text-center min-h-[34px]">
+              <CardContent className="p-1 flex flex-col items-center justify-center text-center min-h-[24px]">
                 {ratesAvailable ? (
                   <p
                     className="flex items-baseline justify-center gap-1 flex-wrap"
                     title={Object.keys(profitByCurrency).length === 0 ? '—' : Object.entries(profitByCurrency).map(([cur, v]) => fmtMoney(cur, v)).join(' + ')}
                   >
                     <span className="text-[10px] text-muted-foreground shrink-0">Lucro -</span>
-                    <span className={`text-base font-bold font-mono truncate ${profitBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
+                    <span className={`text-sm font-bold font-mono truncate ${profitBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
                       {fmtBRL(profitBRLValue)}
                     </span>
                   </p>
@@ -2010,21 +2010,21 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   <div>
                     <span className="text-[10px] text-muted-foreground">Lucro</span>
                     {Object.entries(profitByCurrency).map(([cur, val]) => (
-                      <span key={cur} className={`block text-base font-bold font-mono ${val >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
+                      <span key={cur} className={`block text-sm font-bold font-mono ${val >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
                         {cur} {val.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     ))}
-                    {Object.keys(profitByCurrency).length === 0 && <span className="text-base font-bold font-mono">-</span>}
+                    {Object.keys(profitByCurrency).length === 0 && <span className="text-sm font-bold font-mono">-</span>}
                   </div>
                 )}
               </CardContent>
             </Card>
             <Card className="glass">
-              <CardContent className="p-1 sm:p-1.5 flex flex-col items-center justify-center text-center min-h-[34px]">
+              <CardContent className="p-1 flex flex-col items-center justify-center text-center min-h-[24px]">
                 {ratesAvailable ? (
                   <p className="flex items-baseline justify-center gap-1 flex-wrap" title="sobre venda em BRL">
                     <span className="text-[10px] text-muted-foreground shrink-0">Margem -</span>
-                    <span className={`text-base font-bold font-mono truncate ${marginBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
+                    <span className={`text-sm font-bold font-mono truncate ${marginBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
                       {sellBRL.total > 0 ? `${marginBRLValue.toFixed(1)}%` : '—'}
                     </span>
                   </p>
@@ -2032,9 +2032,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   <div>
                     <span className="text-[10px] text-muted-foreground">Margem</span>
                     {Object.entries(marginByCurrency).map(([cur, val]) => (
-                      <span key={cur} className="block text-base font-bold font-mono">{cur} {val.toFixed(1)}%</span>
+                      <span key={cur} className="block text-sm font-bold font-mono">{cur} {val.toFixed(1)}%</span>
                     ))}
-                    {Object.keys(marginByCurrency).length === 0 && <span className="text-base font-bold font-mono">-</span>}
+                    {Object.keys(marginByCurrency).length === 0 && <span className="text-sm font-bold font-mono">-</span>}
                   </div>
                 )}
               </CardContent>
@@ -2381,7 +2381,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   <div className="flex flex-wrap items-start gap-3 w-full sm:w-1/2">
                   {showStorageFee && (
                     <Card className="glass w-full sm:w-auto shrink-0">
-                      <CardHeader className="py-3 flex flex-row items-center gap-2 space-y-0 flex-wrap" onBlur={() => handleAutoSaveBlur('charges')}>
+                      <CardHeader className="h-9 py-0 flex flex-row items-center gap-2 space-y-0 flex-nowrap" onBlur={() => handleAutoSaveBlur('charges')}>
                         <div className="flex items-center gap-1 shrink-0">
                           <Label className="text-xs whitespace-nowrap leading-none">Armazenagem no destino (R$)</Label>
                           <Tooltip>
@@ -3264,17 +3264,17 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
 
   return (
     <Card className={`glass border ${borderClass}`}>
-      <CardHeader className="pb-2">
+      <CardHeader className="py-2">
         <CardTitle className={`text-sm ${colorClass}`}>{title}</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t('financial.description')}</TableHead>
-              <TableHead>{t('quotes.leg')}</TableHead>
-              <TableHead className="text-right">{t('financial.amount')}</TableHead>
-              <TableHead className="w-20"></TableHead>
+              <TableHead className="h-8 py-1.5 text-xs">{t('financial.description')}</TableHead>
+              <TableHead className="h-8 py-1.5 text-xs">{t('quotes.leg')}</TableHead>
+              <TableHead className="h-8 py-1.5 text-xs text-right">{t('financial.amount')}</TableHead>
+              <TableHead className="h-8 py-1.5 text-xs w-20"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -3289,7 +3289,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                         {/* Partner sub-header — uma linha só por empresa, mesmo que tenha
                             taxas em mais de um trecho (cada taxa mostra seu trecho embaixo). */}
                         <TableRow className="bg-muted/30 border-t border-l-4 border-l-muted-foreground/20">
-                          <TableCell colSpan={4} className="py-2.5 px-4">
+                          <TableCell colSpan={4} className="py-1.5 px-4">
                             <div className="flex items-center justify-between gap-2.5 flex-wrap">
                               <div className="flex items-center gap-2.5">
                                 <div className="flex items-center gap-1.5">
@@ -3393,7 +3393,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                 setEditLeg(c.leg || 'freight');
                               }}
                             >
-                              <TableCell className="font-medium text-sm pl-8">
+                              <TableCell className="font-medium text-sm pl-8 py-2">
                                 <div>
                                   {c.description}
                                   <span className={`ml-1.5 text-[10px] border rounded px-1 py-0.5 ${c.billing_unit === 'percent' ? 'text-primary border-primary/40 bg-primary/10' : 'text-muted-foreground'}`}>
@@ -3466,7 +3466,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   );
                                 })()}
                               </TableCell>
-                              <TableCell>
+                              <TableCell className="py-2">
                                 {editingId === c.id ? (
                                   <div className="flex gap-1">
                                     {(['origin', 'freight', 'destination'] as const).map((leg) => (
@@ -3485,7 +3485,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   </span>
                                 )}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-sm" onClick={(e) => e.stopPropagation()}>
+                              <TableCell className="text-right font-mono text-sm py-2" onClick={(e) => e.stopPropagation()}>
                                 {editingId === c.id ? (
                                   <div className="flex items-center justify-end gap-1">
                                     <span className="text-xs text-muted-foreground">{c.currency || 'USD'}</span>
@@ -3539,7 +3539,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                 )}
                               </TableCell>
                               {!readOnly && (
-                              <TableCell onClick={(e) => e.stopPropagation()}>
+                              <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
                                   <Button
                                     variant="ghost"

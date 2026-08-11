@@ -280,7 +280,7 @@ export function AutoInsuranceCard({ quoteId, companyId, quote, quotePartners = [
 
   return (
     <Card className="glass border-primary/20">
-      <CardHeader className="py-3 flex flex-row items-center justify-between space-y-0 flex-wrap gap-2">
+      <CardHeader className="h-9 py-0 flex flex-row items-center justify-between space-y-0 flex-nowrap gap-2">
         <button
           type="button"
           onClick={() => canExpand && setExpanded((e) => !e)}
