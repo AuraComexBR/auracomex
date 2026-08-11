@@ -1084,8 +1084,8 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
       case 'cargo_vehicle_type': return cargoUniqueJoin(s.cargo_items, 'vehicle_type');
       case 'cargo_ncm': return cargoUniqueJoin(s.cargo_items, 'ncm_code');
       case 'numerario_total':
-        return s.numerario_total_usd != null
-          ? `USD ${Number(s.numerario_total_usd).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        return s.numerario_total_brl != null
+          ? `R$ ${Number(s.numerario_total_brl).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
           : '—';
       default: return '—';
     }
@@ -1267,11 +1267,11 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
             {/* Numerário estimado (fase 3) — impostos + AFRMM + desembaraço/
                 armazenagem destino + frete/seguro não-prepaid; sem o valor
                 da mercadoria. Calculado e salvo na aba Estimativa do processo. */}
-            {isExpandedVisible('numerario_total') && s.numerario_total_usd != null && (
+            {isExpandedVisible('numerario_total') && s.numerario_total_brl != null && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
                 <span className="text-xs font-medium text-muted-foreground">Valor Estimado (Numerário)</span>
                 <span className="text-sm font-semibold">
-                  USD {Number(s.numerario_total_usd).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  R$ {Number(s.numerario_total_brl).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             )}

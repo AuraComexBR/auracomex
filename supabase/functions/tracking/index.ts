@@ -378,20 +378,27 @@ Deno.serve(async (req) => {
           if (numerarioQuoteIds.length > 0) {
             const { data: estimatesData } = await adminClient
               .from("cost_estimates")
-              .select("quote_id, numerario_total_usd")
+              .select("quote_id, numerario_total_usd, numerario_total_brl")
               .in("quote_id", numerarioQuoteIds);
 
-            const numerarioByShipment = new Map<string, number>();
+            const numerarioByShipment = new Map<string, { usd: number; brl: number }>();
             for (const est of (estimatesData || []) as any[]) {
               const shipmentIdForEst = quoteIdToShipmentIdForNumerario.get(est.quote_id);
               if (!shipmentIdForEst) continue;
-              numerarioByShipment.set(shipmentIdForEst, Number(est.numerario_total_usd) || 0);
+              numerarioByShipment.set(shipmentIdForEst, {
+                usd: Number(est.numerario_total_usd) || 0,
+                brl: Number(est.numerario_total_brl) || 0,
+              });
             }
 
-            enrichedShipments = enrichedShipments.map((s: any) => ({
-              ...s,
-              numerario_total_usd: numerarioByShipment.has(s.id) ? numerarioByShipment.get(s.id) : null,
-            }));
+            enrichedShipments = enrichedShipments.map((s: any) => {
+              const numerario = numerarioByShipment.get(s.id);
+              return {
+                ...s,
+                numerario_total_usd: numerario ? numerario.usd : null,
+                numerario_total_brl: numerario ? numerario.brl : null,
+              };
+            });
           }
         }
       }

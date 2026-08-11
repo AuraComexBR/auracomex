@@ -479,8 +479,14 @@ export function CostEstimateTab({
         const origemFreteSeguroUsdNow = sumExpensesNow(cat => cat === 'origin' || cat === 'freight');
         const numerarioTotalUsdNow = impostosUsdNow + afrmmUsdNow + desembaracoDestinoUsdNow + origemFreteSeguroUsdNow;
         estPatch.numerario_total_usd = Math.round((numerarioTotalUsdNow + Number.EPSILON) * 100) / 100;
+        // BRL na mesma taxa da estimativa (igual ao total exibido no PDF de
+        // Numerário — EstimatePdfDialog.tsx, `numerarioTotalUsd * rate`) —
+        // é o que o cliente vê no portal de tracking (valor em reais é o
+        // que ele efetivamente vai depositar).
+        estPatch.numerario_total_brl = Math.round((numerarioTotalUsdNow * usdBrl + Number.EPSILON) * 100) / 100;
       } else {
         estPatch.numerario_total_usd = 0;
+        estPatch.numerario_total_brl = 0;
       }
 
       if (Object.keys(estPatch).length > 0) {
@@ -821,18 +827,22 @@ export function CostEstimateTab({
     const desembaracoDestinoUsdNow = sumExpensesNow(cat => cat === 'destination' || cat === 'local') + armazenagemUsdNow;
     const origemFreteSeguroUsdNow = sumExpensesNow(cat => cat === 'origin' || cat === 'freight');
     const numerarioTotalUsdNow = Math.round((impostosUsdNow + afrmmUsdNow + desembaracoDestinoUsdNow + origemFreteSeguroUsdNow + Number.EPSILON) * 100) / 100;
+    // BRL na mesma taxa da estimativa (igual ao total do PDF de Numerário) —
+    // é o valor que o portal de tracking mostra pro cliente (em reais).
+    const numerarioTotalBrlNow = Math.round((numerarioTotalUsdNow * usdBrl + Number.EPSILON) * 100) / 100;
 
     const last = lastSyncedNumerarioRef.current;
     if (last && last.estimateId === serverEstimate.id && last.value === numerarioTotalUsdNow) return;
     const storedValue = Number((serverEstimate as any)?.numerario_total_usd || 0);
-    if (storedValue === numerarioTotalUsdNow) {
+    const storedValueBrl = Number((serverEstimate as any)?.numerario_total_brl || 0);
+    if (storedValue === numerarioTotalUsdNow && storedValueBrl === numerarioTotalBrlNow) {
       lastSyncedNumerarioRef.current = { estimateId: serverEstimate.id, value: numerarioTotalUsdNow };
       return;
     }
     lastSyncedNumerarioRef.current = { estimateId: serverEstimate.id, value: numerarioTotalUsdNow };
     (supabase as any)
       .from('cost_estimates')
-      .update({ numerario_total_usd: numerarioTotalUsdNow })
+      .update({ numerario_total_usd: numerarioTotalUsdNow, numerario_total_brl: numerarioTotalBrlNow })
       .eq('id', serverEstimate.id)
       .then(({ error }: any) => {
         if (error) {
