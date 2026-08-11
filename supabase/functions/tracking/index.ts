@@ -245,6 +245,11 @@ Deno.serve(async (req) => {
       // Filtra os campos pelo que esse cliente pode ver — só quando o
       // chamador manda field_visibility_mode (só a TrackingV2 manda; a
       // página atual não manda e continua recebendo tudo, sem filtro).
+      // Também devolve a visibilidade atual na resposta (field_visibility)
+      // pra TrackingV2 manter a sessão do navegador do cliente sempre em
+      // dia, sem precisar deslogar/logar de novo toda vez que a empresa
+      // mexe na configuração em Cadastros.
+      let fieldVisibilityOut: any = undefined;
       if (field_visibility_mode) {
         const { data: clientRow } = await adminClient
           .from("clients")
@@ -252,6 +257,7 @@ Deno.serve(async (req) => {
           .eq("id", client_id)
           .single();
         const visibility = (clientRow as any)?.tracking_field_visibility || { collapsed: [], expanded: [] };
+        fieldVisibilityOut = visibility;
         const allowedKeys = new Set<string>([...(visibility.collapsed || []), ...(visibility.expanded || [])]);
         const allowedColumns = new Set<string>(FIELD_VISIBILITY_BASELINE_COLUMNS);
         for (const key of allowedKeys) {
@@ -273,7 +279,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      return jsonResponse({ shipments: enrichedShipments, status_options: statusOptions });
+      return jsonResponse({ shipments: enrichedShipments, status_options: statusOptions, field_visibility: fieldVisibilityOut });
     }
 
     if (action === "quotes") {

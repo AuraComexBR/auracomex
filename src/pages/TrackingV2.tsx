@@ -161,6 +161,22 @@ export default function TrackingV2() {
     queryKey: ['trackingv2-shipments', clientId, filter],
     queryFn: async () => {
       const result = await callTracking({ action: 'shipments', client_id: clientId, filter, field_visibility_mode: true });
+      // A visibilidade vem fresca em toda consulta de shipments — mantém a
+      // sessão do navegador do cliente em dia mesmo se a empresa mudou a
+      // configuração em Cadastros depois que ele já tinha logado.
+      if (result.field_visibility) {
+        const visibility = normalizeTrackingFieldVisibility(result.field_visibility);
+        setFieldVisibility(visibility);
+        if (clientCnpj) {
+          try {
+            const raw = sessionStorage.getItem(trackingSessionKey(clientCnpj));
+            const saved = raw ? JSON.parse(raw) : {};
+            sessionStorage.setItem(trackingSessionKey(clientCnpj), JSON.stringify({ ...saved, authenticated: true, field_visibility: visibility }));
+          } catch {
+            // ignore
+          }
+        }
+      }
       return { shipments: result.shipments || [], statusOptions: (result.status_options || []) as StatusOption[] };
     },
     enabled: !!clientId && authenticated && filter !== 'quotes',
