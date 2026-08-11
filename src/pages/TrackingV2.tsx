@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown, NotebookPen, RefreshCw, LogOut } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { StatusTimeline } from '@/components/tracking/StatusTimeline';
 import { buildTimeline } from '@/lib/shipmentTimeline';
 import { FlagIcon } from '@/components/shared/FlagIcon';
@@ -407,8 +407,8 @@ export default function TrackingV2() {
                           right={<ColumnSearch value={searchClientRef} onChange={setSearchClientRef} open={searchClientRefOpen} onOpenChange={setSearchClientRefOpen} />}
                         />
                         <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        <SortableHeader label="ETA" sortKey="eta" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
                         <SortableHeader label="ETD" sortKey="etd" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        <SortableHeader label="ETA" sortKey="eta" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
                         <SortableHeader label="Limite Devolução" sortKey="demurrage_deadline" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
                         <SortableHeader label="DUIMP" sortKey="duimp_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
                         <SortableHeader label="Físico" sortKey="physical_location" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
@@ -468,13 +468,21 @@ function shortDate(value?: string | null) {
   return value ? format(new Date(value), 'dd/MM/yy') : '—';
 }
 
-// Limite Devolução (ATA + FreeTime) — mesmo cálculo de demurrage por
-// container já usado na página atual, só renomeado pro termo que o cliente
-// reconhece (prazo pra devolver o container vazio sem multa).
+// Limite Devolução = ATA + FreeTime (prazo pra devolver o container vazio
+// sem multa de demurrage). Prioridade:
+//   1. Prazo por container, se algum foi preenchido manualmente na Logística
+//      (caso a caso pode ter sido negociado diferente do FreeTime padrão) —
+//      usa o mais próximo (mais urgente) entre eles.
+//   2. Calculado direto: ATA + FreeTime (dias) — é a regra padrão.
+//   3. Fallback pro campo antigo demurrage_deadline (embarques legados sem
+//      ATA/FreeTime preenchidos ainda).
 function earliestDemurrageDeadline(s: any): string | null {
   const perContainer = parseContainerDates(s.container_demurrage_deadlines).filter(Boolean);
   if (perContainer.length > 0) {
     return perContainer.reduce((min, d) => (new Date(d).getTime() < new Date(min).getTime() ? d : min));
+  }
+  if (s.ata && s.free_time != null) {
+    return addDays(new Date(s.ata), Number(s.free_time) || 0).toISOString();
   }
   return s.demurrage_deadline || null;
 }
@@ -511,11 +519,11 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
           {s.client_reference ? <Badge variant="outline" className="font-mono font-normal text-[10px] px-1.5 py-0">{s.client_reference}</Badge> : '—'}
         </TableCell>
         <TableCell className="py-1 px-2"><Badge className={cn(statusBadgeClass, 'text-[10px] px-1.5 py-0 whitespace-nowrap')}>{statusLabel}</Badge></TableCell>
-        <TableCell className={cn('py-1 px-2', s.ata && 'font-semibold text-emerald-600')} title={s.ata ? 'Data real' : 'Estimativa'}>
-          {shortDate(s.ata || s.eta)}
-        </TableCell>
         <TableCell className={cn('py-1 px-2', s.atd && 'font-semibold text-emerald-600')} title={s.atd ? 'Data real' : 'Estimativa'}>
           {shortDate(s.atd || s.etd)}
+        </TableCell>
+        <TableCell className={cn('py-1 px-2', s.ata && 'font-semibold text-emerald-600')} title={s.ata ? 'Data real' : 'Estimativa'}>
+          {shortDate(s.ata || s.eta)}
         </TableCell>
         <TableCell className={cn('py-1 px-2', demurrageUrgent && 'text-red-600 font-semibold')}>
           {shortDate(demurrageDeadline)}
