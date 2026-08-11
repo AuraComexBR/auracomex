@@ -2002,8 +2002,56 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               </Button>
             </CardHeader>
             <CardContent className="pt-6 space-y-4" onBlur={() => handleAutoSaveBlur('general')}>
-              {/* Linha 1: Cliente - Modal - Incoterm (+ Status/Validade em cotações) */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {/* Linha 1: Status - Ref. Cliente - Cliente - Modal - Incoterm - Validade (Status/Ref. Cliente/Validade só em cotações) */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {!isShipmentMode && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t('shipments.status')}</Label>
+                    {form.status === 'converted' ? (
+                      <div className="flex items-center gap-1.5 h-10 px-3 rounded-md border bg-muted text-sm font-medium">
+                        <CheckCircle className="w-4 h-4 text-status-completed" />
+                        {t(`quote_status.${form.status}`)}
+                      </div>
+                    ) : (
+                      <Select
+                        value={form.status}
+                        onValueChange={(v) => {
+                          if (v === 'approved') {
+                            // Não marca localmente como "approved" antes da hora: esse status só
+                            // deve existir de fato se a conversão em embarque realmente for
+                            // concluída (handleApprove já ajusta form.status pra 'converted' no
+                            // sucesso). Se ficasse marcado aqui e a conversão fosse bloqueada
+                            // (ex: limite do plano) ou falhasse, um save qualquer depois deixaria
+                            // a cotação travada em "approved" sem embarque nenhum — sumindo tanto
+                            // da lista de Cotações quanto da de Embarques.
+                            handleApprove();
+                          } else {
+                            setForm({ ...form, status: v });
+                          }
+                        }}
+                        disabled={!canEditGeneral}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {['quoting', 'sent', 'approved', 'rejected'].map((s) => (
+                            <SelectItem key={s} value={s}>{t(`quote_status.${s}`)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
+                {!isShipmentMode && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Ref. Cliente</Label>
+                    <Input
+                      value={form.client_reference || ''}
+                      onChange={(e) => setForm({ ...form, client_reference: e.target.value })}
+                      placeholder="Referência do cliente (opcional)"
+                      disabled={!canEditGeneral}
+                    />
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.client')}</Label>
                   {(() => {
@@ -2065,43 +2113,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     </SelectContent>
                   </Select>
                 </div>
-                {!isShipmentMode && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">{t('shipments.status')}</Label>
-                    {form.status === 'converted' ? (
-                      <div className="flex items-center gap-1.5 h-10 px-3 rounded-md border bg-muted text-sm font-medium">
-                        <CheckCircle className="w-4 h-4 text-status-completed" />
-                        {t(`quote_status.${form.status}`)}
-                      </div>
-                    ) : (
-                      <Select
-                        value={form.status}
-                        onValueChange={(v) => {
-                          if (v === 'approved') {
-                            // Não marca localmente como "approved" antes da hora: esse status só
-                            // deve existir de fato se a conversão em embarque realmente for
-                            // concluída (handleApprove já ajusta form.status pra 'converted' no
-                            // sucesso). Se ficasse marcado aqui e a conversão fosse bloqueada
-                            // (ex: limite do plano) ou falhasse, um save qualquer depois deixaria
-                            // a cotação travada em "approved" sem embarque nenhum — sumindo tanto
-                            // da lista de Cotações quanto da de Embarques.
-                            handleApprove();
-                          } else {
-                            setForm({ ...form, status: v });
-                          }
-                        }}
-                        disabled={!canEditGeneral}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {['quoting', 'sent', 'approved', 'rejected'].map((s) => (
-                            <SelectItem key={s} value={s}>{t(`quote_status.${s}`)}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                )}
                 {!isShipmentMode && (
                   <div className="space-y-1.5">
                     <Label className="text-xs">{t('quotes.valid_until')}</Label>
