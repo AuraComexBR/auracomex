@@ -2824,7 +2824,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     onClone={(charge, amount, partnerId) => handleCloneCharge(charge, amount, 'sell', partnerId)}
                     colorClass="text-blue-600"
                     borderClass="border-red-500/20"
-                    bgClass="bg-red-50/40 dark:bg-red-950/10"
+                    bgClass="!bg-red-50/60 dark:!bg-red-950/20"
                     cloneLabel={t('quotes.clone_to_sell')}
                     partners={combinedPartners}
                     defaultClonePartnerId={form.client_id || ''}
@@ -2849,7 +2849,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     onClone={(charge, amount, partnerId) => handleCloneCharge(charge, amount, 'buy', partnerId)}
                     colorClass="text-emerald-600"
                     borderClass="border-emerald-500/20"
-                    bgClass="bg-emerald-50/40 dark:bg-emerald-950/10"
+                    bgClass="!bg-emerald-50/60 dark:!bg-emerald-950/20"
                     cloneLabel={t('quotes.clone_to_buy')}
                     partners={combinedPartners}
                     cargoMetrics={cargoMetrics}
