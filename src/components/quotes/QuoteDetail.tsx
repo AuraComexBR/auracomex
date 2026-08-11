@@ -7,8 +7,10 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useHasAddon } from '@/hooks/useSubscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, Package, Info, Users, ShoppingCart, Undo2, Calculator, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History, NotebookPen } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, Package, Info, Users, ShoppingCart, Undo2, Calculator, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History, NotebookPen, Receipt } from 'lucide-react';
 import { CostEstimateTab } from './estimate/CostEstimateTab';
+import { AccountabilityTab } from './estimate/AccountabilityTab';
+import { useAccountability } from '@/hooks/useAccountability';
 import { FloatingSaveButton } from './estimate/FloatingSaveButton';
 import { QuotePdfPreviewDialog } from './QuotePdfPreviewDialog';
 import { SendSupplierDnDialog } from './DebitNotesTab';
@@ -132,6 +134,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const hasEstimateAddon = useHasAddon('cost_estimate_premium');
   // Mantém compat com a flag antiga da empresa; add-on comercial libera o mesmo módulo.
   const estimateEnabled = legacyEstimateFlag && hasEstimateAddon;
+  // Prestação de Contas: só existe (e só aparece como aba) depois que o Numerário
+  // é aprovado na aba Estimativa (ver CostEstimateTab/EstimatePdfDialog).
+  const { data: accountabilityData } = useAccountability(quoteId, profile?.company_id);
+  const accountability = accountabilityData?.accountability || null;
   // Estimativa de custo: quando preenchida, seus itens (peso/NCM/mercadoria) passam a ser a
   // fonte usada no cálculo das Taxas por kg/ton, em vez da Resumo da Carga. Volume (m³) e
   // containers continuam sempre vindos da Resumo da Carga, pois a Estimativa não tem esses campos.
@@ -700,6 +706,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       setActiveTab(isShipmentMode ? 'logistics' : 'general');
     }
   }, [estimateEnabled, activeTab, isShipmentMode]);
+
+  // Se a Prestação de Contas for excluída (destravando a Estimativa) enquanto
+  // o usuário está nela, a aba some — volta pra Estimativa.
+  useEffect(() => {
+    if (!accountability && activeTab === 'accountability') {
+      setActiveTab('estimate');
+    }
+  }, [accountability, activeTab]);
 
   // Onboarding da aba Taxas: mostra automaticamente na primeira vez que o usuário abre a aba.
   useEffect(() => {
@@ -1933,6 +1947,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     <Calculator className={iconCls} /> Estimativa
                   </TabsTrigger>
                 )}
+                {estimateEnabled && accountability && (
+                  <TabsTrigger value="accountability" className={triggerCls}>
+                    <Receipt className={iconCls} /> Prestação de Contas
+                  </TabsTrigger>
+                )}
                 {/* Documents tab available in both modes */}
                 <TabsTrigger value="documents" className={triggerCls}>
                   <FileText className={iconCls} /> {t('shipments.documents')}
@@ -2877,6 +2896,17 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               companyId={profile?.company_id}
               charges={charges as any}
               getBillingMultiplier={getChargeMultiplier}
+            />
+          </TabsContent>
+        )}
+
+        {/* Prestação de Contas: só existe depois que o Numerário é aprovado. */}
+        {estimateEnabled && accountability && (
+          <TabsContent value="accountability">
+            <AccountabilityTab
+              quoteId={quoteId}
+              quote={quote}
+              companyId={profile?.company_id}
             />
           </TabsContent>
         )}

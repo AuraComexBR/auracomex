@@ -44,6 +44,122 @@ export type Database = {
         }
         Relationships: []
       }
+      accountability: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          diferenca_brl: number | null
+          estimate_id: string
+          id: string
+          quote_id: string
+          status: string
+          total_orcado_brl: number | null
+          total_pago_brl: number | null
+          updated_at: string
+          usd_brl: number | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          diferenca_brl?: number | null
+          estimate_id: string
+          id?: string
+          quote_id: string
+          status?: string
+          total_orcado_brl?: number | null
+          total_pago_brl?: number | null
+          updated_at?: string
+          usd_brl?: number | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          diferenca_brl?: number | null
+          estimate_id?: string
+          id?: string
+          quote_id?: string
+          status?: string
+          total_orcado_brl?: number | null
+          total_pago_brl?: number | null
+          updated_at?: string
+          usd_brl?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accountability_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "cost_estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      accountability_items: {
+        Row: {
+          accountability_id: string
+          categoria: string
+          company_id: string
+          confirmado: boolean
+          created_at: string
+          descricao: string
+          id: string
+          observacao: string | null
+          ordem: number
+          source_expense_id: string | null
+          updated_at: string
+          valor_orcado_brl: number
+          valor_pago_brl: number | null
+        }
+        Insert: {
+          accountability_id: string
+          categoria?: string
+          company_id: string
+          confirmado?: boolean
+          created_at?: string
+          descricao: string
+          id?: string
+          observacao?: string | null
+          ordem?: number
+          source_expense_id?: string | null
+          updated_at?: string
+          valor_orcado_brl?: number
+          valor_pago_brl?: number | null
+        }
+        Update: {
+          accountability_id?: string
+          categoria?: string
+          company_id?: string
+          confirmado?: boolean
+          created_at?: string
+          descricao?: string
+          id?: string
+          observacao?: string | null
+          ordem?: number
+          source_expense_id?: string | null
+          updated_at?: string
+          valor_orcado_brl?: number
+          valor_pago_brl?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accountability_items_accountability_id_fkey"
+            columns: ["accountability_id"]
+            isOneToOne: false
+            referencedRelation: "accountability"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accountability_items_source_expense_id_fkey"
+            columns: ["source_expense_id"]
+            isOneToOne: false
+            referencedRelation: "cost_estimate_expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accounts_payable: {
         Row: {
           amount: number

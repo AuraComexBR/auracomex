@@ -20,6 +20,10 @@ interface Props {
    *  'numerario' gera só a folha de resumo, renomeada pra "Numerário" e com
    *  os dados bancários da empresa anexados no rodapé. */
   mode?: 'estimativa' | 'numerario';
+  /** Chamado depois que o usuário baixa o PDF no modo 'numerario' (= aprovação).
+   *  Deve criar a Prestação de Contas e travar a Estimativa. Se lançar erro,
+   *  o download do PDF já ocorreu mas um toast de erro é exibido. */
+  onApproveNumerario?: () => Promise<void> | void;
 }
 
 const fmtUSD = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -53,7 +57,7 @@ const sheetLast: React.CSSProperties = { ...sheet, pageBreakAfter: 'auto', break
 const sheetNumerario: React.CSSProperties = { ...sheetLast, padding: '8mm 14mm' };
 const avoidBreak: React.CSSProperties = { pageBreakInside: 'avoid', breakInside: 'avoid' };
 
-export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expenses, breakdown, hasInsurance = true, mode = 'estimativa' }: Props) {
+export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expenses, breakdown, hasInsurance = true, mode = 'estimativa', onApproveNumerario }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [company, setCompany] = useState<any>(null);
@@ -128,6 +132,14 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
       } catch (e) { console.error(e); }
 
       toast.success('PDF gerado.');
+
+      if (isNumerario && onApproveNumerario) {
+        try {
+          await onApproveNumerario();
+        } catch (e: any) {
+          toast.error(e.message || 'Erro ao criar a Prestação de Contas.');
+        }
+      }
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -221,7 +233,7 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
         <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>{isNumerario ? 'Numerário' : 'Estimativa de Custo'}</DialogTitle>
           <Button onClick={handleDownload} disabled={downloading} size="sm">
-            <Download className="w-4 h-4 mr-2" /> {downloading ? 'Gerando…' : 'Baixar PDF'}
+            <Download className="w-4 h-4 mr-2" /> {downloading ? 'Gerando…' : (isNumerario && onApproveNumerario ? 'Aprovar e Gerar PDF' : 'Baixar PDF')}
           </Button>
         </DialogHeader>
 

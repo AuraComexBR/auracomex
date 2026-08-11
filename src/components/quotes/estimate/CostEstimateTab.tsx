@@ -14,6 +14,7 @@ import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAuditEvent } from '@/lib/auditLog';
 import { useCostEstimate, computeBreakdown, EstimateItemRow, EstimateExpenseRow, EstimateRow, syncEstimateFromCharges, syncEstimateItemsFromQuote } from '@/hooks/useCostEstimate';
+import { useAccountability } from '@/hooks/useAccountability';
 import { pct, toBRL, calcSiscomexFee, countSiscomexAdditions } from '@/lib/costEstimate';
 import { countryCodeToName } from '@/lib/countries';
 import { toast } from 'sonner';
@@ -24,8 +25,7 @@ import type { ChargeLike } from '@/lib/estimateSync';
 import { chargesHaveInsurance } from '@/lib/estimateSync';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
-import { Info, ChevronDown } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Info } from 'lucide-react';
 
 interface Props {
   quoteId: string;
@@ -58,6 +58,8 @@ export function CostEstimateTab({
 }: Props) {
   const { profile } = useAuth();
   const { data, isLoading, createEstimate, deleteEstimate, invalidate } = useCostEstimate(quoteId, companyId);
+  const { data: accData, createFromEstimate: createAccountabilityFromEstimate } = useAccountability(quoteId, companyId);
+  const accountability = accData?.accountability || null;
   const { usdBrl: latestUsdBrl, eurBrl: latestEurBrl, refetch: refetchRates, loading: ratesLoadingQuery } = useExchangeRate();
   const [frozenUsdBrl, setFrozenUsdBrl] = useState<number | null>(null);
   const [frozenEurBrl, setFrozenEurBrl] = useState<number | null>(null);
@@ -777,10 +779,12 @@ export function CostEstimateTab({
 
   const usdRate = estimate.usd_brl || 0;
   const totalUsd = breakdown?.total_usd || 0;
-  // Só fica read-only no instante entre a estimativa carregar do servidor e
-  // o rascunho ser inicializado pelo efeito de sincronização (ver acima) —
-  // na prática, imperceptível.
-  const ro = !draftEstimate;
+  // Read-only no instante entre a estimativa carregar do servidor e o
+  // rascunho ser inicializado (imperceptível na prática) — OU, de forma
+  // persistente, sempre que existir uma Prestação de Contas (Numerário já
+  // aprovado) pra esta cotação. Nesse caso só destrava excluindo a prestação
+  // (aba "Prestação de Contas").
+  const ro = !draftEstimate || !!accountability;
 
   return (
     <div className="space-y-4">
@@ -805,6 +809,16 @@ export function CostEstimateTab({
               <span><strong>Identificação de Itens:</strong> Alguns itens não possuem descrição vinda da cotação. Preencha o nome do item para facilitar a identificação.</span>
             </div>
           )}
+        </div>
+      )}
+
+      {accountability && (
+        <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm">
+          <Info className="w-4 h-4 shrink-0" />
+          <span>
+            <strong>Estimativa travada para edição:</strong> o Numerário já foi aprovado e a Prestação de Contas foi gerada.
+            Para editar a Estimativa, exclua a Prestação de Contas na aba correspondente.
+          </span>
         </div>
       )}
 
@@ -834,21 +848,14 @@ export function CostEstimateTab({
             <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-accent/10 text-accent border border-accent/30" title="Frete, seguro e despesas continuam sincronizando com a aba Taxas. Incoterm/Trânsito/Carrier/Rota vêm do Resumo de Carga só na primeira vez — depois de editados aqui, ficam sob controle da Estimativa. Qualquer edição salva sozinha ao sair do campo.">
               <Link2 className="w-3 h-3" /> Espelho automático Taxas/Carga (1ª vez)
             </span>
-            <Button size="sm" variant="outline" onClick={() => guardStructural(refreshRates)}><RefreshCw className="w-3.5 h-3.5 mr-1" /> Atualizar câmbio</Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm"><FileDown className="w-3.5 h-3.5 mr-1" /> PDF <ChevronDown className="w-3.5 h-3.5 ml-1" /></Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => { setPdfMode('estimativa'); setPdfOpen(true); }}>
-                  Estimativa
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setPdfMode('numerario'); setPdfOpen(true); }}>
-                  Numerário
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {serverEstimate && (
+            <Button size="sm" variant="outline" disabled={ro} onClick={() => guardStructural(refreshRates)}><RefreshCw className="w-3.5 h-3.5 mr-1" /> Atualizar câmbio</Button>
+            <Button size="sm" variant="outline" onClick={() => { setPdfMode('estimativa'); setPdfOpen(true); }}>
+              <FileDown className="w-3.5 h-3.5 mr-1" /> Estimativa
+            </Button>
+            <Button size="sm" onClick={() => { setPdfMode('numerario'); setPdfOpen(true); }}>
+              <FileDown className="w-3.5 h-3.5 mr-1" /> Numerário
+            </Button>
+            {serverEstimate && !accountability && (
               <Button
                 size="sm"
                 variant="outline"
@@ -1528,6 +1535,21 @@ export function CostEstimateTab({
         breakdown={breakdown}
         hasInsurance={hasInsurance}
         mode={pdfMode}
+        onApproveNumerario={
+          pdfMode === 'numerario' && !accountability && breakdown && estimate
+            ? async () => {
+                await createAccountabilityFromEstimate({
+                  estimate: estimate as any,
+                  expenses: expenses as any,
+                  breakdown,
+                  rate: usdRate,
+                  armazenagemBrl: armazenagemDestinoBrl,
+                  userId: profile?.user_id,
+                });
+                toast.success('Prestação de Contas criada. A Estimativa foi travada para edição.');
+              }
+            : undefined
+        }
       />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
