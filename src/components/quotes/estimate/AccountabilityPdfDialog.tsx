@@ -90,6 +90,13 @@ export function AccountabilityPdfDialog({ open, onClose, quote, accountability, 
             quote_id: quote.id, shipment_id: quote.shipment_id || null,
             company_id: quote.company_id, name: filename, file_url: path,
             file_size: blob.size, document_type: 'other' as any,
+            // Marca pra o portal de tracking (TrackingV2) poder liberar esse
+            // PDF por cliente (ver TRACKING_DOC_CATEGORY_MAP em trackingFieldRegistry.ts).
+            // visible_tracking=true é o requisito de base — quem controla se
+            // aparece de fato pra ESSE cliente é o toggle correspondente em
+            // Cadastros > Tracking.
+            custom_category: 'tracking:accountability_pdf',
+            visible_tracking: true,
           } as any);
         }
       } catch (e) { console.error(e); }

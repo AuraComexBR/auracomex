@@ -139,6 +139,13 @@ export function QuotePdfPreviewDialog({ quoteId, open, onClose }: Props) {
             file_url: storagePath,
             file_size: pdfBlob.size,
             document_type: 'other' as any,
+            // Marca pra o portal de tracking (TrackingV2) poder liberar esse
+            // PDF por cliente (ver TRACKING_DOC_CATEGORY_MAP em trackingFieldRegistry.ts).
+            // visible_tracking=true é o requisito de base (mesma regra de
+            // qualquer documento) — quem controla se aparece de fato pra
+            // ESSE cliente é o toggle "PDF da Cotação" em Cadastros > Tracking.
+            custom_category: 'tracking:quote_pdf',
+            visible_tracking: true,
           } as any);
         } catch (docErr) {
           console.error('Failed to save document copy:', docErr);

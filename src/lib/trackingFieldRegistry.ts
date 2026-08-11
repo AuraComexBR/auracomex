@@ -15,10 +15,14 @@
  * embarque pode ter mais de um item de carga. O campo `notes` (observações)
  * de `quote_items` fica de fora de propósito — é texto livre normalmente
  * usado pra anotação interna, nunca exposto ao portal do cliente.
- * Taxas e Estimativa ficam pra próximas fases (a de Taxas precisa de cuidado
- * extra: nunca expor `buy_amount`, que é custo/margem interna, nem que seja
- * por engano — por isso não existe ali um campo genérico "valor", só "valor
- * de venda").
+ * FASE 3 (atual): em vez de expor campos crus de Taxas/Estimativa, essa fase
+ * só libera 4 PDFs já gerados no processo (Cotação/Estimativa/Numerário/
+ * Prestação de Contas — grupo `documents`, ligados por `documents.custom_category`
+ * usando os valores em `TRACKING_DOC_CATEGORY_MAP` abaixo) e um valor único
+ * calculado: o total do Numerário (`numerario_total`, coluna
+ * `cost_estimates.numerario_total_usd`, persistida ao salvar a aba Estimativa
+ * — ver CostEstimateTab.tsx). Nenhum outro campo de Taxas/Estimativa é
+ * exposto aqui (segue valendo o cuidado de nunca expor `buy_amount`).
  *
  * IMPORTANTE: a edge function `tracking` (supabase/functions/tracking/index.ts)
  * roda em runtime Deno separado e não importa este arquivo — ela mantém uma
@@ -30,7 +34,7 @@
  * marcar explicitamente o que aquele cliente pode ver.
  */
 
-export type TrackingFieldGroup = 'logistics' | 'partners' | 'cargo';
+export type TrackingFieldGroup = 'logistics' | 'partners' | 'cargo' | 'documents';
 
 export interface TrackingFieldDef {
   key: string;
@@ -44,9 +48,22 @@ export const TRACKING_FIELD_GROUP_LABELS: Record<TrackingFieldGroup, string> = {
   logistics: 'Logística',
   partners: 'Empresas',
   cargo: 'Resumo da Carga',
+  documents: 'Documentos',
 };
 
-export const TRACKING_FIELD_GROUP_ORDER: TrackingFieldGroup[] = ['logistics', 'partners', 'cargo'];
+export const TRACKING_FIELD_GROUP_ORDER: TrackingFieldGroup[] = ['logistics', 'partners', 'cargo', 'documents'];
+
+/** Valor de `documents.custom_category` usado pra marcar cada um dos 4 PDFs
+ *  gerados no processo — permite filtrar sem depender do nome do arquivo.
+ *  Espelhado em CADA componente que gera esses PDFs (QuotePdfPreviewDialog,
+ *  EstimatePdfDialog nos dois modos, AccountabilityPdfDialog) e na edge
+ *  function `tracking` (FIELD_COLUMN_MAP não serve aqui — ver DOC_CATEGORY_MAP lá). */
+export const TRACKING_DOC_CATEGORY_MAP: Record<string, string> = {
+  doc_quote_pdf: 'tracking:quote_pdf',
+  doc_estimate_pdf: 'tracking:estimate_pdf',
+  doc_numerario_pdf: 'tracking:numerario_pdf',
+  doc_accountability_pdf: 'tracking:accountability_pdf',
+};
 
 export const TRACKING_FIELD_REGISTRY: TrackingFieldDef[] = [
   // ===== Logística =====
@@ -94,6 +111,13 @@ export const TRACKING_FIELD_REGISTRY: TrackingFieldDef[] = [
   { key: 'cargo_vehicle_type', label: 'Tipo de Veículo', group: 'cargo', hint: 'Só modal rodoviário.' },
   { key: 'cargo_ncm', label: 'NCM', group: 'cargo', hint: 'Classificação fiscal — avaliar antes de liberar.' },
   { key: 'cargo_value', label: 'Valor da Carga', group: 'cargo', hint: 'Valor comercial declarado da mercadoria.' },
+
+  // ===== Documentos (PDFs do processo + 1 valor calculado) =====
+  { key: 'doc_quote_pdf', label: 'PDF da Cotação', group: 'documents' },
+  { key: 'doc_estimate_pdf', label: 'PDF da Estimativa', group: 'documents' },
+  { key: 'doc_numerario_pdf', label: 'PDF Numerário', group: 'documents' },
+  { key: 'doc_accountability_pdf', label: 'PDF Prestação de Contas', group: 'documents' },
+  { key: 'numerario_total', label: 'Valor Estimado (Numerário)', group: 'documents', hint: 'Impostos + AFRMM + desembaraço/armazenagem destino + frete/seguro não-prepaid — valor a depositar, sem o valor da mercadoria.' },
 ];
 
 export interface TrackingFieldVisibility {

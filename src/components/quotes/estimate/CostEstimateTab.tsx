@@ -457,6 +457,32 @@ export function CostEstimateTab({
         const b = (snap.estimate as any)[k];
         if (String(a ?? '') !== String(b ?? '')) estPatch[k] = a;
       });
+
+      // Numerário total (valor a depositar, sem o valor da mercadoria) —
+      // mesma fórmula do PDF de Numerário (EstimatePdfDialog.tsx), recalculada
+      // e persistida a cada save pra alimentar o campo exposto no portal de
+      // tracking (trackingFieldRegistry: numerario_total). Sempre recalcula
+      // (não entra no diff acima) porque pode mudar por edição de item/despesa
+      // mesmo sem nenhum campo do header da estimativa ter mudado.
+      if (usdBrl > 0) {
+        const taxaSiscomexBrlNow = Number((draftEstimate as any)?.taxa_siscomex_brl || 0);
+        const afrmmBrlNow = Number((draftEstimate as any)?.afrmm_brl || 0);
+        const taxaSiscomexUsdNow = taxaSiscomexBrlNow / usdBrl;
+        const afrmmUsdNow = afrmmBrlNow / usdBrl;
+        const armazenagemUsdNow = armazenagemDestinoBrl / usdBrl;
+        const impostosUsdNow = breakdown.ii_usd + breakdown.ipi_usd + breakdown.pis_usd + breakdown.cofins_usd + breakdown.icms_usd + taxaSiscomexUsdNow;
+        const sumExpensesNow = (pred: (cat: string) => boolean) =>
+          draftExpenses
+            .filter(e => pred((e as any).category || 'local') && !(e as any).is_prepaid)
+            .reduce((s, e) => s + (Number((e as any).valor_brl) || 0) / usdBrl, 0);
+        const desembaracoDestinoUsdNow = sumExpensesNow(cat => cat === 'destination' || cat === 'local') + armazenagemUsdNow;
+        const origemFreteSeguroUsdNow = sumExpensesNow(cat => cat === 'origin' || cat === 'freight');
+        const numerarioTotalUsdNow = impostosUsdNow + afrmmUsdNow + desembaracoDestinoUsdNow + origemFreteSeguroUsdNow;
+        estPatch.numerario_total_usd = Math.round((numerarioTotalUsdNow + Number.EPSILON) * 100) / 100;
+      } else {
+        estPatch.numerario_total_usd = 0;
+      }
+
       if (Object.keys(estPatch).length > 0) {
         ops.push((supabase as any).from('cost_estimates').update(estPatch).eq('id', draftEstimate.id));
       }

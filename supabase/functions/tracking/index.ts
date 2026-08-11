@@ -73,6 +73,20 @@ const CARGO_FIELD_COLUMN_MAP: Record<string, string[]> = {
 // sem eles (identidade da linha, categoria do status, ícone do modal).
 const FIELD_VISIBILITY_BASELINE_COLUMNS = ["id", "reference_number", "status", "company_id", "created_at"];
 
+// ===== Fase 3 — Documentos (4 PDFs) + Numerário =====
+// Em vez de expor campos crus de Taxas/Estimativa, essa fase só libera PDFs
+// já gerados no processo (marcados com custom_category ao serem salvos —
+// QuotePdfPreviewDialog.tsx, EstimatePdfDialog.tsx nos dois modos,
+// AccountabilityPdfDialog.tsx) e o total do Numerário (cost_estimates.
+// numerario_total_usd, persistido em CostEstimateTab.tsx ao salvar a aba
+// Estimativa). Espelha TRACKING_DOC_CATEGORY_MAP de trackingFieldRegistry.ts.
+const DOC_CATEGORY_MAP: Record<string, string> = {
+  doc_quote_pdf: "tracking:quote_pdf",
+  doc_estimate_pdf: "tracking:estimate_pdf",
+  doc_numerario_pdf: "tracking:numerario_pdf",
+  doc_accountability_pdf: "tracking:accountability_pdf",
+};
+
 /** Extrai o path do storage de uma URL pública/assinada antiga ou de um path cru. */
 function extractDocPath(fileUrlOrPath: string | null | undefined): string {
   if (!fileUrlOrPath) return "";
@@ -345,6 +359,43 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Numerário total (fase 3) — só busca se o campo estiver liberado
+      // pra esse cliente.
+      if (field_visibility_mode && fieldVisibilityOut) {
+        const allowedKeysForNumerario = new Set<string>([...(fieldVisibilityOut.collapsed || []), ...(fieldVisibilityOut.expanded || [])]);
+        if (allowedKeysForNumerario.has("numerario_total") && shipmentIds.length > 0) {
+          const { data: quotesForNumerario } = await adminClient
+            .from("quotes")
+            .select("id, shipment_id")
+            .in("shipment_id", shipmentIds);
+
+          const quoteIdToShipmentIdForNumerario = new Map<string, string>();
+          for (const q of quotesForNumerario || []) {
+            if (q.id && q.shipment_id) quoteIdToShipmentIdForNumerario.set(q.id, q.shipment_id);
+          }
+          const numerarioQuoteIds = [...quoteIdToShipmentIdForNumerario.keys()];
+
+          if (numerarioQuoteIds.length > 0) {
+            const { data: estimatesData } = await adminClient
+              .from("cost_estimates")
+              .select("quote_id, numerario_total_usd")
+              .in("quote_id", numerarioQuoteIds);
+
+            const numerarioByShipment = new Map<string, number>();
+            for (const est of (estimatesData || []) as any[]) {
+              const shipmentIdForEst = quoteIdToShipmentIdForNumerario.get(est.quote_id);
+              if (!shipmentIdForEst) continue;
+              numerarioByShipment.set(shipmentIdForEst, Number(est.numerario_total_usd) || 0);
+            }
+
+            enrichedShipments = enrichedShipments.map((s: any) => ({
+              ...s,
+              numerario_total_usd: numerarioByShipment.has(s.id) ? numerarioByShipment.get(s.id) : null,
+            }));
+          }
+        }
+      }
+
       return jsonResponse({ shipments: enrichedShipments, status_options: statusOptions, field_visibility: fieldVisibilityOut });
     }
 
@@ -419,6 +470,26 @@ Deno.serve(async (req) => {
           .in("quote_id", quote_ids)
           .eq("visible_tracking", true);
         docs = data || [];
+      }
+
+      // Filtra os 4 PDFs marcados com custom_category (fase 3) pelo que esse
+      // cliente pode ver — só quando field_visibility_mode + client_id vêm
+      // na requisição (só a TrackingV2 manda; a página atual não filtra).
+      // Qualquer outro documento (custom_category nulo ou diferente desses 4
+      // sentinelas) continua valendo só a regra de sempre: visible_tracking.
+      if (field_visibility_mode && client_id) {
+        const { data: clientRowForDocs } = await adminClient
+          .from("clients")
+          .select("tracking_field_visibility")
+          .eq("id", client_id)
+          .single();
+        const visibilityForDocs = (clientRowForDocs as any)?.tracking_field_visibility || { collapsed: [], expanded: [] };
+        const allowedKeysForDocs = new Set<string>([...(visibilityForDocs.collapsed || []), ...(visibilityForDocs.expanded || [])]);
+        const allowedDocCategories = new Set<string>(
+          Object.entries(DOC_CATEGORY_MAP).filter(([key]) => allowedKeysForDocs.has(key)).map(([, cat]) => cat),
+        );
+        const sentinelCategories = new Set<string>(Object.values(DOC_CATEGORY_MAP));
+        docs = docs.filter((d: any) => !sentinelCategories.has(d.custom_category) || allowedDocCategories.has(d.custom_category));
       }
 
       // Gera URLs assinadas (bucket privado). Cliente já validado por CNPJ+PIN.

@@ -20,7 +20,7 @@ import { buildCourierTrackingUrl, cn } from '@/lib/utils';
 import { STATUS_CATEGORY_COLORS, DEFAULT_STATUS_OPTIONS, resolveStatusCategory, type StatusOption } from '@/lib/shipmentStatusCategory';
 import { parseContainerNumbers, parseContainerDates } from '@/lib/containerNumbers';
 import { DOC_TYPE_LABELS } from '@/lib/documentCategory';
-import { normalizeTrackingFieldVisibility, type TrackingFieldVisibility } from '@/lib/trackingFieldRegistry';
+import { normalizeTrackingFieldVisibility, TRACKING_DOC_CATEGORY_MAP, TRACKING_FIELD_REGISTRY, type TrackingFieldVisibility } from '@/lib/trackingFieldRegistry';
 import type { SortState } from '@/hooks/useTableSort';
 
 // ============================================================================
@@ -72,6 +72,16 @@ const EVENT_CATEGORY_LABELS: Record<string, string> = {
   billing: 'Faturamento',
   update: 'Atualização',
 };
+
+// Rótulo amigável pros 4 PDFs marcados com custom_category (fase 3) — sem
+// isso, a lista de Documentos mostraria o valor cru da sentinela
+// ("tracking:quote_pdf") em vez de "PDF da Cotação".
+const DOC_CATEGORY_DISPLAY_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(TRACKING_DOC_CATEGORY_MAP).map(([key, category]) => [
+    category,
+    TRACKING_FIELD_REGISTRY.find((f) => f.key === key)?.label || category,
+  ]),
+);
 
 // Qualquer campo do registro (src/lib/trackingFieldRegistry.ts) pode virar
 // coluna da visão colapsada — os campos abaixo não têm ordenação (diferente
@@ -574,7 +584,7 @@ export default function TrackingV2() {
     queryKey: ['trackingv2-docs', shipmentIds],
     queryFn: async () => {
       if (shipmentIds.length === 0) return [];
-      const result = await callTracking({ action: 'documents', shipment_ids: shipmentIds });
+      const result = await callTracking({ action: 'documents', shipment_ids: shipmentIds, client_id: clientId, field_visibility_mode: true });
       return result.documents || [];
     },
     enabled: shipmentIds.length > 0 && authenticated,
@@ -595,7 +605,7 @@ export default function TrackingV2() {
     queryKey: ['trackingv2-quote-docs', quoteIds],
     queryFn: async () => {
       if (quoteIds.length === 0) return [];
-      const result = await callTracking({ action: 'documents', quote_ids: quoteIds });
+      const result = await callTracking({ action: 'documents', quote_ids: quoteIds, client_id: clientId, field_visibility_mode: true });
       return result.documents || [];
     },
     enabled: quoteIds.length > 0 && authenticated,
@@ -1247,6 +1257,18 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
               </div>
             )}
 
+            {/* Numerário estimado (fase 3) — impostos + AFRMM + desembaraço/
+                armazenagem destino + frete/seguro não-prepaid; sem o valor
+                da mercadoria. Calculado e salvo na aba Estimativa do processo. */}
+            {isExpandedVisible('numerario_total') && s.numerario_total_usd != null && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
+                <span className="text-xs font-medium text-muted-foreground">Valor Estimado (Numerário)</span>
+                <span className="text-sm font-semibold">
+                  USD {Number(s.numerario_total_usd).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
             {/* Linha do tempo removida nessa versão — as colunas Status/ETD/ETA/
                 Limite Devolução já cobrem o essencial sem o componente de marcos. */}
             {kpis.isCancelled && (
@@ -1423,7 +1445,7 @@ function DocsSection({ docs }: { docs: any[] }) {
             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
             <span className="truncate">{doc.name}</span>
             <span className="text-xs text-muted-foreground shrink-0">
-              {doc.custom_category || DOC_TYPE_LABELS[doc.document_type] || ''}
+              {DOC_CATEGORY_DISPLAY_LABELS[doc.custom_category] || doc.custom_category || DOC_TYPE_LABELS[doc.document_type] || ''}
             </span>
           </div>
           {doc.file_url && (
