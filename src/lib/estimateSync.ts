@@ -123,8 +123,16 @@ export function mapChargesToEstimate(
     if (isFrete) {
       const usd = toUSD(rawAmount, cur, fx);
       if (usd == null) { out.ignored.push({ description: desc, currency: cur, amount: rawAmount }); continue; }
-      out.frete_intl_usd += usd;
-      
+      // Frete Prepaid = já pago na origem pelo exportador e embutido no valor
+      // da mercadoria (VMCV) cobrado do importador (preço já é CFR/CIF na
+      // prática). Somar de novo em frete_intl_usd duplicaria o frete na base
+      // do VMLD/II. Só frete Collect (cobrado à parte, no destino) entra na
+      // base de cálculo dos impostos. O valor ainda aparece na lista de
+      // despesas (Numerário/PDF), só não compõe frete_intl_usd.
+      if (!isPrepaid) {
+        out.frete_intl_usd += usd;
+      }
+
       if (brl != null) {
         out.expenses.push({
           descricao: desc.toUpperCase(),
