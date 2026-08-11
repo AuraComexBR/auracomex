@@ -1872,17 +1872,20 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     <Info className={iconCls} /> {t('quotes.general')}
                   </TabsTrigger>
                 )}
+                {/* Em modo embarque, Logística vira a primeira aba — é a
+                    tela principal de acompanhamento do processo depois que
+                    ele já virou embarque. */}
+                {isShipmentMode && (
+                  <TabsTrigger value="logistics" className={triggerCls}>
+                    <MapPin className={iconCls} /> {t('shipments.logistics')}
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="cargo" className={triggerCls}>
                   <Package className={iconCls} /> {t('quotes.cargo')}
                 </TabsTrigger>
                 <TabsTrigger value="partners" className={triggerCls}>
                   <Users className={iconCls} /> {t('quotes.partners_tab')}
                 </TabsTrigger>
-                {isShipmentMode && (
-                  <TabsTrigger value="logistics" className={triggerCls}>
-                    <MapPin className={iconCls} /> {t('shipments.logistics')}
-                  </TabsTrigger>
-                )}
                 <TabsTrigger value="charges" className={triggerCls}>
                   <ShoppingCart className={iconCls} /> Taxas
                 </TabsTrigger>
