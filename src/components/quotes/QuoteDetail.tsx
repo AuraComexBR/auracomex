@@ -200,9 +200,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
 
   // Aba ativa controlada
   const [activeTab, setActiveTab] = useState<string>(isShipmentMode ? 'logistics' : 'general');
-  const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const [backConfirmOpen, setBackConfirmOpen] = useState(false);
   const [pendingClientChange, setPendingClientChange] = useState<string | null>(null);
   const [clientChangeWarnings, setClientChangeWarnings] = useState<string[]>([]);
@@ -222,16 +220,17 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     onBack();
   };
 
-  const handleTabChange = (next: string) => {
+  const handleTabChange = async (next: string) => {
     // Geral e Carga (e agora também Estimativa) salvam sozinhas ao sair do
     // campo (onBlur) — trocar de aba já blura o campo focado e dispara o
-    // save antes da troca. Esse confirm é só uma rede de segurança extra
-    // pro caso raro de hasChanges ainda estar true nesse instante.
+    // save antes da troca, na maioria dos casos. Mas ações que não passam
+    // por um input (ex: excluir um item da Carga clicando na lixeira) não
+    // disparam blur nenhum — antes disso caía num modal pedindo pra
+    // "descartar" a exclusão, o que não faz sentido pra uma ação que já foi
+    // deliberada. Em vez de perguntar, salva direto e troca de aba.
     const autoSavingTab = activeTab === 'cargo' || activeTab === 'general';
-    if (autoSavingTab && hasChanges && next !== activeTab) {
-      setPendingTab(next);
-      setShowUnsavedConfirm(true);
-      return;
+    if (autoSavingTab && hasChanges && next !== activeTab && canEditCargoForAutoSave) {
+      await handleSave();
     }
 
     setActiveTab(next);
@@ -3022,30 +3021,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         quoteId={quoteId}
         shipmentId={isShipmentMode ? shipmentId : null}
       />
-
-      <AlertDialog open={showUnsavedConfirm} onOpenChange={setShowUnsavedConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Alterações não salvas</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você tem alterações não salvas nesta aba. Se você mudar de aba agora, essas alterações serão perdidas.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              setPendingTab(null);
-              setShowUnsavedConfirm(false);
-            }}>Continuar editando</AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
-              if (pendingTab) {
-                setActiveTab(pendingTab);
-                setPendingTab(null);
-                setShowUnsavedConfirm(false);
-              }
-            }}>Descartar e mudar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={!!pendingClientChange} onOpenChange={(o) => { if (!o) { setPendingClientChange(null); setClientChangeWarnings([]); } }}>
         <AlertDialogContent>
