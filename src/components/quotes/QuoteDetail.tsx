@@ -2372,70 +2372,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         {/* Charges Tab */}
         <TabsContent value="charges">
           <div className="space-y-4">
-            <div className="flex justify-between items-center flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                {canEditCharges && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => {
-                      // Sugere o cliente da cotação/embarque como parceiro padrão apenas na Venda
-                      const def = form.client_id || '';
-                      setSellPartnerId((sp) => sp || def);
-                      setAddChargeOpen(true);
-                    }}
-                    className="gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Adicionar Taxa
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 text-muted-foreground"
-                  title="Como funciona a aba Taxas"
-                  onClick={() => { setChargesOnboardingStep(0); setShowChargesOnboarding(true); }}
-                >
-                  <HelpCircle className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setPdfPreviewOpen(true)}
-                  className="gap-2"
-                >
-                  <FileText className="w-4 h-4" />
-                  Pré-visualizar Proposta (PDF)
-                </Button>
-                {isShipmentMode && isFullAccess && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
-                    onClick={() => setShowRevertConfirm(true)}
-                  >
-                    <Undo2 className="w-4 h-4" />
-                    {t('shipments.revert_to_quote')}
-                  </Button>
-                )}
-              </div>
-            </div>
-            {/* Armazenagem no destino + Seguro Internacional — mesma linha,
-                dividida em duas colunas. Seguro é calculado automaticamente
-                pela fórmula padrão; só entra como taxa real do processo
-                quando o checkbox está marcado. */}
+            {/* Armazenagem no destino, Seguro Internacional e os botões de
+                ação da aba — tudo na mesma linha (quebra em telas menores). */}
             {(() => {
               const showStorageFee = form.transport_mode === 'ocean_lcl' || form.transport_mode === 'ocean_fcl';
               return (
-                <div className={cn('grid grid-cols-1 gap-4', showStorageFee && 'md:grid-cols-2')}>
+                <div className="flex flex-wrap items-start gap-3">
                   {showStorageFee && (
-                    <Card className="glass">
+                    <Card className="glass w-full sm:w-64 shrink-0">
                       <CardContent className="pt-6" onBlur={() => handleAutoSaveBlur('charges')}>
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-1">
@@ -2463,15 +2407,67 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     </Card>
                   )}
                   {profile?.company_id && (
-                    <AutoInsuranceCard
-                      quoteId={quoteId}
-                      companyId={profile.company_id}
-                      quote={quote as any}
-                      quotePartners={quotePartners}
-                      cargoItems={items}
-                      readOnly={!canEditCharges}
-                    />
+                    <div className="flex-1 min-w-[260px]">
+                      <AutoInsuranceCard
+                        quoteId={quoteId}
+                        companyId={profile.company_id}
+                        quote={quote as any}
+                        quotePartners={quotePartners}
+                        cargoItems={items}
+                        readOnly={!canEditCharges}
+                      />
+                    </div>
                   )}
+                  <div className="flex items-center gap-2 flex-wrap ml-auto">
+                    {canEditCharges && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          // Sugere o cliente da cotação/embarque como parceiro padrão apenas na Venda
+                          const def = form.client_id || '';
+                          setSellPartnerId((sp) => sp || def);
+                          setAddChargeOpen(true);
+                        }}
+                        className="gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Adicionar Taxa
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground"
+                      title="Como funciona a aba Taxas"
+                      onClick={() => { setChargesOnboardingStep(0); setShowChargesOnboarding(true); }}
+                    >
+                      <HelpCircle className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPdfPreviewOpen(true)}
+                      className="gap-2"
+                    >
+                      <FileText className="w-4 h-4" />
+                      Pré-visualizar Proposta (PDF)
+                    </Button>
+                    {isShipmentMode && isFullAccess && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+                        onClick={() => setShowRevertConfirm(true)}
+                      >
+                        <Undo2 className="w-4 h-4" />
+                        {t('shipments.revert_to_quote')}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })()}
