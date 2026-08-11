@@ -17,7 +17,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PortSelect } from '@/components/shared/PortSelect';
 import { CalendarIcon, Settings, Plus, Trash2, GripVertical, ExternalLink, ArrowDownAZ, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { format, addDays } from 'date-fns';
+import { format, addDays, differenceInCalendarDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { getCourierTrackingUrl } from '@/lib/courierTracking';
 import { STATUS_CATEGORY_OPTIONS, DEFAULT_STATUS_OPTIONS, type StatusCategory } from '@/lib/shipmentStatusCategory';
@@ -390,6 +390,17 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedQuote]);
+
+  // Trânsito (dias) calculado sozinho como ETA - ETD assim que as duas datas
+  // estiverem preenchidas — só entra quando o campo ainda está vazio, pra não
+  // sobrescrever um valor que o usuário já digitou manualmente (ex: uma
+  // estimativa antes de ETD/ETA reais existirem).
+  useEffect(() => {
+    if (form.transit_time || !form.etd || !form.eta) return;
+    const days = differenceInCalendarDays(new Date(form.eta), new Date(form.etd));
+    if (days >= 0) updateField('transit_time', String(days));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.etd, form.eta]);
 
   // País não tem mais campo próprio na tela — já fica implícito no porto
   // escolhido. Preenche origin_country/destination_country sozinho em

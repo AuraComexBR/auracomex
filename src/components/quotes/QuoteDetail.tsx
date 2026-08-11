@@ -2896,6 +2896,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               companyId={profile?.company_id}
               charges={charges as any}
               getBillingMultiplier={getChargeMultiplier}
+              shipmentEtd={(shipment as any)?.etd}
+              shipmentEta={(shipment as any)?.eta}
             />
           </TabsContent>
         )}

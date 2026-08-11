@@ -26,6 +26,7 @@ import { chargesHaveInsurance } from '@/lib/estimateSync';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { Info } from 'lucide-react';
+import { differenceInCalendarDays } from 'date-fns';
 
 interface Props {
   quoteId: string;
@@ -35,6 +36,10 @@ interface Props {
   companyId?: string;
   charges?: ChargeLike[];
   getBillingMultiplier?: (unit: string) => number;
+  /** ETD/ETA do embarque vinculado (só existe em modo shipment) — usados só
+   *  pra sugerir o Trânsito automaticamente como ETA - ETD. */
+  shipmentEtd?: string | null;
+  shipmentEta?: string | null;
 }
 
 function fmtUSD(n: number) {
@@ -55,6 +60,7 @@ type DraftExpense = EstimateExpenseRow & { _new?: boolean };
 
 export function CostEstimateTab({
   quoteId, quote, quoteItems, quotePartners = [], companyId, charges, getBillingMultiplier,
+  shipmentEtd, shipmentEta,
 }: Props) {
   const { profile } = useAuth();
   const { data, isLoading, createEstimate, deleteEstimate, invalidate } = useCostEstimate(quoteId, companyId);
@@ -303,7 +309,17 @@ export function CostEstimateTab({
         if (suggested) patch.carrier = suggested;
       }
 
-      if (!draftEstimate.transito && quote.transit_time) patch.transito = String(quote.transit_time);
+      // Trânsito: prioriza ETD/ETA reais do embarque (ETA - ETD, em dias) sobre
+      // o Trânsito estimado da cotação (quote.transit_time), que costuma ser
+      // só uma previsão de antes do booking.
+      if (!draftEstimate.transito) {
+        if (shipmentEtd && shipmentEta) {
+          const days = differenceInCalendarDays(new Date(shipmentEta), new Date(shipmentEtd));
+          if (days >= 0) patch.transito = `${days} DIAS`;
+        } else if (quote.transit_time) {
+          patch.transito = String(quote.transit_time);
+        }
+      }
       if (!draftEstimate.incoterm && quote.incoterm) patch.incoterm = quote.incoterm;
       if (!draftEstimate.rota_origem && quote.origin) patch.rota_origem = quote.origin;
       if (!draftEstimate.rota_destino && quote.destination) patch.rota_destino = quote.destination;
@@ -314,7 +330,7 @@ export function CostEstimateTab({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMode, !!draftEstimate, serverEstimate?.id, quote, quotePartners, originCountryName]);
+  }, [editMode, !!draftEstimate, serverEstimate?.id, quote, quotePartners, originCountryName, shipmentEtd, shipmentEta]);
 
   // ===== beforeunload =====
   useEffect(() => {
@@ -653,7 +669,9 @@ export function CostEstimateTab({
         usd_brl: usdBrl || 0,
         eur_brl: eurBrl || 0,
         carrier: autoCarrier,
-        transito: quote?.transit_time ? String(quote.transit_time) : undefined,
+        transito: (shipmentEtd && shipmentEta && differenceInCalendarDays(new Date(shipmentEta), new Date(shipmentEtd)) >= 0)
+          ? `${differenceInCalendarDays(new Date(shipmentEta), new Date(shipmentEtd))} DIAS`
+          : (quote?.transit_time ? String(quote.transit_time) : undefined),
       });
       if (est && companyId && charges && charges.length > 0 && getBillingMultiplier && usdBrl) {
         try {
