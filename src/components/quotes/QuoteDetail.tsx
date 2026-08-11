@@ -2380,7 +2380,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 <div className="flex flex-wrap items-start gap-3">
                   {showStorageFee && (
                     <Card className="glass w-full sm:w-auto shrink-0">
-                      <CardContent className="pt-6" onBlur={() => handleAutoSaveBlur('charges')}>
+                      <CardContent className="py-3" onBlur={() => handleAutoSaveBlur('charges')}>
                         <div className="flex items-center gap-2">
                           <div className="flex items-center gap-1 shrink-0">
                             <Label className="text-xs whitespace-nowrap">Armazenagem no destino (R$)</Label>
@@ -2399,7 +2399,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                             value={form.storage_fee_amount}
                             onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value, storage_fee_currency: 'BRL' })}
                             placeholder="0,00"
-                            className="w-32 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-32 h-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             disabled={!canEditGeneral}
                           />
                         </div>
