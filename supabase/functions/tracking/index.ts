@@ -7,6 +7,54 @@ const corsHeaders = {
 
 const DOCS_BUCKET = "shipment-documents";
 
+// ===== Visibilidade de campos por cliente (só usada pela TrackingV2) =====
+// A página /tracking (atual, em produção) chama essa mesma função sem o
+// parâmetro `field_visibility_mode` — continua recebendo todos os campos,
+// sem filtro nenhum, exatamente como sempre funcionou. Só a /tracking-v2
+// (parceira, ainda em avaliação) manda `field_visibility_mode: true` e passa
+// a receber apenas os campos liberados em clients.tracking_field_visibility
+// pra aquele cliente (default: nenhum, até a empresa configurar em
+// Cadastros > Clientes > Tracking).
+//
+// Espelha as chaves de src/lib/trackingFieldRegistry.ts — se mudar uma
+// chave lá, mudar aqui também (arquivos não compartilhados: esse roda em
+// runtime Deno separado, sem bundler pra importar de src/).
+const FIELD_COLUMN_MAP: Record<string, string[]> = {
+  client_reference: ["client_reference"],
+  invoice_number: ["invoice_number"],
+  free_time: ["free_time"],
+  transit_time_calc: ["etd", "eta"],
+  route: ["origin_city", "origin_country", "origin_port", "destination_city", "destination_country", "destination_port", "transshipment"],
+  vessel_flight: ["vessel_flight"],
+  booking_number: ["booking_number"],
+  bl: ["master_bl", "house_bl"],
+  ce_mercante: ["ce_mercante_manifest", "ce_mercante_master", "ce_mercante_house"],
+  etd: ["etd", "atd"],
+  eta: ["eta", "ata"],
+  incoterm: ["incoterm"],
+  transport_mode: ["transport_mode"],
+  courier: ["courier_provider", "courier_tracking_number"],
+  customs_channel: ["customs_channel"],
+  duimp_number: ["duimp_number"],
+  physical_location: ["physical_location"],
+  customs_registration_date: ["customs_registration_date"],
+  cargo_delivered_at: ["cargo_delivered_at"],
+  invoice_sent_at: ["invoice_sent_at"],
+  container_numbers: ["container_number", "container_quantity"],
+  container_seals: ["container_seals"],
+  container_terminal_entry: ["container_terminal_entry_dates"],
+  container_return: ["container_return_dates"],
+  demurrage_deadline_calc: ["container_terminal_entry_dates", "container_demurrage_deadlines", "container_return_dates", "free_time", "ata", "demurrage_deadline"],
+  storage_deadline_calc: ["container_terminal_entry_dates", "storage_deadline"],
+  next_update: ["next_update"],
+  shipper_name: ["shipper_id"],
+  carrier: ["carrier"],
+};
+
+// Sempre incluídos quando field_visibility_mode está ativo — o app quebra
+// sem eles (identidade da linha, categoria do status, ícone do modal).
+const FIELD_VISIBILITY_BASELINE_COLUMNS = ["id", "reference_number", "status", "company_id", "created_at"];
+
 /** Extrai o path do storage de uma URL pública/assinada antiga ou de um path cru. */
 function extractDocPath(fileUrlOrPath: string | null | undefined): string {
   if (!fileUrlOrPath) return "";
@@ -33,7 +81,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     const body = await req.json().catch(() => ({}));
-    const { action, tax_id, pin, client_id, filter, shipment_ids, quote_ids } = body as any;
+    const { action, tax_id, pin, client_id, filter, shipment_ids, quote_ids, field_visibility_mode } = body as any;
 
     // Step 1: Lookup client by tax_id
     if (action === "lookup") {
@@ -84,7 +132,7 @@ Deno.serve(async (req) => {
       // Return company info (minimal fields only)
       const { data: clientFull } = await adminClient
         .from("clients")
-        .select("company_id")
+        .select("company_id, tracking_field_visibility")
         .eq("id", client_id)
         .single();
 
@@ -94,7 +142,12 @@ Deno.serve(async (req) => {
         .eq("id", clientFull!.company_id)
         .single();
 
-      return jsonResponse({ authenticated: true, company });
+      // field_visibility só é relevante pra TrackingV2 (que sabe ler e usar
+      // isso) — a página atual ignora esse campo extra na resposta, sem
+      // efeito nela.
+      const fieldVisibility = (clientFull as any)?.tracking_field_visibility || { collapsed: [], expanded: [] };
+
+      return jsonResponse({ authenticated: true, company, field_visibility: fieldVisibility });
     }
 
     // Step 3: Get tracking data (requires valid client_id)
@@ -182,12 +235,43 @@ Deno.serve(async (req) => {
         for (const sh of shippers || []) shipperMap.set(sh.id, sh.name);
       }
 
-      const enrichedShipments = shipments.map((s: any) => ({
+      let enrichedShipments = shipments.map((s: any) => ({
         ...s,
         client_reference: s.client_reference || refMap.get(s.id) || null,
         transshipment_info: s.transshipment ? (portMap.get(s.transshipment) || { code: s.transshipment, name: s.transshipment, city: null, country_code: "" }) : null,
         shipper_name: s.shipper_id ? (shipperMap.get(s.shipper_id) || null) : null,
       }));
+
+      // Filtra os campos pelo que esse cliente pode ver — só quando o
+      // chamador manda field_visibility_mode (só a TrackingV2 manda; a
+      // página atual não manda e continua recebendo tudo, sem filtro).
+      if (field_visibility_mode) {
+        const { data: clientRow } = await adminClient
+          .from("clients")
+          .select("tracking_field_visibility")
+          .eq("id", client_id)
+          .single();
+        const visibility = (clientRow as any)?.tracking_field_visibility || { collapsed: [], expanded: [] };
+        const allowedKeys = new Set<string>([...(visibility.collapsed || []), ...(visibility.expanded || [])]);
+        const allowedColumns = new Set<string>(FIELD_VISIBILITY_BASELINE_COLUMNS);
+        for (const key of allowedKeys) {
+          for (const col of FIELD_COLUMN_MAP[key] || []) allowedColumns.add(col);
+        }
+        // Campos derivados (não são coluna crua) — inclui só se a coluna
+        // "fonte" correspondente também estiver liberada.
+        const includeTransshipmentInfo = allowedColumns.has("transshipment");
+        const includeShipperName = allowedKeys.has("shipper_name");
+        const includeClientReference = allowedColumns.has("client_reference");
+
+        enrichedShipments = enrichedShipments.map((s: any) => {
+          const picked: any = {};
+          for (const col of allowedColumns) picked[col] = s[col];
+          if (includeTransshipmentInfo) picked.transshipment_info = s.transshipment_info;
+          if (includeShipperName) picked.shipper_name = s.shipper_name;
+          if (includeClientReference) picked.client_reference = s.client_reference;
+          return picked;
+        });
+      }
 
       return jsonResponse({ shipments: enrichedShipments, status_options: statusOptions });
     }

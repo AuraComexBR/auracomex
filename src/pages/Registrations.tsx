@@ -3,7 +3,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Loader2, Pencil, Copy, Trash2 } from 'lucide-react';
+import { Plus, Search, Loader2, Pencil, Copy, Trash2, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { ChargeCatalogTab } from '@/components/registrations/ChargeCatalogTab';
 import { PortsTab } from '@/components/registrations/PortsTab';
 import { ClientDocumentsSection } from '@/components/registrations/ClientDocumentsSection';
+import { TrackingVisibilityDialog } from '@/components/registrations/TrackingVisibilityDialog';
 import { formatCpf, isValidCpf, onlyDigits, formatTaxId } from '@/lib/utils';
 
 const CLIENT_TYPES = ['client', 'carrier', 'agent', 'shipper'] as const;
@@ -62,6 +63,7 @@ export default function Registrations() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [trackingClient, setTrackingClient] = useState<any>(null);
   const [lookingUp, setLookingUp] = useState(false);
   const [isAddingNewType, setIsAddingNewType] = useState(false);
   const [form, setForm] = useState({
@@ -509,6 +511,18 @@ export default function Registrations() {
                           <TableCell className="py-2 px-3">{c.phone || '-'}</TableCell>
                           <TableCell className="py-1 px-2 text-right">
                             <div className="flex justify-end gap-1">
+                              {activeTab === 'client' && c.type === 'client' && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 gap-1 text-xs px-2"
+                                  onClick={() => setTrackingClient(c)}
+                                  title="Configurar o que esse cliente vê no Portal de Tracking"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  Tracking
+                                </Button>
+                              )}
                               <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => openEdit(c)} title="Editar">
                                 <Pencil className="h-3.5 w-3.5" />
                                 Editar
@@ -930,6 +944,8 @@ export default function Registrations() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <TrackingVisibilityDialog client={trackingClient} onClose={() => setTrackingClient(null)} />
     </div>
   );
 }

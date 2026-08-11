@@ -20,6 +20,7 @@ import { buildCourierTrackingUrl, cn } from '@/lib/utils';
 import { STATUS_CATEGORY_COLORS, DEFAULT_STATUS_OPTIONS, resolveStatusCategory, type StatusOption } from '@/lib/shipmentStatusCategory';
 import { parseContainerNumbers, parseContainerDates } from '@/lib/containerNumbers';
 import { DOC_TYPE_LABELS } from '@/lib/documentCategory';
+import { normalizeTrackingFieldVisibility, type TrackingFieldVisibility } from '@/lib/trackingFieldRegistry';
 
 // ============================================================================
 // TrackingV2 — layout reformulado do portal de rastreamento do cliente.
@@ -101,6 +102,7 @@ export default function TrackingV2() {
   const [clientId, setClientId] = useState<string | null>(null);
   const [clientName, setClientName] = useState<string>('');
   const [company, setCompany] = useState<any>(null);
+  const [fieldVisibility, setFieldVisibility] = useState<TrackingFieldVisibility>({ collapsed: [], expanded: [] });
   const [logoError, setLogoError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { data: platformSettings } = usePlatformSettings();
@@ -114,6 +116,7 @@ export default function TrackingV2() {
         if (saved?.authenticated) {
           setAuthenticated(true);
           setCompany(saved.company || null);
+          setFieldVisibility(normalizeTrackingFieldVisibility(saved.field_visibility));
         }
       }
     } catch {
@@ -138,6 +141,7 @@ export default function TrackingV2() {
     }
     setAuthenticated(false);
     setCompany(null);
+    setFieldVisibility({ collapsed: [], expanded: [] });
     setPin('');
   }
 
@@ -156,7 +160,7 @@ export default function TrackingV2() {
   const { data: shipmentsResult, dataUpdatedAt: shipmentsUpdatedAt } = useQuery({
     queryKey: ['trackingv2-shipments', clientId, filter],
     queryFn: async () => {
-      const result = await callTracking({ action: 'shipments', client_id: clientId, filter });
+      const result = await callTracking({ action: 'shipments', client_id: clientId, filter, field_visibility_mode: true });
       return { shipments: result.shipments || [], statusOptions: (result.status_options || []) as StatusOption[] };
     },
     enabled: !!clientId && authenticated && filter !== 'quotes',
@@ -206,6 +210,13 @@ export default function TrackingV2() {
   });
 
   const lastUpdatedAt = Math.max(shipmentsUpdatedAt || 0, quotesUpdatedAt || 0);
+
+  // Ref. e Status são baseline (sempre aparecem); o resto das colunas da
+  // visão colapsada é opt-in, configurado por cliente em Cadastros > Clientes
+  // > Tracking (ver src/lib/trackingFieldRegistry.ts).
+  const isCollapsedVisible = (key: string) => fieldVisibility.collapsed.includes(key);
+  const OPTIONAL_COLLAPSED_KEYS = ['client_reference', 'etd', 'eta', 'demurrage_deadline_calc', 'duimp_number', 'physical_location'];
+  const visibleCollapsedColumnCount = 2 + OPTIONAL_COLLAPSED_KEYS.filter(isCollapsedVisible).length;
 
   const shipmentIds = shipments.map((s: any) => s.id);
   const { data: trackingDocs = [] } = useQuery({
@@ -270,12 +281,14 @@ export default function TrackingV2() {
     try {
       const result = await callTracking({ action: 'auth', client_id: clientId, pin });
       if (result.authenticated) {
+        const visibility = normalizeTrackingFieldVisibility(result.field_visibility);
         setAuthenticated(true);
         setCompany(result.company);
+        setFieldVisibility(visibility);
         setPinError(false);
         if (clientCnpj) {
           try {
-            sessionStorage.setItem(trackingSessionKey(clientCnpj), JSON.stringify({ authenticated: true, company: result.company }));
+            sessionStorage.setItem(trackingSessionKey(clientCnpj), JSON.stringify({ authenticated: true, company: result.company, field_visibility: visibility }));
           } catch {
             // ignore
           }
@@ -397,26 +410,41 @@ export default function TrackingV2() {
                   <Table className="text-xs">
                     <TableHeader>
                       <TableRow className="whitespace-nowrap">
+                        {/* Ref. e Status são sempre exibidos — identidade da
+                            linha e categoria do status são estruturais, não
+                            dá pra esconder do jeito que o resto dos campos dá. */}
                         <SortableHeader
                           label="Ref." sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
                           right={<ColumnSearch value={searchRef} onChange={setSearchRef} open={searchRefOpen} onOpenChange={setSearchRefOpen} />}
                         />
-                        <SortableHeader
-                          label="Ref. Cliente" sortKey="client_reference" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
-                          right={<ColumnSearch value={searchClientRef} onChange={setSearchClientRef} open={searchClientRefOpen} onOpenChange={setSearchClientRefOpen} />}
-                        />
+                        {isCollapsedVisible('client_reference') && (
+                          <SortableHeader
+                            label="Ref. Cliente" sortKey="client_reference" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
+                            right={<ColumnSearch value={searchClientRef} onChange={setSearchClientRef} open={searchClientRefOpen} onOpenChange={setSearchClientRefOpen} />}
+                          />
+                        )}
                         <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        <SortableHeader label="ETD" sortKey="etd" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        <SortableHeader label="ETA" sortKey="eta" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        <SortableHeader label="Limite Devolução" sortKey="demurrage_deadline" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        <SortableHeader label="DUIMP" sortKey="duimp_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        <SortableHeader label="Físico" sortKey="physical_location" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        {isCollapsedVisible('etd') && (
+                          <SortableHeader label="ETD" sortKey="etd" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        )}
+                        {isCollapsedVisible('eta') && (
+                          <SortableHeader label="ETA" sortKey="eta" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        )}
+                        {isCollapsedVisible('demurrage_deadline_calc') && (
+                          <SortableHeader label="Limite Devolução" sortKey="demurrage_deadline" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        )}
+                        {isCollapsedVisible('duimp_number') && (
+                          <SortableHeader label="DUIMP" sortKey="duimp_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        )}
+                        {isCollapsedVisible('physical_location') && (
+                          <SortableHeader label="Físico" sortKey="physical_location" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
+                        )}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {sortedShipments.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={visibleCollapsedColumnCount} className="text-center py-8 text-muted-foreground">
                             Nenhum resultado encontrado para a busca.
                           </TableCell>
                         </TableRow>
@@ -429,6 +457,8 @@ export default function TrackingV2() {
                             events={trackingEvents.filter((e: any) => e.shipment_id === s.id)}
                             statusOptions={statusOptions}
                             defaultExpanded={false}
+                            fieldVisibility={fieldVisibility}
+                            colSpan={visibleCollapsedColumnCount}
                           />
                         ))
                       )}
@@ -547,8 +577,13 @@ function earliestStorageDeadline(s: any): string | null {
   return s.storage_deadline || null;
 }
 
-function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
+function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded, fieldVisibility, colSpan }: {
+  shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean;
+  fieldVisibility: TrackingFieldVisibility; colSpan: number;
+}) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const isCollapsedVisible = (key: string) => fieldVisibility.collapsed.includes(key);
+  const isExpandedVisible = (key: string) => fieldVisibility.expanded.includes(key);
   const { kpis } = buildTimeline(s, statusOptions);
   const category = resolveStatusCategory(s.status, statusOptions);
   const statusMeta = statusOptions.find((o) => o.value === s.status);
@@ -577,87 +612,111 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
             {s.reference_number}
           </span>
         </TableCell>
-        <TableCell className="py-1 px-2">
-          {s.client_reference ? <Badge variant="outline" className="font-mono font-normal text-[10px] px-1.5 py-0">{s.client_reference}</Badge> : '—'}
-        </TableCell>
+        {isCollapsedVisible('client_reference') && (
+          <TableCell className="py-1 px-2">
+            {s.client_reference ? <Badge variant="outline" className="font-mono font-normal text-[10px] px-1.5 py-0">{s.client_reference}</Badge> : '—'}
+          </TableCell>
+        )}
         <TableCell className="py-1 px-2"><Badge className={cn(statusBadgeClass, 'text-[10px] px-1.5 py-0 whitespace-nowrap')}>{statusLabel}</Badge></TableCell>
-        <TableCell className={cn('py-1 px-2', s.atd && 'font-semibold text-emerald-600')} title={s.atd ? 'Data real' : 'Estimativa'}>
-          {shortDate(s.atd || s.etd)}
-        </TableCell>
-        <TableCell className={cn('py-1 px-2', s.ata && 'font-semibold text-emerald-600')} title={s.ata ? 'Data real' : 'Estimativa'}>
-          {shortDate(s.ata || s.eta)}
-        </TableCell>
-        <TableCell className={cn('py-1 px-2', demurrageUrgent && 'text-red-600 font-semibold')}>
-          {shortDate(demurrageDeadline)}
-        </TableCell>
-        <TableCell className={cn('py-1 px-2 font-mono max-w-[130px] truncate', channelMeta?.textClass || '')} title={channelMeta?.label}>
-          {s.duimp_number || '—'}
-        </TableCell>
-        <TableCell className="py-1 px-2 max-w-[140px] truncate" title={s.physical_location || ''}>
-          {s.physical_location || '—'}
-        </TableCell>
+        {isCollapsedVisible('etd') && (
+          <TableCell className={cn('py-1 px-2', s.atd && 'font-semibold text-emerald-600')} title={s.atd ? 'Data real' : 'Estimativa'}>
+            {shortDate(s.atd || s.etd)}
+          </TableCell>
+        )}
+        {isCollapsedVisible('eta') && (
+          <TableCell className={cn('py-1 px-2', s.ata && 'font-semibold text-emerald-600')} title={s.ata ? 'Data real' : 'Estimativa'}>
+            {shortDate(s.ata || s.eta)}
+          </TableCell>
+        )}
+        {isCollapsedVisible('demurrage_deadline_calc') && (
+          <TableCell className={cn('py-1 px-2', demurrageUrgent && 'text-red-600 font-semibold')}>
+            {shortDate(demurrageDeadline)}
+          </TableCell>
+        )}
+        {isCollapsedVisible('duimp_number') && (
+          <TableCell className={cn('py-1 px-2 font-mono max-w-[130px] truncate', channelMeta?.textClass || '')} title={channelMeta?.label}>
+            {s.duimp_number || '—'}
+          </TableCell>
+        )}
+        {isCollapsedVisible('physical_location') && (
+          <TableCell className="py-1 px-2 max-w-[140px] truncate" title={s.physical_location || ''}>
+            {s.physical_location || '—'}
+          </TableCell>
+        )}
       </TableRow>
 
       {expanded && (
         <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={8} className="p-0">
+          <TableCell colSpan={colSpan} className="p-0">
             <div className="space-y-4 p-5 bg-muted/20 border-t border-border">
 
             {/* Status - Modal - Origem - Transbordo(se houver) - Destino - Incoterm */}
             <div className="flex items-center gap-2 text-sm flex-wrap">
               <Badge className={statusBadgeClass}>{statusLabel}</Badge>
               <ModeIcon mode={s.transport_mode} showLabel />
-              <span className="flex items-center gap-1.5 font-medium">
-                <FlagIcon country={s.origin_country} />
-                {s.origin_city || countryFallback(s.origin_country) || '—'}
-              </span>
-              {s.transshipment_info && (
+              {isExpandedVisible('route') && (
                 <>
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <FlagIcon country={s.origin_country} />
+                    {s.origin_city || countryFallback(s.origin_country) || '—'}
+                  </span>
+                  {s.transshipment_info && (
+                    <>
+                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        Transbordo: {s.transshipment_info.name || s.transshipment_info.code}
+                      </span>
+                    </>
+                  )}
                   <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    Transbordo: {s.transshipment_info.name || s.transshipment_info.code}
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <FlagIcon country={s.destination_country} />
+                    {s.destination_city || countryFallback(s.destination_country) || '—'}
                   </span>
                 </>
               )}
-              <ArrowRight className="w-4 h-4 text-muted-foreground" />
-              <span className="flex items-center gap-1.5 font-medium">
-                <FlagIcon country={s.destination_country} />
-                {s.destination_city || countryFallback(s.destination_country) || '—'}
-              </span>
-              {s.incoterm && <Badge variant="outline">{s.incoterm}</Badge>}
+              {isExpandedVisible('incoterm') && s.incoterm && <Badge variant="outline">{s.incoterm}</Badge>}
               {channelMeta && <Badge className={channelMeta.badgeClass}>{channelMeta.label}</Badge>}
             </div>
 
             {/* Linha 2 — Shipper / Armador / Navio / Origem e Destino / Transit Time / Free Time */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 p-3 rounded-lg bg-background">
-              <DetailItem label="Shipper" value={s.shipper_name || '—'} />
-              <DetailItem label="Armador" value={s.carrier || '—'} />
-              <DetailItem label="Navio" value={s.vessel_flight || '—'} />
-              <DetailItem
-                label="Origem e Destino"
-                value={`${s.origin_city || countryFallback(s.origin_country) || '—'} → ${s.destination_city || countryFallback(s.destination_country) || '—'}`}
-              />
-              <DetailItem label="Transit Time" value={kpis.transitTime !== null ? `${kpis.transitTime} dias` : '—'} />
-              <DetailItem label="Free Time" value={s.free_time != null ? `${s.free_time} dias` : '—'} />
-            </div>
+            {(isExpandedVisible('shipper_name') || isExpandedVisible('carrier') || isExpandedVisible('vessel_flight') || isExpandedVisible('route') || isExpandedVisible('transit_time_calc') || isExpandedVisible('free_time')) && (
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3 p-3 rounded-lg bg-background">
+                {isExpandedVisible('shipper_name') && <DetailItem label="Shipper" value={s.shipper_name || '—'} />}
+                {isExpandedVisible('carrier') && <DetailItem label="Armador" value={s.carrier || '—'} />}
+                {isExpandedVisible('vessel_flight') && <DetailItem label="Navio" value={s.vessel_flight || '—'} />}
+                {isExpandedVisible('route') && (
+                  <DetailItem
+                    label="Origem e Destino"
+                    value={`${s.origin_city || countryFallback(s.origin_country) || '—'} → ${s.destination_city || countryFallback(s.destination_country) || '—'}`}
+                  />
+                )}
+                {isExpandedVisible('transit_time_calc') && <DetailItem label="Transit Time" value={kpis.transitTime !== null ? `${kpis.transitTime} dias` : '—'} />}
+                {isExpandedVisible('free_time') && <DetailItem label="Free Time" value={s.free_time != null ? `${s.free_time} dias` : '—'} />}
+              </div>
+            )}
 
             {/* Linha 3 — Invoice / BL / Containers (dinâmico, 1 card por container) */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 rounded-lg bg-background">
-              <DetailItem label="Invoice" value={s.invoice_number || '—'} />
-              <DetailItem label="BL" value={s.master_bl || s.house_bl || '—'} />
-              {containers.length > 0 ? (
-                containers.map((c, i) => (
-                  <DetailItem
-                    key={i}
-                    label={`Container #${i + 1}${containerReturnDates[i] ? ` — Devolvido em ${shortDate(containerReturnDates[i])}` : ''}`}
-                    value={c}
-                    mono
-                  />
-                ))
-              ) : (
-                <DetailItem label="Container" value="—" />
-              )}
-            </div>
+            {(isExpandedVisible('invoice_number') || isExpandedVisible('bl') || isExpandedVisible('container_numbers')) && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 rounded-lg bg-background">
+                {isExpandedVisible('invoice_number') && <DetailItem label="Invoice" value={s.invoice_number || '—'} />}
+                {isExpandedVisible('bl') && <DetailItem label="BL" value={s.master_bl || s.house_bl || '—'} />}
+                {isExpandedVisible('container_numbers') && (
+                  containers.length > 0 ? (
+                    containers.map((c, i) => (
+                      <DetailItem
+                        key={i}
+                        label={`Container #${i + 1}${isExpandedVisible('container_return') && containerReturnDates[i] ? ` — Devolvido em ${shortDate(containerReturnDates[i])}` : ''}`}
+                        value={c}
+                        mono
+                      />
+                    ))
+                  ) : (
+                    <DetailItem label="Container" value="—" />
+                  )
+                )}
+              </div>
+            )}
 
             {/* Linha do tempo removida nessa versão — as colunas Status/ETD/ETA/
                 Limite Devolução já cobrem o essencial sem o componente de marcos. */}
@@ -668,14 +727,8 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
               </div>
             )}
 
-            {s.terminal_entry_date && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-1 text-xs pt-2 border-t border-border">
-                <DetailItem label="Ent. Terminal" value={format(new Date(s.terminal_entry_date), 'dd/MM/yyyy')} />
-              </div>
-            )}
-
             {/* Courier tracking */}
-            {s.courier_tracking_number && (
+            {isExpandedVisible('courier') && s.courier_tracking_number && (
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-2">
                 <div className="flex flex-col">
                   <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -709,13 +762,13 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
                 <span>Chegada prevista em {kpis.daysRemaining} dia(s).</span>
               </div>
             )}
-            {s.next_update && (
+            {isExpandedVisible('next_update') && s.next_update && (
               <div className="text-xs text-muted-foreground">
                 Próxima atualização: {format(new Date(s.next_update), 'dd/MM/yyyy')}
               </div>
             )}
 
-            {demurrageDays !== null && (
+            {(isCollapsedVisible('demurrage_deadline_calc') || isExpandedVisible('demurrage_deadline_calc')) && demurrageDays !== null && (
               <div className={cn(
                 'flex items-center gap-2 text-xs rounded-md px-3 py-2',
                 demurrageDays < 0 ? 'text-red-600 bg-red-500/10' : demurrageDays <= 3 ? 'text-amber-700 bg-amber-500/10' : 'hidden'
@@ -728,7 +781,7 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
                 </span>
               </div>
             )}
-            {storageDays !== null && (
+            {isExpandedVisible('storage_deadline_calc') && storageDays !== null && (
               <div className={cn(
                 'flex items-center gap-2 text-xs rounded-md px-3 py-2',
                 storageDays < 0 ? 'text-red-600 bg-red-500/10' : storageDays <= 3 ? 'text-amber-700 bg-amber-500/10' : 'hidden'
