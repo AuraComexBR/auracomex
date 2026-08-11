@@ -30,6 +30,7 @@ import { useCostEstimate } from '@/hooks/useCostEstimate';
 import { extractCountryFromPort } from '@/lib/countryFlag';
 import { FlagIcon } from '@/components/shared/FlagIcon';
 import { BenchmarkCard } from '@/components/shared/BenchmarkCard';
+import { CollapsibleCard } from '@/components/shared/CollapsibleCard';
 import { AutoInsuranceCard } from '@/components/quotes/AutoInsuranceCard';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -685,7 +686,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // forma independente (com optional chaining), sem usar `canEditCargo`.
   const canEditCargoForAutoSave =
     (!isShipmentMode && form.status !== 'converted') || isFullAccess || (profile?.user_id === quote?.created_by);
-  function handleAutoSaveBlur(tab: 'general' | 'cargo') {
+  // 'logistics' entra na lista pra cobrir o Card 6 (Observações/Condições de
+  // pagamento) mesclado lá após virar embarque; 'charges' cobre o campo
+  // Armazenagem no destino, que mudou de aba (Geral → Taxas).
+  function handleAutoSaveBlur(tab: 'general' | 'cargo' | 'logistics' | 'charges') {
     if (!quote || activeTab !== tab || !canEditCargoForAutoSave || !hasChanges || saving) return;
     handleSave();
   }
@@ -1860,9 +1864,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             const iconCls = "w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0";
             return (
               <>
-                <TabsTrigger value="general" className={triggerCls}>
-                  <Info className={iconCls} /> {t('quotes.general')}
-                </TabsTrigger>
+                {/* Aba Geral só existe separada em cotação — depois de virar
+                    embarque, os campos dela são mesclados dentro da aba
+                    Logística (Card 1 e Card 6), pra não duplicar tela. */}
+                {!isShipmentMode && (
+                  <TabsTrigger value="general" className={triggerCls}>
+                    <Info className={iconCls} /> {t('quotes.general')}
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="cargo" className={triggerCls}>
                   <Package className={iconCls} /> {t('quotes.cargo')}
                 </TabsTrigger>
@@ -1992,7 +2001,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         </div>
         )}
 
-        {/* General Tab */}
+        {/* General Tab — só em cotação; depois de virar embarque esses campos
+            ficam mesclados na aba Logística (Card 1 e Card 6). */}
+        {!isShipmentMode && (
         <TabsContent value="general">
           <Card className="glass">
             <CardHeader className="flex flex-row items-center justify-between pb-0">
@@ -2229,33 +2240,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     />
                   </div>
                 )}
-                {(form.transport_mode === 'ocean_lcl' || form.transport_mode === 'ocean_fcl') && (() => {
-                  const canEditStorageFee = canEditGeneral;
-                  return (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1">
-                        <Label className="text-xs">Armazenagem no destino (R$)</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-64 text-xs">
-                            Não compõe o total da cotação. Em LCL, gera automaticamente uma conta a receber com o rebate negociado (% cadastrado no fornecedor Co-loader do processo).
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={form.storage_fee_amount}
-                        onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value, storage_fee_currency: 'BRL' })}
-                        placeholder="0,00"
-                        className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        disabled={!canEditStorageFee}
-                      />
-                    </div>
-                  );
-                })()}
               </div>
 
               {/* Linha 4: Observações - Condições de pagamento */}
@@ -2284,6 +2268,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
 
         {/* Cargo Tab */}
         <TabsContent value="cargo">
@@ -2334,6 +2319,34 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         {/* Charges Tab */}
         <TabsContent value="charges">
           <div className="space-y-4">
+            {(form.transport_mode === 'ocean_lcl' || form.transport_mode === 'ocean_fcl') && (
+              <Card className="glass">
+                <CardContent className="pt-6" onBlur={() => handleAutoSaveBlur('charges')}>
+                  <div className="max-w-xs space-y-1.5">
+                    <div className="flex items-center gap-1">
+                      <Label className="text-xs">Armazenagem no destino (R$)</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-64 text-xs">
+                          Não compõe o total da cotação. Em LCL, gera automaticamente uma conta a receber com o rebate negociado (% cadastrado no fornecedor Co-loader do processo).
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={form.storage_fee_amount}
+                      onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value, storage_fee_currency: 'BRL' })}
+                      placeholder="0,00"
+                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      disabled={!canEditGeneral}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             <div className="flex justify-between items-center flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 {canEditCharges && (
@@ -2835,12 +2848,45 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
 
         {/* Shipment-specific tabs (only in shipment mode) */}
         {isShipmentMode && shipment && (
-          <TabsContent value="logistics">
+          <TabsContent value="logistics" className="space-y-4">
             <LogisticsTab
               shipment={shipment}
               quoteId={quoteId}
               onUpdate={() => queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] })}
+              clientOptions={clients.map((c: any) => ({ id: c.id, name: c.name }))}
+              onClientChange={requestClientChange}
+              clientIdOverride={form.client_id}
             />
+
+            {/* CARD 6 — Observações / Condições de pagamento (aba Geral
+                mesclada aqui após virar embarque) */}
+            <CollapsibleCard title="6. Observações & Condições de Pagamento">
+              <div
+                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                onBlur={() => handleAutoSaveBlur('logistics')}
+              >
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{t('quotes.notes')}</Label>
+                  <Textarea
+                    value={form.notes}
+                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                    placeholder={t('quotes.notes_placeholder')}
+                    rows={4}
+                    disabled={!canEditGeneral}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Condições de pagamento</Label>
+                  <Textarea
+                    value={form.payment_terms}
+                    onChange={(e) => setForm({ ...form, payment_terms: e.target.value })}
+                    placeholder="Ex: 50% na chegada, saldo em 30 dias"
+                    rows={4}
+                    disabled={!canEditGeneral}
+                  />
+                </div>
+              </div>
+            </CollapsibleCard>
           </TabsContent>
         )}
         {isShipmentMode && shipment && (

@@ -19,7 +19,7 @@ import { FlagIcon } from '@/components/shared/FlagIcon';
 import { usePlatformSettings } from '@/hooks/usePlatformSettings';
 import { buildCourierTrackingUrl, cn } from '@/lib/utils';
 import { STATUS_CATEGORY_COLORS, DEFAULT_STATUS_OPTIONS, resolveStatusCategory, type StatusOption } from '@/lib/shipmentStatusCategory';
-import { parseContainerNumbers } from '@/lib/containerNumbers';
+import { parseContainerNumbers, parseContainerDates } from '@/lib/containerNumbers';
 import { DOC_TYPE_LABELS } from '@/lib/documentCategory';
 
 const quoteStatusLabels: Record<string, string> = {
@@ -190,7 +190,7 @@ export default function Tracking() {
     eta: (r) => r.eta,
     customs_registration_date: (r) => r.customs_registration_date,
     customs_channel: (r) => r.customs_channel,
-    demurrage_deadline: (r) => r.demurrage_deadline,
+    demurrage_deadline: (r) => earliestDemurrageDeadline(r),
     invoice_sent_at: (r) => r.invoice_sent_at,
   });
 
@@ -487,6 +487,18 @@ function shortDate(value?: string | null) {
   return value ? format(new Date(value), 'dd/MM/yy') : '—';
 }
 
+// Demurrage passou a ser por container (cada um pode vencer numa data
+// diferente) — pra lista/alerta, usa o prazo mais próximo (o mais urgente)
+// entre os containers do embarque. demurrage_deadline (campo único) fica só
+// como fallback de dados antigos, de antes dessa mudança.
+function earliestDemurrageDeadline(s: any): string | null {
+  const perContainer = parseContainerDates(s.container_demurrage_deadlines).filter(Boolean);
+  if (perContainer.length > 0) {
+    return perContainer.reduce((min, d) => (new Date(d).getTime() < new Date(min).getTime() ? d : min));
+  }
+  return s.demurrage_deadline || null;
+}
+
 function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { steps, kpis } = buildTimeline(s, statusOptions);
@@ -496,7 +508,8 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
   const statusBadgeClass = STATUS_CATEGORY_COLORS[category] || '';
   const containers = parseContainerNumbers(s.container_number);
   const channelMeta = s.customs_channel ? CUSTOMS_CHANNEL_LABELS[s.customs_channel] : null;
-  const demurrageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(s.demurrage_deadline) : null;
+  const demurrageDeadline = earliestDemurrageDeadline(s);
+  const demurrageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(demurrageDeadline) : null;
   const storageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(s.storage_deadline) : null;
   const demurrageUrgent = demurrageDays !== null && demurrageDays <= 3;
 
@@ -534,7 +547,7 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
           {channelMeta ? <Badge className={cn(channelMeta.badgeClass, 'text-[10px] px-1.5 py-0')}>{channelMeta.label.replace('Canal ', '')}</Badge> : '—'}
         </TableCell>
         <TableCell className={cn('py-1 px-2', demurrageUrgent && 'text-red-600 font-semibold')}>
-          {shortDate(s.demurrage_deadline)}
+          {shortDate(demurrageDeadline)}
         </TableCell>
         <TableCell className="py-1 px-2">
           {s.invoice_sent_at ? shortDate(s.invoice_sent_at) : <span className="text-muted-foreground">Pendente</span>}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { CollapsibleCard } from '@/components/shared/CollapsibleCard';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -23,12 +23,23 @@ import { cn } from '@/lib/utils';
 import { getCourierTrackingUrl } from '@/lib/courierTracking';
 import { CARRIER_LABEL_BY_MODE } from '@/lib/carrierLabel';
 import { STATUS_CATEGORY_OPTIONS, DEFAULT_STATUS_OPTIONS, type StatusCategory } from '@/lib/shipmentStatusCategory';
-import { parseContainerNumbers } from '@/lib/containerNumbers';
+import { parseContainerNumbers, parseContainerDates } from '@/lib/containerNumbers';
 
 interface Props {
   shipment: any;
   quoteId?: string;
   onUpdate?: () => void;
+  /** Lista de clientes pra edição do campo Cliente (Card 1). Sem isso, o
+   * campo fica só leitura (usado no fallback de embarque avulso sem
+   * cotação, onde a tela que chama ainda não busca essa lista). */
+  clientOptions?: { id: string; name: string }[];
+  /** Quando fornecido (fluxo normal, vindo de QuoteDetail em modo embarque),
+   * delega a troca de cliente pro pai — que checa taxas/DN/AR já lançados
+   * no cliente antigo antes de trocar. Sem isso, salva direto aqui. */
+  onClientChange?: (newClientId: string) => void;
+  /** Valor "otimista" do cliente, reaproveitando o form do pai enquanto o
+   * refetch do embarque não chega — quando ausente, usa shipment.client_id. */
+  clientIdOverride?: string;
 }
 
 const INCOTERMS_BY_MODE: Record<string, string[]> = {
@@ -45,7 +56,7 @@ const INCOTERMS_BY_MODE: Record<string, string[]> = {
 // "mudança" que não existe e trava o auto-save num loop infinito.
 const DATE_FIELDS = new Set([
   'etd', 'eta', 'atd', 'ata',
-  'customs_registration_date', 'terminal_entry_date', 'demurrage_deadline', 'storage_deadline',
+  'customs_registration_date', 'terminal_entry_date', 'storage_deadline',
   'cargo_delivered_at', 'invoice_sent_at',
 ]);
 
@@ -63,7 +74,7 @@ const CUSTOMS_CHANNEL_OPTIONS: { value: string; label: string; badgeClass: strin
 // linha do tempo genérica do tracking do cliente — ver lib/shipmentStatusCategory.ts.
 const DEFAULT_STATUSES = DEFAULT_STATUS_OPTIONS;
 
-export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
+export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onClientChange, clientIdOverride }: Props) {
   const { t } = useLanguage();
   const { user, profile } = useAuth();
   const { isFullAccess } = usePermissions();
@@ -262,20 +273,21 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     },
   });
 
-  // Cotação vinculada ao embarque — fonte de "espelho" pra Ref. Cliente e
-  // FreeTime, que já existem lá (preenchidos na Comercial/Proposta) antes
-  // de existirem aqui. Também usada pra achar os itens (containers) da FCL.
+  // Cotação vinculada ao embarque — fonte de "espelho" pra Ref. Cliente,
+  // FreeTime, Transit Time e Validade, que já existem lá (preenchidos na
+  // Comercial/Proposta) antes de existirem aqui. Também usada pra achar os
+  // itens (containers) da FCL.
   const { data: linkedQuote } = useQuery({
     queryKey: ['logistics-linked-quote', shipment.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('quotes')
-        .select('id, client_reference, free_time')
+        .select('id, client_reference, free_time, transit_time, valid_until')
         .eq('shipment_id', shipment.id)
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return data as { id: string; client_reference: string | null; free_time: number | null } | null;
+      return data as { id: string; client_reference: string | null; free_time: number | null; transit_time: number | null; valid_until: string | null } | null;
     },
   });
 
@@ -295,13 +307,19 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
   });
 
   const isFCL = shipment.transport_mode === 'ocean_fcl' || shipment.transport_mode === 'multimodal';
-  const containerCount = isFCL ? Math.max(quoteItems.length, 1) : 0;
+  // Quantidade de containers vem sempre da aba Resumo da Carga (soma de
+  // container_qty de cada item — um item pode representar "3x 40HC", por
+  // exemplo, não é 1 container por linha). Não é mais editável aqui.
+  const containerCount = isFCL
+    ? Math.max(quoteItems.reduce((sum: number, it: any) => sum + (Number(it.container_qty) || 1), 0), 1)
+    : 0;
 
   const [form, setForm] = useState({
     client_reference: (shipment as any).client_reference || '',
     invoice_number: (shipment as any).invoice_number || '',
-    container_quantity: (shipment as any).container_quantity != null ? String((shipment as any).container_quantity) : '',
     free_time: (shipment as any).free_time != null ? String((shipment as any).free_time) : '',
+    transit_time: '',
+    valid_until: '',
     origin_city: shipment.origin_city || '',
     origin_country: shipment.origin_country || '',
     origin_port: shipment.origin_port || '',
@@ -333,7 +351,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     duimp_number: (shipment as any).duimp_number || '',
     customs_registration_date: (shipment as any).customs_registration_date || '',
     terminal_entry_date: (shipment as any).terminal_entry_date || '',
-    demurrage_deadline: (shipment as any).demurrage_deadline || '',
     storage_deadline: (shipment as any).storage_deadline || '',
     cargo_delivered_at: (shipment as any).cargo_delivered_at || '',
     invoice_sent_at: (shipment as any).invoice_sent_at || '',
@@ -347,7 +364,17 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     return arr;
   });
 
-  // Update container numbers array when containerCount changes
+  // Prazo de demurrage POR container — cada container pode vencer em uma
+  // data diferente, então fica um array paralelo ao de números (por índice),
+  // não um campo único do embarque.
+  const [containerDemurrage, setContainerDemurrage] = useState<string[]>(() => {
+    const existing = parseContainerDates((shipment as any).container_demurrage_deadlines);
+    const arr = [...existing];
+    while (arr.length < containerCount) arr.push('');
+    return arr;
+  });
+
+  // Update container numbers/demurrage arrays when containerCount changes
   useEffect(() => {
     if (containerCount > 0) {
       setContainerNumbers(prev => {
@@ -355,7 +382,13 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         while (arr.length < containerCount) arr.push('');
         return arr.slice(0, Math.max(containerCount, arr.filter(Boolean).length));
       });
+      setContainerDemurrage(prev => {
+        const arr = [...prev];
+        while (arr.length < containerCount) arr.push('');
+        return arr.slice(0, Math.max(containerCount, containerNumbers.filter(Boolean).length));
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerCount]);
 
   const [saving, setSaving] = useState(false);
@@ -407,11 +440,33 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     return ` (${label})`;
   }
 
-  // Detecta alterações pendentes (contra o que já está salvo no embarque) pra
-  // disparar o auto-save — Logística não tem mais botão "Salvar" próprio.
+  // Espelha Ref. Cliente/FreeTime/Transit Time/Validade da cotação vinculada
+  // na primeira vez que o embarque ainda não tem valor próprio salvo — depois
+  // disso os campos aqui viram independentes (podem ser ajustados sem afetar
+  // a origem retroativamente).
+  useEffect(() => {
+    if (!linkedQuote) return;
+    if (!form.client_reference && linkedQuote.client_reference) {
+      updateField('client_reference', linkedQuote.client_reference);
+    }
+    if (!form.free_time && linkedQuote.free_time != null) {
+      updateField('free_time', String(linkedQuote.free_time));
+    }
+    if (!form.transit_time && linkedQuote.transit_time != null) {
+      updateField('transit_time', String(linkedQuote.transit_time));
+    }
+    if (!form.valid_until && linkedQuote.valid_until) {
+      updateField('valid_until', linkedQuote.valid_until);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedQuote]);
+
+  // Detecta alterações pendentes (contra o que já está salvo no embarque/
+  // cotação vinculada) pra disparar o auto-save — Logística não tem mais
+  // botão "Salvar" próprio.
   const hasChanges = useMemo(() => {
     const fieldsToCheck: (keyof typeof form)[] = [
-      'client_reference', 'invoice_number', 'container_quantity', 'free_time',
+      'client_reference', 'invoice_number', 'free_time',
       'origin_city', 'origin_country', 'origin_port', 'transshipment',
       'destination_city', 'destination_country', 'destination_port',
       'carrier', 'vessel_flight', 'booking_number',
@@ -420,7 +475,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
       'shipper_id', 'consignee_id', 'notify_id',
       'courier_provider', 'courier_tracking_number',
       'customs_channel', 'duimp_number', 'customs_registration_date', 'terminal_entry_date',
-      'demurrage_deadline', 'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
+      'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
     ];
     for (const key of fieldsToCheck) {
       const newVal = (form as any)[key] ?? '';
@@ -436,23 +491,36 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
       }
       if (String(newVal) !== String(oldVal)) return true;
     }
+    if (isFCL && containerCount !== ((shipment as any).container_quantity ?? null) && containerCount > 0) return true;
     const existingContainers = parseContainerNumbers(shipment.container_number);
     const currentContainers = containerNumbers.filter(Boolean);
     if (existingContainers.length !== currentContainers.length) return true;
     for (let i = 0; i < currentContainers.length; i++) {
       if ((existingContainers[i] || '') !== (currentContainers[i] || '')) return true;
     }
+    const existingDemurrage = parseContainerDates((shipment as any).container_demurrage_deadlines);
+    for (let i = 0; i < Math.max(existingDemurrage.length, containerDemurrage.length); i++) {
+      const newT = containerDemurrage[i] ? new Date(containerDemurrage[i]).getTime() : null;
+      const oldT = existingDemurrage[i] ? new Date(existingDemurrage[i]).getTime() : null;
+      if (newT !== oldT) return true;
+    }
+    if (linkedQuote) {
+      if ((form.transit_time || '') !== (linkedQuote.transit_time != null ? String(linkedQuote.transit_time) : '')) return true;
+      const newValidUntilT = form.valid_until ? new Date(form.valid_until).getTime() : null;
+      const oldValidUntilT = linkedQuote.valid_until ? new Date(linkedQuote.valid_until).getTime() : null;
+      if (newValidUntilT !== oldValidUntilT) return true;
+    }
     return false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, containerNumbers, shipment]);
+  }, [form, containerNumbers, containerDemurrage, shipment, isFCL, containerCount, linkedQuote]);
 
   // Auto-save: nenhum botão "Salvar" próprio. Antes disparava sozinho 900ms
   // depois de qualquer tecla digitada — o que salvava no meio da digitação
   // se o usuário parasse de pensar por menos de um segundo. Agora só salva
-  // quando o usuário sai do campo (onBlur, anexado no CardContent que
-  // envolve o formulário inteiro — o blur do React borbulha, então cobre
-  // qualquer input dentro dele). Status continua salvando na hora, como já
-  // era, pelo próprio Select de status.
+  // quando o usuário sai do campo (onBlur, anexado no container que envolve
+  // todos os cards — o blur do React borbulha, então cobre qualquer input
+  // dentro dele, mesmo em cards diferentes). Status continua salvando na
+  // hora, como já era, pelo próprio Select de status.
   function handleAutoSaveBlur() {
     if (!hasChanges || saving) return;
     handleSave();
@@ -464,11 +532,17 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
       const containerNumberValue = containerNumbers.filter(Boolean).length > 0
         ? JSON.stringify(containerNumbers.map(s => s.trim()))
         : null;
+      const containerDemurrageValue = containerDemurrage.some(Boolean)
+        ? JSON.stringify(containerDemurrage.slice(0, Math.max(containerCount, containerNumbers.length)))
+        : null;
 
       const updates: Record<string, any> = {
         client_reference: form.client_reference || null,
         invoice_number: form.invoice_number || null,
-        container_quantity: form.container_quantity ? parseInt(form.container_quantity, 10) : null,
+        // Qtd. Container não é mais digitada aqui — vem sempre da soma dos
+        // itens da Resumo da Carga (FCL/multimodal); fora disso, preserva o
+        // que já estava salvo.
+        container_quantity: isFCL ? containerCount : ((shipment as any).container_quantity ?? null),
         free_time: form.free_time ? parseInt(form.free_time, 10) : null,
         origin_city: form.origin_city || null,
         origin_country: form.origin_country || null,
@@ -493,6 +567,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         incoterm: (form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : null,
         transport_mode: form.transport_mode as any,
         container_number: containerNumberValue,
+        container_demurrage_deadlines: containerDemurrageValue,
         shipper_id: form.shipper_id || null,
         consignee_id: form.consignee_id || null,
         notify_id: form.notify_id || null,
@@ -502,7 +577,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
         duimp_number: form.duimp_number.trim() || null,
         customs_registration_date: form.customs_registration_date || null,
         terminal_entry_date: form.terminal_entry_date || null,
-        demurrage_deadline: form.demurrage_deadline || null,
         storage_deadline: form.storage_deadline || null,
         cargo_delivered_at: form.cargo_delivered_at || null,
         invoice_sent_at: form.invoice_sent_at || null,
@@ -516,16 +590,17 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
 
       const auditLogs: { field_name: string; old_value: string | null; new_value: string | null }[] = [];
       const allFields = [
-        'client_reference', 'invoice_number', 'container_quantity', 'free_time',
+        'client_reference', 'invoice_number', 'container_quantity',
         'origin_city', 'origin_country', 'origin_port', 'transshipment',
         'destination_city', 'destination_country', 'destination_port',
         'carrier', 'vessel_flight', 'booking_number',
         'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
         'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
+        'container_demurrage_deadlines',
         'shipper_id', 'consignee_id', 'notify_id',
         'courier_provider', 'courier_tracking_number',
         'customs_channel', 'duimp_number', 'customs_registration_date', 'terminal_entry_date',
-        'demurrage_deadline', 'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
+        'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
       ];
       for (const dbKey of allFields) {
         const oldVal = shipment[dbKey]?.toString() || '';
@@ -546,9 +621,9 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
       const { error } = await (supabase.from('shipments') as any).update(updates).eq('id', shipment.id);
       if (error) throw error;
 
-      // Modal, Incoterm, Ref. Cliente e FreeTime são espelhados com a aba Geral
-      // (tabela quotes) — editar aqui também atualiza a cotação de origem, pra
-      // nunca ficarem divergentes.
+      // Modal, Incoterm, Ref. Cliente, FreeTime, Transit Time e Validade são
+      // espelhados com a cotação de origem (tabela quotes) — editar aqui
+      // também atualiza a cotação, pra nunca ficarem divergentes.
       const quoteIdToSync = quoteId || linkedQuote?.id;
       if (quoteIdToSync) {
         await supabase.from('quotes').update({
@@ -556,6 +631,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           incoterm: updates.incoterm,
           client_reference: updates.client_reference,
           free_time: updates.free_time,
+          transit_time: form.transit_time ? parseInt(form.transit_time, 10) : null,
+          valid_until: form.valid_until || null,
         } as any).eq('id', quoteIdToSync);
         queryClient.invalidateQueries({ queryKey: ['quote-detail', quoteIdToSync] });
         queryClient.invalidateQueries({ queryKey: ['logistics-linked-quote', shipment.id] });
@@ -597,30 +674,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partnerOptions.map((p: any) => p.id).join(','), form.transport_mode, form.carrier]);
 
-  // Espelha Ref. Cliente e FreeTime da cotação de origem na primeira vez que
-  // o embarque ainda não tem valor próprio salvo — mesma ideia do
-  // auto-preenchimento do Armador logo acima. Depois disso o campo aqui vira
-  // independente (o usuário pode ajustar sem afetar a cotação retroativamente).
-  useEffect(() => {
-    if (!linkedQuote) return;
-    if (!form.client_reference && linkedQuote.client_reference) {
-      updateField('client_reference', linkedQuote.client_reference);
-    }
-    if (!form.free_time && linkedQuote.free_time != null) {
-      updateField('free_time', String(linkedQuote.free_time));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkedQuote]);
-
-  // Sugere a quantidade de containers a partir dos itens da cotação (FCL)
-  // enquanto o usuário não tiver digitado um valor manual.
-  useEffect(() => {
-    if (isFCL && containerCount > 0 && !form.container_quantity) {
-      updateField('container_quantity', String(containerCount));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFCL, containerCount]);
-
   function DateField({ label, fieldKey }: { label: string; fieldKey: string }) {
     const value = (form as any)[fieldKey];
     const dateValue = value ? new Date(value) : undefined;
@@ -639,6 +692,35 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
               mode="single"
               selected={dateValue}
               onSelect={(d) => updateField(fieldKey, d ? d.toISOString() : '')}
+              initialFocus
+              className="p-3 pointer-events-auto"
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
+    );
+  }
+
+  // Igual ao DateField, mas pra valor/onChange avulsos (usado no prazo de
+  // demurrage por container, que não é um campo único do form — é um array
+  // indexado por container).
+  function InlineDateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+    const dateValue = value ? new Date(value) : undefined;
+    return (
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">{label}</Label>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("w-full justify-start text-left font-normal h-8 text-xs", !dateValue && "text-muted-foreground")}>
+              <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+              {dateValue ? format(dateValue, 'dd/MM/yyyy') : 'Selecionar...'}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateValue}
+              onSelect={(d) => onChange(d ? d.toISOString() : '')}
               initialFocus
               className="p-3 pointer-events-auto"
             />
@@ -720,11 +802,45 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
     );
   }
 
+  // Cliente (Card 1): se o pai (QuoteDetail) passar onClientChange, delega
+  // pra lá — que checa taxas/DN/AR/parceiros já lançados no cliente antigo
+  // antes de trocar e avisa o usuário. Sem isso (embarque avulso sem
+  // cotação), salva direto aqui, sem aviso.
+  async function handleClientSaveDirect(newClientId: string) {
+    const oldClientId = (shipment as any).client_id || null;
+    try {
+      const { error } = await (supabase.from('shipments') as any).update({
+        client_id: newClientId || null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', shipment.id);
+      if (error) throw error;
+      if (profile) {
+        await (supabase.from('shipment_audit_log') as any).insert({
+          shipment_id: shipment.id,
+          quote_id: quoteId || null,
+          company_id: shipment.company_id,
+          user_id: user?.id || null,
+          field_name: 'client_id',
+          old_value: oldClientId,
+          new_value: newClientId || null,
+        });
+      }
+      toast.success('Cliente atualizado com sucesso');
+      onUpdate?.();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  }
+
+  const currentClientId = clientIdOverride ?? (shipment as any).client_id ?? '';
+  const currentClientName = clientOptions?.find((c) => c.id === currentClientId)?.name || (shipment as any).clients?.name || '';
+
   return (
-    <Card className="glass">
-      <CardContent className="p-6 space-y-6" onBlur={handleAutoSaveBlur}>
-        {/* Status - Incoterm - Modal */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+    <div className="space-y-4" onBlur={handleAutoSaveBlur}>
+      {/* CARD 1 — Status/Ref.Cliente/Cliente/Modal/Incoterm/Validade,
+          Coleta/Entrega, Origem/Transbordo/Destino, Transit Time/Free Time */}
+      <CollapsibleCard title="1. Geral">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Label className="text-xs font-semibold">Status</Label>
@@ -776,16 +892,34 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs font-semibold">Incoterm</Label>
-            <Select value={form.incoterm} onValueChange={(v) => updateField('incoterm', v)}>
-              <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-              <SelectContent>
-                {form.transport_mode === 'road' && <SelectItem value="NONE">— Sem incoterm —</SelectItem>}
-                {(INCOTERMS_BY_MODE[form.transport_mode] || INCOTERMS_BY_MODE.ocean_fcl).map((ic) => (
-                  <SelectItem key={ic} value={ic}>{ic}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="text-xs">Ref. Cliente</Label>
+            <Input value={form.client_reference} onChange={e => updateField('client_reference', e.target.value)} placeholder="Referência do cliente..." />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">{t('shipments.client')}</Label>
+            {clientOptions ? (
+              <Select
+                value={currentClientId || '_none'}
+                onValueChange={(v) => {
+                  const newId = v === '_none' ? '' : v;
+                  if (onClientChange) onClientChange(newId);
+                  else handleClientSaveDirect(newId);
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">—</SelectItem>
+                  {clientOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="flex items-center h-10 px-3 rounded-md border bg-muted text-sm">
+                {currentClientName || '-'}
+              </div>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -799,6 +933,30 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Incoterm</Label>
+            <Select value={form.incoterm} onValueChange={(v) => updateField('incoterm', v)}>
+              <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+              <SelectContent>
+                {form.transport_mode === 'road' && <SelectItem value="NONE">— Sem incoterm —</SelectItem>}
+                {(INCOTERMS_BY_MODE[form.transport_mode] || INCOTERMS_BY_MODE.ocean_fcl).map((ic) => (
+                  <SelectItem key={ic} value={ic}>{ic}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {linkedQuote && (
+            <div className="space-y-1">
+              <Label className="text-xs">Validade</Label>
+              <Input
+                type="date"
+                value={form.valid_until ? form.valid_until.slice(0, 10) : ''}
+                onChange={(e) => updateField('valid_until', e.target.value ? new Date(e.target.value).toISOString() : '')}
+              />
+            </div>
+          )}
         </div>
 
         {/* Status Manager Dialog */}
@@ -883,77 +1041,66 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           </DialogContent>
         </Dialog>
 
-        {/* Referências — Referência é só leitura (mesma do topo da página,
-            gerada automaticamente); Ref. Cliente e Qtd. Container espelham/
-            sugerem valores de outros lugares (cotação e itens FCL) mas podem
-            ser ajustados aqui sem afetar a origem; Nº Invoice é próprio do
-            embarque. */}
-        <div className="pt-4 border-t border-border space-y-2">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase">Referências</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <Label className="text-xs">Referência</Label>
-              <Input value={shipment.reference_number || ''} readOnly disabled className="font-mono" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Ref. Cliente</Label>
-              <Input value={form.client_reference} onChange={e => updateField('client_reference', e.target.value)} placeholder="Referência do cliente..." />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Nº Invoice</Label>
-              <Input value={form.invoice_number} onChange={e => updateField('invoice_number', e.target.value)} placeholder="Número da invoice..." />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Qtd. Container</Label>
-              <Input
-                type="number"
-                min={0}
-                value={form.container_quantity}
-                onChange={e => updateField('container_quantity', e.target.value)}
-                placeholder="Quantidade..."
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Coleta - Porto/Aeroporto Origem - Porto/Aeroporto Destino - Entrega */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-border">
+        {/* Coleta - Entrega */}
+        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
           <div className="space-y-1">
             <Label className="text-xs">Coleta</Label>
             <Input value={form.origin_city} onChange={e => updateField('origin_city', e.target.value)} placeholder="Endereço de coleta..." />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Porto/Aeroporto Origem</Label>
-            <PortSelect value={form.origin_port} onChange={(code) => updateField('origin_port', code)} transportMode={form.transport_mode} placeholder="Buscar porto/aeroporto..." />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Porto/Aeroporto Destino</Label>
-            <PortSelect value={form.destination_port} onChange={(code) => updateField('destination_port', code)} transportMode={form.transport_mode} placeholder="Buscar porto/aeroporto..." />
-          </div>
-          <div className="space-y-1">
             <Label className="text-xs">Entrega</Label>
             <Input value={form.destination_city} onChange={e => updateField('destination_city', e.target.value)} placeholder="Endereço de entrega..." />
           </div>
+        </div>
 
+        {/* Origem - Transbordo - Destino */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border">
           <div className="space-y-1">
+            <Label className="text-xs">Porto/Aeroporto Origem</Label>
+            <PortSelect value={form.origin_port} onChange={(code) => updateField('origin_port', code)} transportMode={form.transport_mode} placeholder="Buscar porto/aeroporto..." />
             <CountrySelect value={form.origin_country} onChange={(v) => updateField('origin_country', v)} placeholder="País..." />
           </div>
           {form.transport_mode !== 'road' ? (
-            <div className="col-span-2 flex justify-center">
-              <div className="w-1/2">
-                <PortSelect value={form.transshipment} onChange={(code) => updateField('transshipment', code)} transportMode={form.transport_mode} placeholder="Transbordo (opcional)..." />
-              </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Transbordo</Label>
+              <PortSelect value={form.transshipment} onChange={(code) => updateField('transshipment', code)} transportMode={form.transport_mode} placeholder="Transbordo (opcional)..." />
             </div>
-          ) : (
-            <div className="col-span-2" />
-          )}
+          ) : <div />}
           <div className="space-y-1">
+            <Label className="text-xs">Porto/Aeroporto Destino</Label>
+            <PortSelect value={form.destination_port} onChange={(code) => updateField('destination_port', code)} transportMode={form.transport_mode} placeholder="Buscar porto/aeroporto..." />
             <CountrySelect value={form.destination_country} onChange={(v) => updateField('destination_country', v)} placeholder="País..." />
           </div>
         </div>
 
-        {/* Participantes: Shipper - Armador/Cia Aérea/Co-Loader/Transportadora - Notify - Consignee */}
-        <div className="pt-4 border-t border-border space-y-2">
+        {/* Transit Time - Free Time */}
+        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
+          <div className="space-y-1">
+            <Label className="text-xs">Transit Time</Label>
+            <Input
+              type="number"
+              min={0}
+              value={form.transit_time}
+              onChange={e => updateField('transit_time', e.target.value)}
+              placeholder="Dias em trânsito..."
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">FreeTime (dias)</Label>
+            <Input
+              type="number"
+              min={0}
+              value={form.free_time}
+              onChange={e => updateField('free_time', e.target.value)}
+              placeholder="Ex: 14"
+            />
+          </div>
+        </div>
+      </CollapsibleCard>
+
+      {/* CARD 2 — Shipper/Armador/Notify/Consignee, Invoice/Booking/Master/House, CEs */}
+      <CollapsibleCard title="2. Empresas & Documentos">
+        <div className="space-y-2">
           <h4 className="text-xs font-semibold text-muted-foreground uppercase">Participantes</h4>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <PartnerSelect label="Shipper" fieldKey="shipper_id" />
@@ -977,10 +1124,13 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
           </div>
         </div>
 
-        {/* Documents & References — reordered: Booking → Master → House → CEs */}
         <div className="pt-4 border-t border-border space-y-2">
           <h4 className="text-xs font-semibold text-muted-foreground uppercase">Documentos & Referências</h4>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs">Nº Invoice</Label>
+              <Input value={form.invoice_number} onChange={e => updateField('invoice_number', e.target.value)} placeholder="Número da invoice..." />
+            </div>
             <div className="space-y-1">
               <Label className="text-xs">Booking</Label>
               <Input value={form.booking_number} onChange={e => updateField('booking_number', e.target.value)} placeholder="Número Booking..." />
@@ -1007,64 +1157,58 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
             </div>
           </div>
         </div>
+      </CollapsibleCard>
 
-        {/* Container numbers — dynamic based on FCL items */}
-        {isFCL && containerCount > 0 && (
-          <div className="pt-4 border-t border-border space-y-2">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase">
-              Containers ({containerCount})
-            </h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {containerNumbers.slice(0, Math.max(containerCount, containerNumbers.length)).map((cn, idx) => (
-                <div key={idx} className="space-y-1">
-                  <Label className="text-xs">
-                    Container #{idx + 1}
-                    {quoteItems[idx]?.container_type && (
-                      <span className="ml-1 text-muted-foreground">({quoteItems[idx].container_type})</span>
-                    )}
-                  </Label>
-                  <Input
-                    placeholder="Ex: MSKU1234567"
-                    value={cn}
-                    onChange={(e) => {
-                      const updated = [...containerNumbers];
-                      updated[idx] = e.target.value.toUpperCase();
-                      setContainerNumbers(updated);
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
+      {/* CARD 3 — Containers (qtd vem da Resumo da Carga) + Prazo Demurrage por container */}
+      {isFCL && containerCount > 0 && (
+        <CollapsibleCard title={`3. Containers (${containerCount})`}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {containerNumbers.slice(0, Math.max(containerCount, containerNumbers.length)).map((cn, idx) => (
+              <div key={idx} className="space-y-2 rounded-md border border-border p-3">
+                <Label className="text-xs">
+                  Container #{idx + 1}
+                  {quoteItems[idx]?.container_type && (
+                    <span className="ml-1 text-muted-foreground">({quoteItems[idx].container_type})</span>
+                  )}
+                </Label>
+                <Input
+                  placeholder="Ex: MSKU1234567"
+                  value={cn}
+                  onChange={(e) => {
+                    const updated = [...containerNumbers];
+                    updated[idx] = e.target.value.toUpperCase();
+                    setContainerNumbers(updated);
+                  }}
+                />
+                <InlineDateField
+                  label="Prazo Demurrage"
+                  value={containerDemurrage[idx] || ''}
+                  onChange={(v) => {
+                    const updated = [...containerDemurrage];
+                    updated[idx] = v;
+                    setContainerDemurrage(updated);
+                  }}
+                />
+              </div>
+            ))}
           </div>
-        )}
+        </CollapsibleCard>
+      )}
 
-        {/* Dates */}
-        <div className="pt-4 border-t border-border space-y-2">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase">Datas</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <DateField label="Departure (ETD)" fieldKey="etd" />
-            <DateField label="Arrive (ETA)" fieldKey="eta" />
-            <DateField label="Departure (ATD)" fieldKey="atd" />
-            <DateField label="Arrive (ATA)" fieldKey="ata" />
-          </div>
-        </div>
-
-        {/* Transport details */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-border">
+      {/* CARD 4 — Vessel/Flight/ETD/ETA/ATD/ATA/Ent.Terminal/1oPer.Armazenagem + Courier (aéreo) */}
+      <CollapsibleCard title="4. Transporte & Datas">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
             <Label className="text-xs">Vessel/Flight</Label>
             <Input value={form.vessel_flight} onChange={e => updateField('vessel_flight', e.target.value)} />
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">FreeTime (dias)</Label>
-            <Input
-              type="number"
-              min={0}
-              value={form.free_time}
-              onChange={e => updateField('free_time', e.target.value)}
-              placeholder="Ex: 14"
-            />
-          </div>
+          <DateField label="Departure (ETD)" fieldKey="etd" />
+          <DateField label="Arrive (ETA)" fieldKey="eta" />
+          <DateField label="Departure (ATD)" fieldKey="atd" />
+          <DateField label="Arrive (ATA)" fieldKey="ata" />
+          <DateField label="Entrada no Terminal" fieldKey="terminal_entry_date" />
+          <DateField label="Prazo 1º Período de Armazenagem" fieldKey="storage_deadline" />
+
           {shipment.transport_mode === 'air' && (
             <>
               <div className="space-y-1">
@@ -1110,72 +1254,57 @@ export function LogisticsTab({ shipment, quoteId, onUpdate }: Props) {
             </>
           )}
         </div>
+      </CollapsibleCard>
 
-        {/* Desembaraço & Prazos — canal de parametrização, registro de DI,
-            entrada no terminal e os dois prazos que mais geram custo extra
-            se estourarem (demurrage e 1º período de armazenagem). Reproduz
-            os campos que antes só existiam numa planilha de follow-up
-            manual, ligados diretamente ao processo. */}
-        <div className="pt-4 border-t border-border space-y-2">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase">Desembaraço & Prazos</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <Label className="text-xs">Canal</Label>
-              <Select value={form.customs_channel || '_none'} onValueChange={(v) => updateField('customs_channel', v === '_none' ? '' : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecionar..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">—</SelectItem>
-                  {CUSTOMS_CHANNEL_OPTIONS.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.customs_channel && (
-                <Badge className={CUSTOMS_CHANNEL_OPTIONS.find((c) => c.value === form.customs_channel)?.badgeClass}>
-                  Canal {CUSTOMS_CHANNEL_OPTIONS.find((c) => c.value === form.customs_channel)?.label}
-                </Badge>
-              )}
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Número DUIMP</Label>
-              <Input
-                value={form.duimp_number}
-                onChange={(e) => updateField('duimp_number', e.target.value)}
-                placeholder="26BR00000000198"
-                className="h-9"
-              />
-              <p className="text-[10px] text-muted-foreground">Preenchendo aqui, canal e situação são atualizados sozinhos via Portal Único (se a notificação automática estiver ativa em Configurações).</p>
-            </div>
-            <DateField label="Registro DI" fieldKey="customs_registration_date" />
-            <DateField label="Entrada no Terminal" fieldKey="terminal_entry_date" />
-            <DateField label="Prazo Demurrage" fieldKey="demurrage_deadline" />
-            <DateField label="Prazo 1º Período de Armazenagem" fieldKey="storage_deadline" />
+      {/* CARD 5 — DUIMP/DI/Registro/Canal/Fat.Enviado + Carga Entregue */}
+      <CollapsibleCard title="5. Desembaraço, Entrega & Faturamento">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="space-y-1">
+            <Label className="text-xs">Canal</Label>
+            <Select value={form.customs_channel || '_none'} onValueChange={(v) => updateField('customs_channel', v === '_none' ? '' : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecionar..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">—</SelectItem>
+                {CUSTOMS_CHANNEL_OPTIONS.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {form.customs_channel && (
+              <Badge className={CUSTOMS_CHANNEL_OPTIONS.find((c) => c.value === form.customs_channel)?.badgeClass}>
+                Canal {CUSTOMS_CHANNEL_OPTIONS.find((c) => c.value === form.customs_channel)?.label}
+              </Badge>
+            )}
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Número DUIMP</Label>
+            <Input
+              value={form.duimp_number}
+              onChange={(e) => updateField('duimp_number', e.target.value)}
+              placeholder="26BR00000000198"
+              className="h-9"
+            />
+            <p className="text-[10px] text-muted-foreground">Preenchendo aqui, canal e situação são atualizados sozinhos via Portal Único (se a notificação automática estiver ativa em Configurações).</p>
+          </div>
+          <DateField label="Registro DI" fieldKey="customs_registration_date" />
         </div>
 
-        {/* Entrega & Faturamento — os dois marcos finais do processo, iguais
-            às colunas "CARGA ENTREGUE" / "FATURAMENTO ENVIADO" da planilha
-            de follow-up. Marcar a data acontece na hora do check, sem
-            precisar abrir o calendário. */}
-        <div className="pt-4 border-t border-border space-y-2">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase">Entrega & Faturamento</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <CheckboxDateField label="Carga Entregue" fieldKey="cargo_delivered_at" />
-            <CheckboxDateField label="Faturamento Enviado" fieldKey="invoice_sent_at" />
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border">
+          <CheckboxDateField label="Carga Entregue" fieldKey="cargo_delivered_at" />
+          <CheckboxDateField label="Faturamento Enviado" fieldKey="invoice_sent_at" />
         </div>
+      </CollapsibleCard>
 
-        {/* Indicador de auto-save — não tem mais botão "Salvar" próprio */}
-        {saving && (
-          <div className="flex justify-end pt-2">
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando…
-            </span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {/* Indicador de auto-save — não tem mais botão "Salvar" próprio */}
+      {saving && (
+        <div className="flex justify-end pt-2">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando…
+          </span>
+        </div>
+      )}
+    </div>
   );
 }

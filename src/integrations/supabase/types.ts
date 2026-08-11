@@ -2724,6 +2724,7 @@ export type Database = {
           client_reference: string | null
           company_id: string
           consignee_id: string | null
+          container_demurrage_deadlines: string | null
           container_number: string | null
           container_quantity: number | null
           courier_provider: string | null
@@ -2783,6 +2784,7 @@ export type Database = {
           client_reference?: string | null
           company_id: string
           consignee_id?: string | null
+          container_demurrage_deadlines?: string | null
           container_number?: string | null
           container_quantity?: number | null
           courier_provider?: string | null
@@ -2842,6 +2844,7 @@ export type Database = {
           client_reference?: string | null
           company_id?: string
           consignee_id?: string | null
+          container_demurrage_deadlines?: string | null
           container_number?: string | null
           container_quantity?: number | null
           courier_provider?: string | null

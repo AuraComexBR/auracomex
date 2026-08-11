@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
 
       let query = adminClient
         .from("shipments")
-        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, transshipment, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, next_update, courier_provider, courier_tracking_number, company_id, customs_channel, customs_registration_date, terminal_entry_date, demurrage_deadline, storage_deadline, cargo_delivered_at, invoice_sent_at, client_reference, invoice_number, container_quantity, free_time")
+        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, transshipment, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, container_demurrage_deadlines, next_update, courier_provider, courier_tracking_number, company_id, customs_channel, customs_registration_date, terminal_entry_date, demurrage_deadline, storage_deadline, cargo_delivered_at, invoice_sent_at, client_reference, invoice_number, container_quantity, free_time")
         .eq("client_id", client_id);
 
       query = filter === "active"
