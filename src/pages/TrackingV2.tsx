@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/input';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown, NotebookPen, RefreshCw, LogOut } from 'lucide-react';
 import { format, addDays } from 'date-fns';
-import { StatusTimeline } from '@/components/tracking/StatusTimeline';
 import { buildTimeline } from '@/lib/shipmentTimeline';
 import { FlagIcon } from '@/components/shared/FlagIcon';
 import { usePlatformSettings } from '@/hooks/usePlatformSettings';
@@ -489,7 +488,7 @@ function earliestDemurrageDeadline(s: any): string | null {
 
 function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const { steps, kpis } = buildTimeline(s, statusOptions);
+  const { kpis } = buildTimeline(s, statusOptions);
   const category = resolveStatusCategory(s.status, statusOptions);
   const statusMeta = statusOptions.find((o) => o.value === s.status);
   const statusLabel = statusMeta?.label || s.status;
@@ -592,10 +591,9 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
               )}
             </div>
 
-            {/* Linha do tempo — 5 marcos genéricos, orientados pela categoria do status */}
-            {!kpis.isCancelled ? (
-              <StatusTimeline steps={steps} />
-            ) : (
+            {/* Linha do tempo removida nessa versão — as colunas Status/ETD/ETA/
+                Limite Devolução já cobrem o essencial sem o componente de marcos. */}
+            {kpis.isCancelled && (
               <div className="flex items-center gap-2 text-xs text-red-600 bg-red-500/10 rounded-md px-3 py-2">
                 <AlertTriangle className="w-4 h-4" />
                 <span>Processo cancelado.</span>
