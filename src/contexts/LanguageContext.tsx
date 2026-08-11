@@ -247,6 +247,7 @@ const translations: Record<string, Record<Language, string>> = {
   'registrations.link_copied': { pt: 'Link copiado!', en: 'Link copied!' },
   'registrations.partner_category': { pt: 'Categoria do Parceiro', en: 'Partner Category' },
   'registrations.category_road_carrier': { pt: 'Transportadora (Rodoviário)', en: 'Road Carrier' },
+  'registrations.category_shipper': { pt: 'Shipper', en: 'Shipper' },
   'registrations.category_insurance': { pt: 'Seguradora', en: 'Insurance' },
   'registrations.category_co_loader': { pt: 'Co-loader', en: 'Co-loader' },
   'registrations.category_ocean_carrier': { pt: 'Armador (Marítimo)', en: 'Ocean Carrier' },

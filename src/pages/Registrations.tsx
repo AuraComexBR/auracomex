@@ -631,6 +631,7 @@ export default function Registrations() {
                         <SelectValue placeholder={t('common.select') || 'Selecionar...'} />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="shipper">{t('registrations.category_shipper')}</SelectItem>
                         <SelectItem value="road_carrier">{t('registrations.category_road_carrier')}</SelectItem>
                         <SelectItem value="ocean_carrier">{t('registrations.category_ocean_carrier')}</SelectItem>
                         <SelectItem value="air_carrier">{t('registrations.category_air_carrier')}</SelectItem>
@@ -640,7 +641,7 @@ export default function Registrations() {
                         <SelectItem value="other">{t('registrations.category_other')}</SelectItem>
                         {/* Dynamic categories */}
                         {existingCategories
-                          .filter((cat: string) => !['road_carrier', 'ocean_carrier', 'air_carrier', 'insurance', 'co_loader', 'terminal', 'other'].includes(cat))
+                          .filter((cat: string) => !['shipper', 'road_carrier', 'ocean_carrier', 'air_carrier', 'insurance', 'co_loader', 'terminal', 'other'].includes(cat))
                           .map((cat: string) => (
                             <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                           ))
