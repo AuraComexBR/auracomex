@@ -2377,7 +2377,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             {(() => {
               const showStorageFee = form.transport_mode === 'ocean_lcl' || form.transport_mode === 'ocean_fcl';
               return (
-                <div className="flex flex-wrap items-start gap-3">
+                <div className="flex flex-col sm:flex-row items-start gap-3">
+                  <div className="flex flex-wrap items-start gap-3 w-full sm:w-1/2">
                   {showStorageFee && (
                     <Card className="glass w-full sm:w-auto shrink-0">
                       <CardHeader className="py-3 flex flex-row items-center gap-2 space-y-0 flex-wrap" onBlur={() => handleAutoSaveBlur('charges')}>
@@ -2416,7 +2417,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                       />
                     </div>
                   )}
-                  <div className="flex items-center gap-2 flex-wrap ml-auto">
+                </div>
+                  <div className="flex items-center gap-2 flex-wrap w-full sm:w-1/2 sm:justify-end">
                     {canEditCharges && (
                       <Button
                         type="button"
