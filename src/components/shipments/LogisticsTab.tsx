@@ -21,7 +21,6 @@ import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { getCourierTrackingUrl } from '@/lib/courierTracking';
-import { CARRIER_LABEL_BY_MODE } from '@/lib/carrierLabel';
 import { STATUS_CATEGORY_OPTIONS, DEFAULT_STATUS_OPTIONS, type StatusCategory } from '@/lib/shipmentStatusCategory';
 import { parseContainerNumbers, parseContainerDates } from '@/lib/containerNumbers';
 
@@ -220,59 +219,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     }
   }
 
-  // Fetch partners for this shipment (fallback for standalone shipments with
-  // no linked quote — the normal case reads from quote_partners below instead,
-  // so companies added/removed in the aba Empresas show up right away here).
-  const { data: shipmentPartners = [] } = useQuery({
-    queryKey: ['shipment-partners-logistics', shipment.id],
-    enabled: !quoteId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('shipment_partners')
-        .select('*, clients:client_id(id, name, type, partner_category)')
-        .eq('shipment_id', shipment.id)
-        .order('created_at');
-      if (error) throw error;
-      return data as any[];
-    },
-  });
-
-  // Empresas vinculadas ao processo na aba Empresas (quote_partners) — fonte
-  // principal das opções de Shipper/Armador/Notify/Consignee, pra qualquer
-  // empresa adicionada lá aparecer aqui na hora, sem precisar converter de
-  // novo. partner_category vem junto pra ajudar a preencher (ex: sugerir
-  // o Armador sozinho quando só tem uma transportadora do modal certo).
-  const { data: quotePartners = [] } = useQuery({
-    queryKey: ['quote-partners-logistics', quoteId],
-    enabled: !!quoteId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('quote_partners' as any)
-        .select('*, clients:client_id(id, name, type, partner_category)')
-        .eq('quote_id', quoteId!)
-        .order('created_at');
-      if (error) throw error;
-      return data as any[];
-    },
-  });
-
-  // A própria empresa (dona da conta) — sempre disponível como opção, já que
-  // ela mesma pode figurar como Shipper, Notify, Consignee ou Armador em
-  // alguns processos (ex: exportação direta, ou atuando como co-loader).
-  const { data: ownCompany } = useQuery({
-    queryKey: ['own-company-logistics', profile?.company_id],
-    enabled: !!profile?.company_id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('companies')
-        .select('id, name')
-        .eq('id', profile!.company_id)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
-
   // Cotação vinculada ao embarque — fonte de "espelho" pra Ref. Cliente,
   // FreeTime, Transit Time e Validade, que já existem lá (preenchidos na
   // Comercial/Proposta) antes de existirem aqui. Também usada pra achar os
@@ -327,7 +273,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     destination_city: shipment.destination_city || '',
     destination_country: shipment.destination_country || '',
     destination_port: shipment.destination_port || '',
-    carrier: shipment.carrier || '',
     vessel_flight: shipment.vessel_flight || '',
     booking_number: shipment.booking_number || '',
     master_bl: shipment.master_bl || '',
@@ -342,9 +287,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     status: shipment.status || 'draft',
     incoterm: (shipment as any).incoterm || '',
     transport_mode: shipment.transport_mode || 'ocean_fcl',
-    shipper_id: (shipment as any).shipper_id || '',
-    consignee_id: (shipment as any).consignee_id || '',
-    notify_id: (shipment as any).notify_id || '',
     courier_provider: (shipment as any).courier_provider || '',
     courier_tracking_number: (shipment as any).courier_tracking_number || '',
     customs_channel: (shipment as any).customs_channel || '',
@@ -393,53 +335,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
 
   const [saving, setSaving] = useState(false);
 
-  // Prioriza quote_partners (aba Empresas) quando há uma cotação vinculada —
-  // shipment_partners só serve de fallback pra embarque avulso sem cotação.
-  // A própria empresa e a empresa cliente do processo sempre ficam
-  // disponíveis, mesmo que ninguém as tenha adicionado na aba Empresas.
-  const partnerOptions = useMemo(() => {
-    const linked = (quoteId ? quotePartners : shipmentPartners)
-      .map((sp: any) => sp.clients)
-      .filter(Boolean);
-    const always: any[] = [];
-    if (ownCompany?.name) {
-      always.push({ id: ownCompany.id, name: ownCompany.name, partner_category: '__own' });
-    }
-    const clientId = (shipment as any).client_id;
-    const clientName = (shipment as any).clients?.name;
-    if (clientId && clientName) {
-      always.push({ id: clientId, name: clientName, partner_category: '__client' });
-    }
-    const combined = [...always, ...linked];
-    const seen = new Set<string>();
-    return combined.filter((p) => {
-      if (seen.has(p.id)) return false;
-      seen.add(p.id);
-      return true;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quoteId, quotePartners, shipmentPartners, ownCompany, shipment]);
-
-  // Categorias de empresa (cadastradas na aba Empresas) que fazem sentido
-  // como Armador/Transportadora pra cada modal — usado tanto pra rotular as
-  // opções quanto pra preencher o campo sozinho quando não há ambiguidade.
-  const carrierCategoriesByMode: Record<string, string[]> = {
-    ocean_fcl: ['ocean_carrier', 'co_loader'],
-    ocean_lcl: ['co_loader', 'ocean_carrier'],
-    air: ['air_carrier'],
-    road: ['road_carrier'],
-    multimodal: ['ocean_carrier', 'co_loader', 'air_carrier', 'road_carrier'],
-  };
-
-  function partnerCategoryLabel(category?: string | null) {
-    if (!category) return '';
-    if (category === '__own') return ' (Sua empresa)';
-    if (category === '__client') return ' (Cliente do processo)';
-    const translated = t(`registrations.category_${category}`);
-    const label = translated !== `registrations.category_${category}` ? translated : category;
-    return ` (${label})`;
-  }
-
   // Espelha Ref. Cliente/FreeTime/Transit Time/Validade da cotação vinculada
   // na primeira vez que o embarque ainda não tem valor próprio salvo — depois
   // disso os campos aqui viram independentes (podem ser ajustados sem afetar
@@ -469,10 +364,9 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
       'client_reference', 'invoice_number', 'free_time',
       'origin_city', 'origin_country', 'origin_port', 'transshipment',
       'destination_city', 'destination_country', 'destination_port',
-      'carrier', 'vessel_flight', 'booking_number',
+      'vessel_flight', 'booking_number',
       'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
       'etd', 'eta', 'atd', 'ata', 'incoterm', 'transport_mode',
-      'shipper_id', 'consignee_id', 'notify_id',
       'courier_provider', 'courier_tracking_number',
       'customs_channel', 'duimp_number', 'customs_registration_date', 'terminal_entry_date',
       'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
@@ -551,7 +445,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         destination_city: form.destination_city || null,
         destination_country: form.destination_country || null,
         destination_port: form.destination_port || null,
-        carrier: form.carrier || null,
         vessel_flight: form.vessel_flight || null,
         booking_number: form.booking_number || null,
         master_bl: form.master_bl || null,
@@ -568,9 +461,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         transport_mode: form.transport_mode as any,
         container_number: containerNumberValue,
         container_demurrage_deadlines: containerDemurrageValue,
-        shipper_id: form.shipper_id || null,
-        consignee_id: form.consignee_id || null,
-        notify_id: form.notify_id || null,
         courier_provider: form.courier_provider || null,
         courier_tracking_number: form.courier_tracking_number || null,
         customs_channel: form.customs_channel || null,
@@ -593,11 +483,10 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         'client_reference', 'invoice_number', 'container_quantity',
         'origin_city', 'origin_country', 'origin_port', 'transshipment',
         'destination_city', 'destination_country', 'destination_port',
-        'carrier', 'vessel_flight', 'booking_number',
+        'vessel_flight', 'booking_number',
         'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
         'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
         'container_demurrage_deadlines',
-        'shipper_id', 'consignee_id', 'notify_id',
         'courier_provider', 'courier_tracking_number',
         'customs_channel', 'duimp_number', 'customs_registration_date', 'terminal_entry_date',
         'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
@@ -660,19 +549,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   }
 
   const updateField = (key: string, value: string) => setForm(f => ({ ...f, [key]: value }));
-
-  // Preenche o Armador sozinho quando existe exatamente uma empresa da
-  // categoria certa pro modal vinculada ao processo — ex: só uma
-  // transportadora rodoviária cadastrada em Empresas com modal Rodoviário.
-  useEffect(() => {
-    if (form.carrier) return;
-    const relevantCategories = carrierCategoriesByMode[form.transport_mode] || [];
-    const matches = partnerOptions.filter((p: any) => relevantCategories.includes(p.partner_category));
-    if (matches.length === 1) {
-      updateField('carrier', matches[0].name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partnerOptions.map((p: any) => p.id).join(','), form.transport_mode, form.carrier]);
 
   function DateField({ label, fieldKey }: { label: string; fieldKey: string }) {
     const value = (form as any)[fieldKey];
@@ -778,26 +654,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         <span className="text-xs text-muted-foreground">
           {value ? format(new Date(value), 'dd/MM/yyyy') : '—'}
         </span>
-      </div>
-    );
-  }
-
-  function PartnerSelect({ label, fieldKey }: { label: string; fieldKey: string }) {
-    const value = (form as any)[fieldKey];
-    return (
-      <div className="space-y-1">
-        <Label className="text-xs">{label}</Label>
-        <Select value={value || '_none'} onValueChange={(v) => updateField(fieldKey, v === '_none' ? '' : v)}>
-          <SelectTrigger>
-            <SelectValue placeholder="Selecionar..." />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_none">—</SelectItem>
-            {partnerOptions.map((p: any) => (
-              <SelectItem key={p.id} value={p.id}>{p.name}{partnerCategoryLabel(p.partner_category)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
     );
   }
@@ -1098,33 +954,10 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         </div>
       </CollapsibleCard>
 
-      {/* CARD 2 — Shipper/Armador/Notify/Consignee, Invoice/Booking/Master/House, CEs */}
-      <CollapsibleCard title="2. Empresas & Documentos">
+      {/* CARD 2 — Invoice/Booking/Master/House, CEs (Shipper/Armador/Notify/
+          Consignee mudaram pra aba Empresas — ver ShipmentPartnersCard) */}
+      <CollapsibleCard title="2. Documentos">
         <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase">Participantes</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <PartnerSelect label="Shipper" fieldKey="shipper_id" />
-            {/* Carrier — rótulo muda com o modal, mas grava sempre no mesmo campo (nome do parceiro em texto) */}
-            <div className="space-y-1">
-              <Label className="text-xs">{CARRIER_LABEL_BY_MODE[form.transport_mode] || t('shipments.carrier')}</Label>
-              <Select value={form.carrier || '_none'} onValueChange={(v) => updateField('carrier', v === '_none' ? '' : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecionar..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">—</SelectItem>
-                  {partnerOptions.map((p: any) => (
-                    <SelectItem key={p.id} value={p.name}>{p.name}{partnerCategoryLabel(p.partner_category)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <PartnerSelect label="Notify" fieldKey="notify_id" />
-            <PartnerSelect label="Consignee" fieldKey="consignee_id" />
-          </div>
-        </div>
-
-        <div className="pt-4 border-t border-border space-y-2">
           <h4 className="text-xs font-semibold text-muted-foreground uppercase">Documentos & Referências</h4>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="space-y-1">

@@ -37,6 +37,7 @@ import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
 import { cn } from '@/lib/utils';
 import { LogisticsTab } from '@/components/shipments/LogisticsTab';
+import { ShipmentPartnersCard } from '@/components/shipments/ShipmentPartnersCard';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -2297,7 +2298,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         </TabsContent>
 
         {/* Partners Tab */}
-        <TabsContent value="partners">
+        <TabsContent value="partners" className="space-y-4">
           <Card className="glass">
             <CardContent className="pt-6 space-y-4">
               <QuotePartnersList
@@ -2317,6 +2318,17 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               />
             </CardContent>
           </Card>
+
+          {/* Shipper/Armador/Notify/Consignee do embarque — mudaram da aba
+              Logística pra cá, já que as opções vêm das empresas cadastradas
+              logo acima. */}
+          {isShipmentMode && shipment && (
+            <ShipmentPartnersCard
+              shipment={shipment}
+              quoteId={quoteId}
+              onUpdate={() => queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] })}
+            />
+          )}
         </TabsContent>
 
         {/* Charges Tab */}

@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ModeIcon } from '@/components/shared/ModeIcon';
 import { FinancialTab } from './FinancialTab';
 import { LogisticsTab } from './LogisticsTab';
+import { ShipmentPartnersCard } from './ShipmentPartnersCard';
 import { DocumentsTab } from './DocumentsTab';
 import { ShipmentEventsTab } from './ShipmentEventsTab';
 import { HistoryPanel } from '@/components/quotes/HistoryPanel';
@@ -223,7 +224,7 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
         </TabsContent>
 
         {/* Partners Tab */}
-        <TabsContent value="partners">
+        <TabsContent value="partners" className="space-y-4">
           <Card className="glass">
             <CardHeader>
               <CardTitle className="text-sm">{t('quotes.partners_tab')}</CardTitle>
@@ -255,6 +256,13 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
               )}
             </CardContent>
           </Card>
+
+          {/* Shipper/Armador/Notify/Consignee do embarque avulso (sem
+              cotação vinculada) — mesmo componente usado no fluxo normal. */}
+          <ShipmentPartnersCard
+            shipment={shipment}
+            onUpdate={() => queryClient.invalidateQueries({ queryKey: ['shipment', id] })}
+          />
         </TabsContent>
 
         <TabsContent value="logistics">
