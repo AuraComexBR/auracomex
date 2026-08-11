@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ModeIcon } from '@/components/shared/ModeIcon';
-import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown, NotebookPen, RefreshCw, LogOut } from 'lucide-react';
+import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown, NotebookPen, RefreshCw, LogOut, GripVertical, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { buildTimeline } from '@/lib/shipmentTimeline';
 import { FlagIcon } from '@/components/shared/FlagIcon';
@@ -21,6 +21,7 @@ import { STATUS_CATEGORY_COLORS, DEFAULT_STATUS_OPTIONS, resolveStatusCategory, 
 import { parseContainerNumbers, parseContainerDates } from '@/lib/containerNumbers';
 import { DOC_TYPE_LABELS } from '@/lib/documentCategory';
 import { normalizeTrackingFieldVisibility, type TrackingFieldVisibility } from '@/lib/trackingFieldRegistry';
+import type { SortState } from '@/hooks/useTableSort';
 
 // ============================================================================
 // TrackingV2 — layout reformulado do portal de rastreamento do cliente.
@@ -120,6 +121,107 @@ const EXTRA_COLLAPSED_LABELS: Record<string, string> = {
   cargo_ncm: 'NCM',
 };
 
+// Colunas com estilo/lógica própria (badge, cor por status, total agregado
+// de carga) — ordem padrão de exibição antes de qualquer reordenação manual.
+const SPECIAL_COLLAPSED_KEYS = [
+  'client_reference', 'etd', 'eta', 'demurrage_deadline_calc', 'duimp_number', 'physical_location',
+  'cargo_container_type', 'cargo_value',
+];
+
+const SPECIAL_COLLAPSED_LABELS: Record<string, string> = {
+  client_reference: 'Ref. Cliente',
+  etd: 'ETD',
+  eta: 'ETA',
+  demurrage_deadline_calc: 'Limite Devolução',
+  duimp_number: 'DUIMP',
+  physical_location: 'Físico',
+  cargo_container_type: 'Containers',
+  cargo_value: 'Valor da Carga',
+};
+
+// Só essas colunas participam do useTableSort (mapeadas pro sortKey usado
+// nos accessors) — as demais só são reordenáveis por arrastar, sem ordenação.
+const COLLAPSED_SORT_KEY_MAP: Record<string, string> = {
+  client_reference: 'client_reference',
+  etd: 'etd',
+  eta: 'eta',
+  demurrage_deadline_calc: 'demurrage_deadline',
+  duimp_number: 'duimp_number',
+  physical_location: 'physical_location',
+};
+
+// Ordem padrão de todas as colunas opcionais (usada quando o cliente ainda
+// não reordenou nada, e pra encaixar colunas novas que ele acabou de marcar
+// como visíveis no fim da lista já reordenada).
+const ALL_OPTIONAL_COLLAPSED_KEYS = [...SPECIAL_COLLAPSED_KEYS, ...EXTRA_COLLAPSED_KEYS];
+const COLLAPSED_COLUMN_LABELS: Record<string, string> = { ...SPECIAL_COLLAPSED_LABELS, ...EXTRA_COLLAPSED_LABELS };
+
+/** Ordem de colunas escolhida pelo cliente fica salva no navegador dele
+ *  (localStorage, sobrevive a fechar a aba/navegador) — por CNPJ, igual à
+ *  sessão de autenticação. */
+function columnOrderKey(clientCnpj: string) {
+  return `aura:trackingv2:columnorder:${clientCnpj}`;
+}
+
+/** Cabeçalho de coluna arrastável (drag-and-drop pra reordenar) — ordenável
+ *  por clique também quando `sortKey` é passado (mesmo visual do
+ *  SortableHeader, só que dentro de um único <th> que também é draggable —
+ *  não dá pra aninhar outro <th> dentro do componente compartilhado). */
+function DraggableColumnHeader({
+  label, sortKey, sortState, onToggleSort, isDragging, isDragOver, onDragStart, onDragEnd, onDragEnter, onDrop, right,
+}: {
+  label: string;
+  sortKey?: string;
+  sortState: SortState;
+  onToggleSort: (key: string) => void;
+  isDragging: boolean;
+  isDragOver: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDragEnter: () => void;
+  onDrop: () => void;
+  right?: React.ReactNode;
+}) {
+  const active = !!sortKey && sortState.key === sortKey && sortState.dir !== null;
+  const Icon = !active ? ArrowUpDown : sortState.dir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <TableHead
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart(); }}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => e.preventDefault()}
+      onDragEnter={onDragEnter}
+      onDrop={(e) => { e.preventDefault(); onDrop(); }}
+      title="Arraste para reordenar a coluna"
+      className={cn(
+        'h-7 px-2 text-[11px] whitespace-nowrap cursor-move select-none',
+        isDragging && 'opacity-40',
+        isDragOver && 'bg-primary/10',
+      )}
+    >
+      <div className="inline-flex items-center gap-1">
+        <GripVertical className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+        {sortKey ? (
+          <button
+            type="button"
+            onClick={() => onToggleSort(sortKey)}
+            className={cn(
+              'inline-flex items-center gap-1.5 hover:text-foreground transition-colors select-none',
+              active ? 'text-foreground' : 'text-muted-foreground',
+            )}
+          >
+            <span>{label}</span>
+            <Icon className={cn('w-3.5 h-3.5', active ? 'opacity-100' : 'opacity-50')} />
+          </button>
+        ) : (
+          <span className="text-muted-foreground">{label}</span>
+        )}
+        {right}
+      </div>
+    </TableHead>
+  );
+}
+
 /** Dias até uma data-limite (negativo = já venceu). */
 function daysUntil(dateStr?: string | null): number | null {
   if (!dateStr) return null;
@@ -153,7 +255,25 @@ export default function TrackingV2() {
   const [fieldVisibility, setFieldVisibility] = useState<TrackingFieldVisibility>({ collapsed: [], expanded: [] });
   const [logoError, setLogoError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [columnOrder, setColumnOrder] = useState<string[]>([]);
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const { data: platformSettings } = usePlatformSettings();
+
+  // Ordem de colunas escolhida pelo cliente — carregada uma vez do
+  // localStorage (por CNPJ), sobrevive a fechar o navegador.
+  useEffect(() => {
+    if (!clientCnpj) return;
+    try {
+      const raw = localStorage.getItem(columnOrderKey(clientCnpj));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setColumnOrder(parsed.filter((k) => typeof k === 'string'));
+      }
+    } catch {
+      // ignore
+    }
+  }, [clientCnpj]);
 
   useEffect(() => {
     if (!clientCnpj) return;
@@ -277,11 +397,44 @@ export default function TrackingV2() {
 
   // Ref. e Status são baseline (sempre aparecem); o resto das colunas da
   // visão colapsada é opt-in, configurado por cliente em Cadastros > Clientes
-  // > Tracking (ver src/lib/trackingFieldRegistry.ts).
+  // > Tracking (ver src/lib/trackingFieldRegistry.ts). A ordem das colunas
+  // opcionais é a que o próprio cliente arrastou (columnOrder), com colunas
+  // recém-liberadas entrando no fim, na ordem padrão do registro.
   const isCollapsedVisible = (key: string) => fieldVisibility.collapsed.includes(key);
-  const OPTIONAL_COLLAPSED_KEYS = ['client_reference', 'etd', 'eta', 'demurrage_deadline_calc', 'duimp_number', 'physical_location', 'cargo_container_type', 'cargo_value'];
-  const visibleCollapsedColumnCount =
-    2 + OPTIONAL_COLLAPSED_KEYS.filter(isCollapsedVisible).length + EXTRA_COLLAPSED_KEYS.filter(isCollapsedVisible).length;
+  const visibleOptionalKeys = ALL_OPTIONAL_COLLAPSED_KEYS.filter(isCollapsedVisible);
+  const orderedVisibleKeys = [
+    ...columnOrder.filter((k) => visibleOptionalKeys.includes(k)),
+    ...visibleOptionalKeys.filter((k) => !columnOrder.includes(k)),
+  ];
+  const visibleCollapsedColumnCount = 2 + orderedVisibleKeys.length;
+
+  function persistColumnOrder(next: string[]) {
+    setColumnOrder(next);
+    if (clientCnpj) {
+      try { localStorage.setItem(columnOrderKey(clientCnpj), JSON.stringify(next)); } catch { /* ignore */ }
+    }
+  }
+
+  function handleColumnDrop(targetKey: string) {
+    if (!draggedColumn || draggedColumn === targetKey) {
+      setDraggedColumn(null);
+      setDragOverColumn(null);
+      return;
+    }
+    const from = orderedVisibleKeys.indexOf(draggedColumn);
+    const to = orderedVisibleKeys.indexOf(targetKey);
+    if (from === -1 || to === -1) {
+      setDraggedColumn(null);
+      setDragOverColumn(null);
+      return;
+    }
+    const next = [...orderedVisibleKeys];
+    next.splice(from, 1);
+    next.splice(to, 0, draggedColumn);
+    persistColumnOrder(next);
+    setDraggedColumn(null);
+    setDragOverColumn(null);
+  }
 
   const shipmentIds = shipments.map((s: any) => s.id);
   const { data: trackingDocs = [] } = useQuery({
@@ -482,41 +635,27 @@ export default function TrackingV2() {
                           label="Ref." sortKey="reference_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
                           right={<ColumnSearch value={searchRef} onChange={setSearchRef} open={searchRefOpen} onOpenChange={setSearchRefOpen} />}
                         />
-                        {isCollapsedVisible('client_reference') && (
-                          <SortableHeader
-                            label="Ref. Cliente" sortKey="client_reference" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]"
-                            right={<ColumnSearch value={searchClientRef} onChange={setSearchClientRef} open={searchClientRefOpen} onOpenChange={setSearchClientRefOpen} />}
-                          />
-                        )}
                         <SortableHeader label="Status" sortKey="status" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        {isCollapsedVisible('etd') && (
-                          <SortableHeader label="ETD" sortKey="etd" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        )}
-                        {isCollapsedVisible('eta') && (
-                          <SortableHeader label="ETA" sortKey="eta" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        )}
-                        {isCollapsedVisible('demurrage_deadline_calc') && (
-                          <SortableHeader label="Limite Devolução" sortKey="demurrage_deadline" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        )}
-                        {isCollapsedVisible('duimp_number') && (
-                          <SortableHeader label="DUIMP" sortKey="duimp_number" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        )}
-                        {isCollapsedVisible('physical_location') && (
-                          <SortableHeader label="Físico" sortKey="physical_location" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
-                        )}
-                        {isCollapsedVisible('cargo_container_type') && (
-                          <TableHead className="h-7 px-2 text-[11px] whitespace-nowrap">Containers</TableHead>
-                        )}
-                        {isCollapsedVisible('cargo_value') && (
-                          <TableHead className="h-7 px-2 text-[11px] whitespace-nowrap">Valor da Carga</TableHead>
-                        )}
-                        {/* Qualquer outro campo do registro pode virar coluna
-                            colapsada também — sem ordenação (só os campos
-                            acima, já ligados ao useTableSort, são ordenáveis). */}
-                        {EXTRA_COLLAPSED_KEYS.filter(isCollapsedVisible).map((key) => (
-                          <TableHead key={key} className="h-7 px-2 text-[11px] whitespace-nowrap">
-                            {EXTRA_COLLAPSED_LABELS[key]}
-                          </TableHead>
+                        {/* Colunas opcionais — arrastáveis (clique e arraste
+                            pra reordenar; a ordem escolhida fica salva pras
+                            próximas visitas desse cliente). */}
+                        {orderedVisibleKeys.map((key) => (
+                          <DraggableColumnHeader
+                            key={key}
+                            label={COLLAPSED_COLUMN_LABELS[key]}
+                            sortKey={COLLAPSED_SORT_KEY_MAP[key]}
+                            sortState={sortState}
+                            onToggleSort={toggleSort}
+                            isDragging={draggedColumn === key}
+                            isDragOver={dragOverColumn === key && draggedColumn !== key}
+                            onDragStart={() => setDraggedColumn(key)}
+                            onDragEnd={() => { setDraggedColumn(null); setDragOverColumn(null); }}
+                            onDragEnter={() => setDragOverColumn(key)}
+                            onDrop={() => handleColumnDrop(key)}
+                            right={key === 'client_reference' ? (
+                              <ColumnSearch value={searchClientRef} onChange={setSearchClientRef} open={searchClientRefOpen} onOpenChange={setSearchClientRefOpen} />
+                            ) : undefined}
+                          />
                         ))}
                       </TableRow>
                     </TableHeader>
@@ -538,6 +677,7 @@ export default function TrackingV2() {
                             defaultExpanded={false}
                             fieldVisibility={fieldVisibility}
                             colSpan={visibleCollapsedColumnCount}
+                            orderedCollapsedKeys={orderedVisibleKeys}
                           />
                         ))
                       )}
@@ -712,9 +852,9 @@ const CARGO_KEYS = [
   'cargo_vehicle_type', 'cargo_ncm', 'cargo_value',
 ];
 
-function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded, fieldVisibility, colSpan }: {
+function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded, fieldVisibility, colSpan, orderedCollapsedKeys }: {
   shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean;
-  fieldVisibility: TrackingFieldVisibility; colSpan: number;
+  fieldVisibility: TrackingFieldVisibility; colSpan: number; orderedCollapsedKeys: string[];
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const isCollapsedVisible = (key: string) => fieldVisibility.collapsed.includes(key);
@@ -795,6 +935,34 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
     }
   }
 
+  /** Célula da coluna colapsada pra qualquer chave, com estilo próprio nos
+   *  campos que já tinham (badge, cor por data real/estimada, canal etc.) —
+   *  usada num loop único, na ordem escolhida pelo cliente (orderedCollapsedKeys). */
+  function renderCollapsedCell(key: string): { content: React.ReactNode; className?: string; title?: string } {
+    switch (key) {
+      case 'client_reference':
+        return { content: s.client_reference ? <Badge variant="outline" className="font-mono font-normal text-[10px] px-1.5 py-0">{s.client_reference}</Badge> : '—' };
+      case 'etd':
+        return { content: shortDate(s.atd || s.etd), className: s.atd ? 'font-semibold text-emerald-600' : undefined, title: s.atd ? 'Data real' : 'Estimativa' };
+      case 'eta':
+        return { content: shortDate(s.ata || s.eta), className: s.ata ? 'font-semibold text-emerald-600' : undefined, title: s.ata ? 'Data real' : 'Estimativa' };
+      case 'demurrage_deadline_calc':
+        return { content: shortDate(demurrageDeadline), className: demurrageUrgent ? 'text-red-600 font-semibold' : undefined };
+      case 'duimp_number':
+        return { content: s.duimp_number || '—', className: cn('font-mono max-w-[130px] truncate', channelMeta?.textClass || ''), title: channelMeta?.label };
+      case 'physical_location':
+        return { content: s.physical_location || '—', className: 'max-w-[140px] truncate', title: s.physical_location || '' };
+      case 'cargo_container_type':
+        return { content: cargoContainerTotal(s.cargo_items) != null ? `${cargoContainerTotal(s.cargo_items)} container(s)` : '—' };
+      case 'cargo_value':
+        return { content: cargoValueTotal(s.cargo_items) || '—' };
+      default: {
+        const content = renderExtraCollapsedCell(key);
+        return { content, className: 'max-w-[180px] truncate', title: typeof content === 'string' ? content : undefined };
+      }
+    }
+  }
+
   return (
     <>
       {/* Linha resumo — Ref / Ref.Cliente / Status / ETA / ETD / Limite
@@ -809,52 +977,15 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
             {s.reference_number}
           </span>
         </TableCell>
-        {isCollapsedVisible('client_reference') && (
-          <TableCell className="py-1 px-2">
-            {s.client_reference ? <Badge variant="outline" className="font-mono font-normal text-[10px] px-1.5 py-0">{s.client_reference}</Badge> : '—'}
-          </TableCell>
-        )}
         <TableCell className="py-1 px-2"><Badge className={cn(statusBadgeClass, 'text-[10px] px-1.5 py-0 whitespace-nowrap')}>{statusLabel}</Badge></TableCell>
-        {isCollapsedVisible('etd') && (
-          <TableCell className={cn('py-1 px-2', s.atd && 'font-semibold text-emerald-600')} title={s.atd ? 'Data real' : 'Estimativa'}>
-            {shortDate(s.atd || s.etd)}
-          </TableCell>
-        )}
-        {isCollapsedVisible('eta') && (
-          <TableCell className={cn('py-1 px-2', s.ata && 'font-semibold text-emerald-600')} title={s.ata ? 'Data real' : 'Estimativa'}>
-            {shortDate(s.ata || s.eta)}
-          </TableCell>
-        )}
-        {isCollapsedVisible('demurrage_deadline_calc') && (
-          <TableCell className={cn('py-1 px-2', demurrageUrgent && 'text-red-600 font-semibold')}>
-            {shortDate(demurrageDeadline)}
-          </TableCell>
-        )}
-        {isCollapsedVisible('duimp_number') && (
-          <TableCell className={cn('py-1 px-2 font-mono max-w-[130px] truncate', channelMeta?.textClass || '')} title={channelMeta?.label}>
-            {s.duimp_number || '—'}
-          </TableCell>
-        )}
-        {isCollapsedVisible('physical_location') && (
-          <TableCell className="py-1 px-2 max-w-[140px] truncate" title={s.physical_location || ''}>
-            {s.physical_location || '—'}
-          </TableCell>
-        )}
-        {isCollapsedVisible('cargo_container_type') && (
-          <TableCell className="py-1 px-2">
-            {cargoContainerTotal(s.cargo_items) != null ? `${cargoContainerTotal(s.cargo_items)} container(s)` : '—'}
-          </TableCell>
-        )}
-        {isCollapsedVisible('cargo_value') && (
-          <TableCell className="py-1 px-2">
-            {cargoValueTotal(s.cargo_items) || '—'}
-          </TableCell>
-        )}
-        {EXTRA_COLLAPSED_KEYS.filter(isCollapsedVisible).map((key) => (
-          <TableCell key={key} className="py-1 px-2 max-w-[180px] truncate" title={typeof renderExtraCollapsedCell(key) === 'string' ? (renderExtraCollapsedCell(key) as string) : undefined}>
-            {renderExtraCollapsedCell(key)}
-          </TableCell>
-        ))}
+        {orderedCollapsedKeys.map((key) => {
+          const cell = renderCollapsedCell(key);
+          return (
+            <TableCell key={key} className={cn('py-1 px-2', cell.className)} title={cell.title}>
+              {cell.content}
+            </TableCell>
+          );
+        })}
       </TableRow>
 
       {expanded && (
