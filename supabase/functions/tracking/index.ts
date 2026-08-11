@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
 
       let query = adminClient
         .from("shipments")
-        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, transshipment, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, container_demurrage_deadlines, next_update, courier_provider, courier_tracking_number, company_id, customs_channel, customs_registration_date, terminal_entry_date, demurrage_deadline, storage_deadline, cargo_delivered_at, invoice_sent_at, client_reference, invoice_number, container_quantity, free_time")
+        .select("id, reference_number, status, transport_mode, incoterm, origin_city, origin_country, origin_port, transshipment, destination_city, destination_country, destination_port, etd, eta, atd, ata, carrier, vessel_flight, booking_number, master_bl, house_bl, container_number, container_demurrage_deadlines, next_update, courier_provider, courier_tracking_number, company_id, customs_channel, duimp_number, physical_location, customs_registration_date, terminal_entry_date, demurrage_deadline, storage_deadline, cargo_delivered_at, invoice_sent_at, client_reference, invoice_number, container_quantity, free_time, shipper_id")
         .eq("client_id", client_id);
 
       query = filter === "active"
@@ -169,10 +169,24 @@ Deno.serve(async (req) => {
         for (const p of ports || []) portMap.set(p.code, p);
       }
 
+      // Shipper (exportador/embarcador) é uma empresa cadastrada em "clients"
+      // (mesma tabela usada pra parceiros do processo), referenciada por
+      // shipments.shipper_id — resolve o nome em lote pros embarques que têm.
+      const shipperIds = [...new Set(shipments.map((s: any) => s.shipper_id).filter(Boolean))];
+      const shipperMap = new Map<string, string>();
+      if (shipperIds.length > 0) {
+        const { data: shippers } = await adminClient
+          .from("clients")
+          .select("id, name")
+          .in("id", shipperIds);
+        for (const sh of shippers || []) shipperMap.set(sh.id, sh.name);
+      }
+
       const enrichedShipments = shipments.map((s: any) => ({
         ...s,
         client_reference: s.client_reference || refMap.get(s.id) || null,
         transshipment_info: s.transshipment ? (portMap.get(s.transshipment) || { code: s.transshipment, name: s.transshipment, city: null, country_code: "" }) : null,
+        shipper_name: s.shipper_id ? (shipperMap.get(s.shipper_id) || null) : null,
       }));
 
       return jsonResponse({ shipments: enrichedShipments, status_options: statusOptions });

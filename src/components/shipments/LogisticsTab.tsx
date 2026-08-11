@@ -296,6 +296,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     courier_tracking_number: (shipment as any).courier_tracking_number || '',
     customs_channel: (shipment as any).customs_channel || '',
     duimp_number: (shipment as any).duimp_number || '',
+    physical_location: (shipment as any).physical_location || '',
     customs_registration_date: (shipment as any).customs_registration_date || '',
     terminal_entry_date: (shipment as any).terminal_entry_date || '',
     storage_deadline: (shipment as any).storage_deadline || '',
@@ -426,7 +427,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
       'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
       'etd', 'eta', 'atd', 'ata', 'incoterm', 'transport_mode',
       'courier_provider', 'courier_tracking_number',
-      'customs_channel', 'duimp_number', 'customs_registration_date', 'terminal_entry_date',
+      'customs_channel', 'duimp_number', 'physical_location', 'customs_registration_date', 'terminal_entry_date',
       'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
     ];
     for (const key of fieldsToCheck) {
@@ -527,6 +528,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         courier_tracking_number: form.courier_tracking_number || null,
         customs_channel: form.customs_channel || null,
         duimp_number: form.duimp_number.trim() || null,
+        physical_location: form.physical_location.trim() || null,
         customs_registration_date: form.customs_registration_date || null,
         terminal_entry_date: form.terminal_entry_date || null,
         storage_deadline: form.storage_deadline || null,
@@ -550,7 +552,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
         'container_demurrage_deadlines',
         'courier_provider', 'courier_tracking_number',
-        'customs_channel', 'duimp_number', 'customs_registration_date', 'terminal_entry_date',
+        'customs_channel', 'duimp_number', 'physical_location', 'customs_registration_date', 'terminal_entry_date',
         'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
       ];
       for (const dbKey of allFields) {
@@ -1176,6 +1178,16 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
             <p className="text-[10px] text-muted-foreground">Preenchendo aqui, canal e situação são atualizados sozinhos via Portal Único (se a notificação automática estiver ativa em Configurações).</p>
           </div>
           <DateField label="Registro DI" fieldKey="customs_registration_date" />
+          <div className="space-y-1">
+            <Label className="text-xs">Localização Física da Carga</Label>
+            <Input
+              value={form.physical_location}
+              onChange={(e) => updateField('physical_location', e.target.value)}
+              placeholder="Ex.: Porto de Santos - Armazém 3"
+              className="h-9"
+            />
+            <p className="text-[10px] text-muted-foreground">Aparece como "Físico" no tracking do cliente.</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border">
