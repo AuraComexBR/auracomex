@@ -72,6 +72,54 @@ const EVENT_CATEGORY_LABELS: Record<string, string> = {
   update: 'Atualização',
 };
 
+// Qualquer campo do registro (src/lib/trackingFieldRegistry.ts) pode virar
+// coluna da visão colapsada — os campos abaixo não têm ordenação (diferente
+// dos que já usam SortableHeader: Ref./Ref.Cliente/Status/ETD/ETA/Limite
+// Devolução/DUIMP/Físico/Containers/Valor da Carga).
+const EXTRA_COLLAPSED_KEYS = [
+  'invoice_number', 'free_time', 'transit_time_calc', 'route', 'vessel_flight', 'booking_number', 'bl', 'ce_mercante',
+  'incoterm', 'transport_mode', 'courier', 'customs_channel', 'customs_registration_date', 'cargo_delivered_at', 'invoice_sent_at',
+  'container_numbers', 'container_seals', 'container_terminal_entry', 'container_return', 'storage_deadline_calc', 'next_update',
+  'shipper_name', 'carrier',
+  'cargo_weight', 'cargo_volume', 'cargo_chargeable_weight', 'cargo_dimensions', 'cargo_packages', 'cargo_commodity',
+  'cargo_dangerous_goods', 'cargo_vehicle_type', 'cargo_ncm',
+];
+
+const EXTRA_COLLAPSED_LABELS: Record<string, string> = {
+  invoice_number: 'Invoice',
+  free_time: 'Free Time',
+  transit_time_calc: 'Transit Time',
+  route: 'Origem e Destino',
+  vessel_flight: 'Navio/Voo',
+  booking_number: 'Booking',
+  bl: 'BL',
+  ce_mercante: 'CE Mercante',
+  incoterm: 'Incoterm',
+  transport_mode: 'Modal',
+  courier: 'Courier',
+  customs_channel: 'Canal',
+  customs_registration_date: 'Registro DI',
+  cargo_delivered_at: 'Carga Entregue',
+  invoice_sent_at: 'Faturamento Enviado',
+  container_numbers: 'Container(s)',
+  container_seals: 'Lacre(s)',
+  container_terminal_entry: 'Entrada Terminal',
+  container_return: 'Devolvido em',
+  storage_deadline_calc: '1º Período Armazenagem',
+  next_update: 'Próxima Atualização',
+  shipper_name: 'Shipper',
+  carrier: 'Armador/Cia',
+  cargo_weight: 'Peso (kg)',
+  cargo_volume: 'Cubagem (m³)',
+  cargo_chargeable_weight: 'Peso Taxável',
+  cargo_dimensions: 'Dimensões',
+  cargo_packages: 'Volumes',
+  cargo_commodity: 'Mercadoria',
+  cargo_dangerous_goods: 'Carga Perigosa',
+  cargo_vehicle_type: 'Tipo de Veículo',
+  cargo_ncm: 'NCM',
+};
+
 /** Dias até uma data-limite (negativo = já venceu). */
 function daysUntil(dateStr?: string | null): number | null {
   if (!dateStr) return null;
@@ -232,7 +280,8 @@ export default function TrackingV2() {
   // > Tracking (ver src/lib/trackingFieldRegistry.ts).
   const isCollapsedVisible = (key: string) => fieldVisibility.collapsed.includes(key);
   const OPTIONAL_COLLAPSED_KEYS = ['client_reference', 'etd', 'eta', 'demurrage_deadline_calc', 'duimp_number', 'physical_location', 'cargo_container_type', 'cargo_value'];
-  const visibleCollapsedColumnCount = 2 + OPTIONAL_COLLAPSED_KEYS.filter(isCollapsedVisible).length;
+  const visibleCollapsedColumnCount =
+    2 + OPTIONAL_COLLAPSED_KEYS.filter(isCollapsedVisible).length + EXTRA_COLLAPSED_KEYS.filter(isCollapsedVisible).length;
 
   const shipmentIds = shipments.map((s: any) => s.id);
   const { data: trackingDocs = [] } = useQuery({
@@ -461,6 +510,14 @@ export default function TrackingV2() {
                         {isCollapsedVisible('cargo_value') && (
                           <TableHead className="h-7 px-2 text-[11px] whitespace-nowrap">Valor da Carga</TableHead>
                         )}
+                        {/* Qualquer outro campo do registro pode virar coluna
+                            colapsada também — sem ordenação (só os campos
+                            acima, já ligados ao useTableSort, são ordenáveis). */}
+                        {EXTRA_COLLAPSED_KEYS.filter(isCollapsedVisible).map((key) => (
+                          <TableHead key={key} className="h-7 px-2 text-[11px] whitespace-nowrap">
+                            {EXTRA_COLLAPSED_LABELS[key]}
+                          </TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -626,6 +683,29 @@ function cargoValueTotal(cargoItems: any[] | undefined): string | null {
     .join(' + ');
 }
 
+/** Soma um campo numérico de todos os itens de Resumo da Carga (peso,
+ *  cubagem, peso taxável, volumes) — usado nas colunas colapsadas extras. */
+function cargoSumTotal(cargoItems: any[] | undefined, field: string, unit: string): string {
+  if (!Array.isArray(cargoItems) || cargoItems.length === 0) return '—';
+  let sum = 0;
+  let any = false;
+  for (const it of cargoItems) {
+    if (it[field] == null) continue;
+    any = true;
+    sum += Number(it[field]);
+  }
+  if (!any) return '—';
+  return unit ? `${sum} ${unit}` : String(sum);
+}
+
+/** Junta os valores distintos (não vazios) de um campo de texto entre os
+ *  itens de Resumo da Carga (mercadoria, NCM, tipo de veículo). */
+function cargoUniqueJoin(cargoItems: any[] | undefined, field: string): string {
+  if (!Array.isArray(cargoItems) || cargoItems.length === 0) return '—';
+  const values = [...new Set(cargoItems.map((it) => it[field]).filter(Boolean))];
+  return values.length > 0 ? values.join(', ') : '—';
+}
+
 const CARGO_KEYS = [
   'cargo_container_type', 'cargo_weight', 'cargo_volume', 'cargo_chargeable_weight',
   'cargo_dimensions', 'cargo_packages', 'cargo_commodity', 'cargo_dangerous_goods',
@@ -652,12 +732,68 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
   const statusBadgeClass = STATUS_CATEGORY_COLORS[category] || '';
   const containers = parseContainerNumbers(s.container_number);
   const containerReturnDates = parseContainerDates(s.container_return_dates);
+  const containerSeals = parseContainerDates(s.container_seals);
+  const containerTerminalEntries = parseContainerDates(s.container_terminal_entry_dates);
   const channelMeta = s.customs_channel ? CUSTOMS_CHANNEL_LABELS[s.customs_channel] : null;
   const demurrageDeadline = earliestDemurrageDeadline(s);
   const pendingDeadline = pendingDemurrageDeadline(s);
   const demurrageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(pendingDeadline) : null;
   const storageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(earliestStorageDeadline(s)) : null;
   const demurrageUrgent = demurrageDays !== null && demurrageDays <= 3;
+
+  /** Valor de qualquer campo "extra" (EXTRA_COLLAPSED_KEYS) pra coluna
+   *  colapsada — mesmos dados já usados no card expandido, só resumidos
+   *  pra caber numa célula de tabela. */
+  function renderExtraCollapsedCell(key: string): React.ReactNode {
+    switch (key) {
+      case 'invoice_number': return s.invoice_number || '—';
+      case 'free_time': return s.free_time != null ? `${s.free_time} dias` : '—';
+      case 'transit_time_calc': return kpis.transitTime !== null ? `${kpis.transitTime} dias` : '—';
+      case 'route':
+        return `${s.origin_city || countryFallback(s.origin_country) || '—'} → ${s.destination_city || countryFallback(s.destination_country) || '—'}`;
+      case 'vessel_flight': return s.vessel_flight || '—';
+      case 'booking_number': return s.booking_number || '—';
+      case 'bl': return s.master_bl || s.house_bl || '—';
+      case 'ce_mercante': return s.ce_mercante_manifest || s.ce_mercante_master || s.ce_mercante_house || '—';
+      case 'incoterm': return s.incoterm || '—';
+      case 'transport_mode': return s.transport_mode || '—';
+      case 'courier': return s.courier_tracking_number ? `${s.courier_provider ? `${s.courier_provider} — ` : ''}${s.courier_tracking_number}` : '—';
+      case 'customs_channel': return channelMeta ? <span className={channelMeta.textClass}>{channelMeta.label}</span> : '—';
+      case 'customs_registration_date': return shortDate(s.customs_registration_date);
+      case 'cargo_delivered_at': return shortDate(s.cargo_delivered_at);
+      case 'invoice_sent_at': return shortDate(s.invoice_sent_at);
+      case 'container_numbers': return containers.length > 0 ? containers.join(', ') : '—';
+      case 'container_seals': return containerSeals.filter(Boolean).length > 0 ? containerSeals.filter(Boolean).join(', ') : '—';
+      case 'container_terminal_entry':
+        return containerTerminalEntries.filter(Boolean).length > 0
+          ? containerTerminalEntries.filter(Boolean).map((d) => shortDate(d)).join(', ')
+          : '—';
+      case 'container_return':
+        return containerReturnDates.filter(Boolean).length > 0
+          ? containerReturnDates.filter(Boolean).map((d) => shortDate(d)).join(', ')
+          : '—';
+      case 'storage_deadline_calc': return shortDate(earliestStorageDeadline(s));
+      case 'next_update': return shortDate(s.next_update);
+      case 'shipper_name': return s.shipper_name || '—';
+      case 'carrier': return s.carrier || '—';
+      case 'cargo_weight': return cargoSumTotal(s.cargo_items, 'weight_kg', 'kg');
+      case 'cargo_volume': return cargoSumTotal(s.cargo_items, 'volume_cbm', 'm³');
+      case 'cargo_chargeable_weight': return cargoSumTotal(s.cargo_items, 'chargeable_weight', 'kg');
+      case 'cargo_packages': return cargoSumTotal(s.cargo_items, 'packages', '');
+      case 'cargo_dimensions':
+        return Array.isArray(s.cargo_items) && s.cargo_items.some((it: any) => it.length_cm != null || it.width_cm != null || it.height_cm != null)
+          ? `${s.cargo_items.length} item(ns)`
+          : '—';
+      case 'cargo_commodity': return cargoUniqueJoin(s.cargo_items, 'commodity');
+      case 'cargo_dangerous_goods':
+        return Array.isArray(s.cargo_items) && s.cargo_items.length > 0
+          ? (s.cargo_items.some((it: any) => it.dangerous_goods) ? 'Sim' : 'Não')
+          : '—';
+      case 'cargo_vehicle_type': return cargoUniqueJoin(s.cargo_items, 'vehicle_type');
+      case 'cargo_ncm': return cargoUniqueJoin(s.cargo_items, 'ncm_code');
+      default: return '—';
+    }
+  }
 
   return (
     <>
@@ -714,6 +850,11 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
             {cargoValueTotal(s.cargo_items) || '—'}
           </TableCell>
         )}
+        {EXTRA_COLLAPSED_KEYS.filter(isCollapsedVisible).map((key) => (
+          <TableCell key={key} className="py-1 px-2 max-w-[180px] truncate" title={typeof renderExtraCollapsedCell(key) === 'string' ? (renderExtraCollapsedCell(key) as string) : undefined}>
+            {renderExtraCollapsedCell(key)}
+          </TableCell>
+        ))}
       </TableRow>
 
       {expanded && (
