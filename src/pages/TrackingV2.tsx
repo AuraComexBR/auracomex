@@ -94,6 +94,7 @@ const EXTRA_COLLAPSED_KEYS = [
   'shipper_name', 'carrier',
   'cargo_weight', 'cargo_volume', 'cargo_chargeable_weight', 'cargo_dimensions', 'cargo_packages', 'cargo_commodity',
   'cargo_dangerous_goods', 'cargo_vehicle_type', 'cargo_ncm',
+  'numerario_total',
 ];
 
 const EXTRA_COLLAPSED_LABELS: Record<string, string> = {
@@ -129,6 +130,7 @@ const EXTRA_COLLAPSED_LABELS: Record<string, string> = {
   cargo_dangerous_goods: 'Carga Perigosa',
   cargo_vehicle_type: 'Tipo de Veículo',
   cargo_ncm: 'NCM',
+  numerario_total: 'Valor Estimado (Numerário)',
 };
 
 // Colunas com estilo/lógica própria (badge, cor por status, total agregado
@@ -226,6 +228,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   cargo_dangerous_goods: 110,
   cargo_vehicle_type: 130,
   cargo_ncm: 100,
+  numerario_total: 150,
 };
 
 /** Cabeçalho de coluna arrastável (drag-and-drop pra reordenar) — ordenável
@@ -1080,6 +1083,10 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
           : '—';
       case 'cargo_vehicle_type': return cargoUniqueJoin(s.cargo_items, 'vehicle_type');
       case 'cargo_ncm': return cargoUniqueJoin(s.cargo_items, 'ncm_code');
+      case 'numerario_total':
+        return s.numerario_total_usd != null
+          ? `USD ${Number(s.numerario_total_usd).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : '—';
       default: return '—';
     }
   }
