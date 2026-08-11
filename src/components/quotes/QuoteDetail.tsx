@@ -2338,34 +2338,6 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         {/* Charges Tab */}
         <TabsContent value="charges">
           <div className="space-y-4">
-            {(form.transport_mode === 'ocean_lcl' || form.transport_mode === 'ocean_fcl') && (
-              <Card className="glass">
-                <CardContent className="pt-6" onBlur={() => handleAutoSaveBlur('charges')}>
-                  <div className="max-w-xs space-y-1.5">
-                    <div className="flex items-center gap-1">
-                      <Label className="text-xs">Armazenagem no destino (R$)</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-64 text-xs">
-                          Não compõe o total da cotação. Em LCL, gera automaticamente uma conta a receber com o rebate negociado (% cadastrado no fornecedor Co-loader do processo).
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={form.storage_fee_amount}
-                      onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value, storage_fee_currency: 'BRL' })}
-                      placeholder="0,00"
-                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      disabled={!canEditGeneral}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            )}
             <div className="flex justify-between items-center flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 {canEditCharges && (
@@ -2420,18 +2392,55 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 )}
               </div>
             </div>
-            {/* Seguro Internacional — calculado automaticamente pela fórmula padrão;
-                só entra como taxa real do processo quando o checkbox está marcado. */}
-            {profile?.company_id && (
-              <AutoInsuranceCard
-                quoteId={quoteId}
-                companyId={profile.company_id}
-                quote={quote as any}
-                quotePartners={quotePartners}
-                cargoItems={items}
-                readOnly={!canEditCharges}
-              />
-            )}
+            {/* Armazenagem no destino + Seguro Internacional — mesma linha,
+                dividida em duas colunas. Seguro é calculado automaticamente
+                pela fórmula padrão; só entra como taxa real do processo
+                quando o checkbox está marcado. */}
+            {(() => {
+              const showStorageFee = form.transport_mode === 'ocean_lcl' || form.transport_mode === 'ocean_fcl';
+              return (
+                <div className={cn('grid grid-cols-1 gap-4', showStorageFee && 'md:grid-cols-2')}>
+                  {showStorageFee && (
+                    <Card className="glass">
+                      <CardContent className="pt-6" onBlur={() => handleAutoSaveBlur('charges')}>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1">
+                            <Label className="text-xs">Armazenagem no destino (R$)</Label>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-64 text-xs">
+                                Não compõe o total da cotação. Em LCL, gera automaticamente uma conta a receber com o rebate negociado (% cadastrado no fornecedor Co-loader do processo).
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={form.storage_fee_amount}
+                            onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value, storage_fee_currency: 'BRL' })}
+                            placeholder="0,00"
+                            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            disabled={!canEditGeneral}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  {profile?.company_id && (
+                    <AutoInsuranceCard
+                      quoteId={quoteId}
+                      companyId={profile.company_id}
+                      quote={quote as any}
+                      quotePartners={quotePartners}
+                      cargoItems={items}
+                      readOnly={!canEditCharges}
+                    />
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Benchmarks - only in quote mode, not shipment mode */}
             {!shipmentId && profile && form.origin && form.destination && (
