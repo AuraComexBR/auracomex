@@ -1000,14 +1000,10 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
   fieldVisibility: TrackingFieldVisibility; colSpan: number; orderedCollapsedKeys: string[];
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const isCollapsedVisible = (key: string) => fieldVisibility.collapsed.includes(key);
-  // A maioria dos campos usados no card de detalhe (shipper, armador, navio,
-  // invoice, BL, containers, courier etc.) não tem uma coluna própria na
-  // tabela colapsada — então marcar em "Colapsada" ou "Expandida" no
-  // diálogo de configuração deve funcionar do mesmo jeito pra eles (só os
-  // campos que realmente viram coluna, como ETD/ETA/DUIMP, dependem
-  // exclusivamente de isCollapsedVisible).
-  const isExpandedVisible = (key: string) => fieldVisibility.expanded.includes(key) || fieldVisibility.collapsed.includes(key);
+  // Colapsada e Expandida são independentes: hoje QUALQUER campo pode virar
+  // coluna da tabela (orderedCollapsedKeys) e também aparecer no card de
+  // detalhe — cada checkbox controla só a sua própria exibição.
+  const isExpandedVisible = (key: string) => fieldVisibility.expanded.includes(key);
   const { kpis } = buildTimeline(s, statusOptions);
   const category = resolveStatusCategory(s.status, statusOptions);
   const statusMeta = statusOptions.find((o) => o.value === s.status);
@@ -1301,7 +1297,7 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
               </div>
             )}
 
-            {(isCollapsedVisible('demurrage_deadline_calc') || isExpandedVisible('demurrage_deadline_calc')) && demurrageDays !== null && (
+            {isExpandedVisible('demurrage_deadline_calc') && demurrageDays !== null && (
               <div className={cn(
                 'flex items-center gap-2 text-xs rounded-md px-3 py-2',
                 demurrageDays < 0 ? 'text-red-600 bg-red-500/10' : demurrageDays <= 3 ? 'text-amber-700 bg-amber-500/10' : 'hidden'
