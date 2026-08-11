@@ -467,18 +467,44 @@ function shortDate(value?: string | null) {
   return value ? format(new Date(value), 'dd/MM/yy') : '—';
 }
 
-// Limite Devolução = ATA + FreeTime (prazo pra devolver o container vazio
-// sem multa de demurrage). Prioridade:
-//   1. Prazo por container, se algum foi preenchido manualmente na Logística
-//      (caso a caso pode ter sido negociado diferente do FreeTime padrão) —
-//      usa o mais próximo (mais urgente) entre eles.
-//   2. Calculado direto: ATA + FreeTime (dias) — é a regra padrão.
-//   3. Fallback pro campo antigo demurrage_deadline (embarques legados sem
-//      ATA/FreeTime preenchidos ainda).
+// Limite Devolução por container = Entrada no Terminal + FreeTime (início/fim
+// da contagem, respectivamente). Monta a lista de prazos calculados, um por
+// container que tenha Entrada no Terminal preenchida — cai no prazo antigo
+// (container_demurrage_deadlines) pra containers sem Entrada no Terminal mas
+// com esse campo legado já preenchido.
+function containerDeadlines(s: any): Array<{ deadline: string; returned: boolean }> {
+  const terminalEntries = parseContainerDates(s.container_terminal_entry_dates);
+  const legacyDeadlines = parseContainerDates(s.container_demurrage_deadlines);
+  const returnDates = parseContainerDates(s.container_return_dates);
+  const freeTime = s.free_time != null ? Number(s.free_time) : null;
+  const count = Math.max(
+    parseContainerNumbers(s.container_number).length,
+    terminalEntries.length,
+    legacyDeadlines.length,
+    returnDates.length,
+  );
+  const list: Array<{ deadline: string; returned: boolean }> = [];
+  for (let i = 0; i < count; i++) {
+    let deadline: string | null = null;
+    if (terminalEntries[i] && freeTime != null) {
+      deadline = addDays(new Date(terminalEntries[i]), freeTime).toISOString();
+    } else if (legacyDeadlines[i]) {
+      deadline = legacyDeadlines[i];
+    }
+    if (deadline) list.push({ deadline, returned: !!returnDates[i] });
+  }
+  return list;
+}
+
+// Limite Devolução exibido na coluna/ordenação — não considera se o
+// container já foi devolvido (é só "qual é o prazo", informativo).
+// Prioridade: 1) prazos por container (Entrada Terminal + FreeTime, ou o
+// campo legado); 2) ATA + FreeTime (fallback quando não há Entrada no
+// Terminal registrada por container); 3) campo antigo demurrage_deadline.
 function earliestDemurrageDeadline(s: any): string | null {
-  const perContainer = parseContainerDates(s.container_demurrage_deadlines).filter(Boolean);
-  if (perContainer.length > 0) {
-    return perContainer.reduce((min, d) => (new Date(d).getTime() < new Date(min).getTime() ? d : min));
+  const list = containerDeadlines(s);
+  if (list.length > 0) {
+    return list.reduce((min, x) => (new Date(x.deadline).getTime() < new Date(min).getTime() ? x.deadline : min), list[0].deadline);
   }
   if (s.ata && s.free_time != null) {
     return addDays(new Date(s.ata), Number(s.free_time) || 0).toISOString();
@@ -487,25 +513,25 @@ function earliestDemurrageDeadline(s: any): string | null {
 }
 
 // Prazo pendente pro alerta de "limite de devolução vencido/vencendo" — igual
-// ao earliestDemurrageDeadline (coluna/ordenação), mas ignora containers que
-// já foram devolvidos (container_return_dates, mesmo índice de
-// container_demurrage_deadlines). Se todos os containers já têm devolução
-// registrada, não há mais risco de demurrage e o alerta não deve aparecer.
+// ao earliestDemurrageDeadline, mas ignora containers já devolvidos. Se todos
+// os containers já têm devolução registrada, não há mais risco de demurrage
+// e o alerta não deve aparecer.
 function pendingDemurrageDeadline(s: any): string | null {
-  const perContainerDeadlines = parseContainerDates(s.container_demurrage_deadlines);
-  const returnDates = parseContainerDates(s.container_return_dates);
-  if (perContainerDeadlines.some(Boolean)) {
-    const pending = perContainerDeadlines
-      .map((d, i) => ({ d, returned: !!returnDates[i] }))
-      .filter((x) => x.d && !x.returned);
+  const list = containerDeadlines(s);
+  if (list.length > 0) {
+    const pending = list.filter((x) => !x.returned);
     if (pending.length === 0) return null;
-    return pending.reduce((min, x) => (new Date(x.d).getTime() < new Date(min).getTime() ? x.d : min), pending[0].d);
+    return pending.reduce((min, x) => (new Date(x.deadline).getTime() < new Date(min).getTime() ? x.deadline : min), pending[0].deadline);
   }
-  // Sem prazo manual por container: se todos os containers do embarque já
-  // têm data de devolução registrada, considera devolvido por completo.
+  // Sem prazo por container: se todos os containers do embarque já têm data
+  // de devolução registrada, considera devolvido por completo.
   const containers = parseContainerNumbers(s.container_number);
+  const returnDates = parseContainerDates(s.container_return_dates);
   if (containers.length > 0 && returnDates.filter(Boolean).length >= containers.length) return null;
-  return earliestDemurrageDeadline(s);
+  if (s.ata && s.free_time != null) {
+    return addDays(new Date(s.ata), Number(s.free_time) || 0).toISOString();
+  }
+  return s.demurrage_deadline || null;
 }
 
 function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {

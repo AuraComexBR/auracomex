@@ -313,15 +313,19 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   // containerSlotCount abaixo), não depende de um efeito rodar a tempo.
   const [containerNumbers, setContainerNumbers] = useState<string[]>(() => parseContainerNumbers(shipment.container_number));
 
-  // Prazo de demurrage POR container — cada container pode vencer em uma
-  // data diferente, então fica um array paralelo ao de números (por índice),
-  // não um campo único do embarque.
-  const [containerDemurrage, setContainerDemurrage] = useState<string[]>(() => parseContainerDates((shipment as any).container_demurrage_deadlines));
+  // Lacre POR container — array paralelo ao de números (mesmo índice).
+  const [containerSeals, setContainerSeals] = useState<string[]>(() => parseContainerNumbers((shipment as any).container_seals));
+
+  // Entrada no terminal POR container — início da contagem do FreeTime
+  // daquele container (fim = data de devolução, abaixo). Cada container pode
+  // entrar no terminal em dias diferentes, então é um array por índice, não
+  // um campo único do embarque.
+  const [containerTerminalEntry, setContainerTerminalEntry] = useState<string[]>(() => parseContainerDates((shipment as any).container_terminal_entry_dates));
 
   // Data de devolução do container vazio — também por container (mesmo
-  // índice dos arrays acima). Usada pro tracking do cliente saber quais
-  // containers já foram devolvidos e não mostrar mais o alerta de limite
-  // de devolução vencido pra eles.
+  // índice dos arrays acima). Fim da contagem do FreeTime; usada pro
+  // tracking do cliente saber quais containers já foram devolvidos e não
+  // mostrar mais o alerta de limite de devolução vencido pra eles.
   const [containerReturnDates, setContainerReturnDates] = useState<string[]>(() => parseContainerDates((shipment as any).container_return_dates));
 
   // Quantidade de campos de container exibidos: acompanha exatamente a
@@ -331,7 +335,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   // não piscar "1 container" por uma fração de segundo enquanto carrega.
   const containerSlotCount = containerDataReady
     ? containerCount
-    : Math.max(containerNumbers.length, containerDemurrage.length, containerReturnDates.length);
+    : Math.max(containerNumbers.length, containerSeals.length, containerTerminalEntry.length, containerReturnDates.length);
 
   // Se a Resumo da Carga encolheu (ex: um container foi removido), corta os
   // números/prazos que sobraram além da nova quantidade — sem isso, o
@@ -340,7 +344,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   useEffect(() => {
     if (!isFCL || !containerDataReady) return;
     setContainerNumbers(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
-    setContainerDemurrage(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
+    setContainerSeals(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
+    setContainerTerminalEntry(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
     setContainerReturnDates(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
   }, [isFCL, containerDataReady, containerCount]);
 
@@ -366,8 +371,17 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     });
   }
 
-  function setContainerDemurrageAt(idx: number, value: string) {
-    setContainerDemurrage(prev => {
+  function setContainerSealAt(idx: number, value: string) {
+    setContainerSeals(prev => {
+      const arr = [...prev];
+      while (arr.length <= idx) arr.push('');
+      arr[idx] = value;
+      return arr;
+    });
+  }
+
+  function setContainerTerminalEntryAt(idx: number, value: string) {
+    setContainerTerminalEntry(prev => {
       const arr = [...prev];
       while (arr.length <= idx) arr.push('');
       arr[idx] = value;
@@ -478,10 +492,16 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     for (let i = 0; i < currentContainers.length; i++) {
       if ((existingContainers[i] || '') !== (currentContainers[i] || '')) return true;
     }
-    const existingDemurrage = parseContainerDates((shipment as any).container_demurrage_deadlines);
-    for (let i = 0; i < Math.max(existingDemurrage.length, containerDemurrage.length); i++) {
-      const newT = containerDemurrage[i] ? new Date(containerDemurrage[i]).getTime() : null;
-      const oldT = existingDemurrage[i] ? new Date(existingDemurrage[i]).getTime() : null;
+    const existingSeals = parseContainerNumbers((shipment as any).container_seals);
+    const currentSeals = containerSeals.filter(Boolean);
+    if (existingSeals.length !== currentSeals.length) return true;
+    for (let i = 0; i < currentSeals.length; i++) {
+      if ((existingSeals[i] || '') !== (currentSeals[i] || '')) return true;
+    }
+    const existingTerminalEntry = parseContainerDates((shipment as any).container_terminal_entry_dates);
+    for (let i = 0; i < Math.max(existingTerminalEntry.length, containerTerminalEntry.length); i++) {
+      const newT = containerTerminalEntry[i] ? new Date(containerTerminalEntry[i]).getTime() : null;
+      const oldT = existingTerminalEntry[i] ? new Date(existingTerminalEntry[i]).getTime() : null;
       if (newT !== oldT) return true;
     }
     const existingReturnDates = parseContainerDates((shipment as any).container_return_dates);
@@ -498,7 +518,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     }
     return false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, containerNumbers, containerDemurrage, containerReturnDates, shipment, isFCL, containerCount, linkedQuote]);
+  }, [form, containerNumbers, containerSeals, containerTerminalEntry, containerReturnDates, shipment, isFCL, containerCount, linkedQuote]);
 
   // Auto-save: nenhum botão "Salvar" próprio. Antes disparava sozinho 900ms
   // depois de qualquer tecla digitada — o que salvava no meio da digitação
@@ -515,15 +535,19 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   async function handleSave() {
     setSaving(true);
     try {
-      // Números e prazos de demurrage são arrays paralelos (mesmo índice =
-      // mesmo container) — alinha os dois no mesmo tamanho antes de salvar,
-      // pra nunca desalinhar o prazo do container #2 com o número do #1.
-      const alignedLength = Math.max(containerNumbers.length, containerDemurrage.length, containerReturnDates.length);
+      // Número, lacre, entrada no terminal e devolução são arrays paralelos
+      // (mesmo índice = mesmo container) — alinha todos no mesmo tamanho
+      // antes de salvar, pra nunca desalinhar o dado do container #2 com o
+      // número do #1.
+      const alignedLength = Math.max(containerNumbers.length, containerSeals.length, containerTerminalEntry.length, containerReturnDates.length);
       const containerNumberValue = containerNumbers.filter(Boolean).length > 0
         ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => (containerNumbers[i] || '').trim()))
         : null;
-      const containerDemurrageValue = containerDemurrage.some(Boolean)
-        ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => containerDemurrage[i] || ''))
+      const containerSealsValue = containerSeals.some(Boolean)
+        ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => (containerSeals[i] || '').trim()))
+        : null;
+      const containerTerminalEntryValue = containerTerminalEntry.some(Boolean)
+        ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => containerTerminalEntry[i] || ''))
         : null;
       const containerReturnDatesValue = containerReturnDates.some(Boolean)
         ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => containerReturnDates[i] || ''))
@@ -559,7 +583,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         incoterm: (form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : null,
         transport_mode: form.transport_mode as any,
         container_number: containerNumberValue,
-        container_demurrage_deadlines: containerDemurrageValue,
+        container_seals: containerSealsValue,
+        container_terminal_entry_dates: containerTerminalEntryValue,
         container_return_dates: containerReturnDatesValue,
         courier_provider: form.courier_provider || null,
         courier_tracking_number: form.courier_tracking_number || null,
@@ -587,7 +612,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         'vessel_flight', 'booking_number',
         'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
         'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
-        'container_demurrage_deadlines', 'container_return_dates',
+        'container_seals', 'container_terminal_entry_dates', 'container_return_dates',
         'courier_provider', 'courier_tracking_number',
         'customs_channel', 'duimp_number', 'physical_location', 'customs_registration_date', 'terminal_entry_date',
         'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
@@ -1093,10 +1118,11 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         </div>
       </CollapsibleCard>
 
-      {/* CARD 3 — Containers (qtd vem da Resumo da Carga) + Prazo Demurrage por container */}
+      {/* CARD 3 — Containers (qtd vem da Resumo da Carga): número, lacre e as
+          datas que marcam início/fim da contagem do FreeTime por container. */}
       {isFCL && containerSlotCount > 0 && (
         <CollapsibleCard title={`3. Containers (${containerSlotCount})`}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {Array.from({ length: containerSlotCount }).map((_, idx) => (
               <div key={idx} className="space-y-2 rounded-md border border-border p-3">
                 <Label className="text-xs">
@@ -1110,10 +1136,15 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
                   value={containerNumbers[idx] || ''}
                   onChange={(e) => setContainerNumberAt(idx, e.target.value.toUpperCase())}
                 />
+                <Input
+                  placeholder="Lacre"
+                  value={containerSeals[idx] || ''}
+                  onChange={(e) => setContainerSealAt(idx, e.target.value.toUpperCase())}
+                />
                 <InlineDateField
-                  label="Prazo Demurrage"
-                  value={containerDemurrage[idx] || ''}
-                  onChange={(v) => setContainerDemurrageAt(idx, v)}
+                  label="Entrada no Terminal"
+                  value={containerTerminalEntry[idx] || ''}
+                  onChange={(v) => setContainerTerminalEntryAt(idx, v)}
                 />
                 <InlineDateField
                   label="Devolvido em"
