@@ -8,11 +8,17 @@
  * como `{ collapsed: string[], expanded: string[] }`, usando as chaves (`key`)
  * definidas aqui.
  *
- * FASE 1 (atual): campos de Logística e Empresas — os mesmos que a TrackingV2
- * já exibia antes desse controle existir. Resumo da Carga, Taxas e Estimativa
- * ficam pra próximas fases (a de Taxas precisa de cuidado extra: nunca expor
- * `buy_amount`, que é custo/margem interna, nem que seja por engano — por
- * isso não existe ali um campo genérico "valor", só "valor de venda").
+ * FASE 1: campos de Logística e Empresas — os mesmos que a TrackingV2 já
+ * exibia antes desse controle existir.
+ * FASE 2 (atual): campos de Resumo da Carga (grupo `cargo`) — vêm da tabela
+ * `quote_items` (não de `shipments`), ligada pelo `quotes.shipment_id`; um
+ * embarque pode ter mais de um item de carga. O campo `notes` (observações)
+ * de `quote_items` fica de fora de propósito — é texto livre normalmente
+ * usado pra anotação interna, nunca exposto ao portal do cliente.
+ * Taxas e Estimativa ficam pra próximas fases (a de Taxas precisa de cuidado
+ * extra: nunca expor `buy_amount`, que é custo/margem interna, nem que seja
+ * por engano — por isso não existe ali um campo genérico "valor", só "valor
+ * de venda").
  *
  * IMPORTANTE: a edge function `tracking` (supabase/functions/tracking/index.ts)
  * roda em runtime Deno separado e não importa este arquivo — ela mantém uma
@@ -24,7 +30,7 @@
  * marcar explicitamente o que aquele cliente pode ver.
  */
 
-export type TrackingFieldGroup = 'logistics' | 'partners';
+export type TrackingFieldGroup = 'logistics' | 'partners' | 'cargo';
 
 export interface TrackingFieldDef {
   key: string;
@@ -37,9 +43,10 @@ export interface TrackingFieldDef {
 export const TRACKING_FIELD_GROUP_LABELS: Record<TrackingFieldGroup, string> = {
   logistics: 'Logística',
   partners: 'Empresas',
+  cargo: 'Resumo da Carga',
 };
 
-export const TRACKING_FIELD_GROUP_ORDER: TrackingFieldGroup[] = ['logistics', 'partners'];
+export const TRACKING_FIELD_GROUP_ORDER: TrackingFieldGroup[] = ['logistics', 'partners', 'cargo'];
 
 export const TRACKING_FIELD_REGISTRY: TrackingFieldDef[] = [
   // ===== Logística =====
@@ -74,6 +81,19 @@ export const TRACKING_FIELD_REGISTRY: TrackingFieldDef[] = [
   // ===== Empresas =====
   { key: 'shipper_name', label: 'Shipper', group: 'partners' },
   { key: 'carrier', label: 'Armador / Cia', group: 'partners' },
+
+  // ===== Resumo da Carga (quote_items, por item) =====
+  { key: 'cargo_container_type', label: 'Tipo de Container', group: 'cargo', hint: 'Tipo e quantidade por item.' },
+  { key: 'cargo_weight', label: 'Peso (kg)', group: 'cargo' },
+  { key: 'cargo_volume', label: 'Cubagem (m³)', group: 'cargo' },
+  { key: 'cargo_chargeable_weight', label: 'Peso Taxável', group: 'cargo', hint: 'Calculado para aéreo/LCL.' },
+  { key: 'cargo_dimensions', label: 'Dimensões (C x L x A)', group: 'cargo' },
+  { key: 'cargo_packages', label: 'Volumes', group: 'cargo' },
+  { key: 'cargo_commodity', label: 'Mercadoria', group: 'cargo' },
+  { key: 'cargo_dangerous_goods', label: 'Carga Perigosa (IMO)', group: 'cargo' },
+  { key: 'cargo_vehicle_type', label: 'Tipo de Veículo', group: 'cargo', hint: 'Só modal rodoviário.' },
+  { key: 'cargo_ncm', label: 'NCM', group: 'cargo', hint: 'Classificação fiscal — avaliar antes de liberar.' },
+  { key: 'cargo_value', label: 'Valor da Carga', group: 'cargo', hint: 'Valor comercial declarado da mercadoria.' },
 ];
 
 export interface TrackingFieldVisibility {

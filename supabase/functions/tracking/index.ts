@@ -51,6 +51,24 @@ const FIELD_COLUMN_MAP: Record<string, string[]> = {
   carrier: ["carrier"],
 };
 
+// Campos de "Resumo da Carga" vêm de quote_items (não de shipments), ligada
+// pelo quotes.shipment_id — um embarque pode ter mais de um item de carga.
+// `notes` (observações) de quote_items propositalmente NÃO está aqui: é
+// texto livre de uso interno, nunca exposto ao portal do cliente.
+const CARGO_FIELD_COLUMN_MAP: Record<string, string[]> = {
+  cargo_container_type: ["container_type", "container_qty"],
+  cargo_weight: ["weight_kg"],
+  cargo_volume: ["volume_cbm"],
+  cargo_chargeable_weight: ["chargeable_weight"],
+  cargo_dimensions: ["length_cm", "width_cm", "height_cm"],
+  cargo_packages: ["packages"],
+  cargo_commodity: ["commodity"],
+  cargo_dangerous_goods: ["dangerous_goods"],
+  cargo_vehicle_type: ["vehicle_type"],
+  cargo_ncm: ["ncm_code"],
+  cargo_value: ["cargo_value", "cargo_value_currency"],
+};
+
 // Sempre incluídos quando field_visibility_mode está ativo — o app quebra
 // sem eles (identidade da linha, categoria do status, ícone do modal).
 const FIELD_VISIBILITY_BASELINE_COLUMNS = ["id", "reference_number", "status", "company_id", "created_at"];
@@ -277,6 +295,54 @@ Deno.serve(async (req) => {
           if (includeClientReference) picked.client_reference = s.client_reference;
           return picked;
         });
+      }
+
+      // Resumo da Carga (quote_items) — só busca se algum campo desse grupo
+      // estiver liberado pra esse cliente (evita consulta desnecessária).
+      if (field_visibility_mode && fieldVisibilityOut) {
+        const allowedCargoKeys = new Set<string>(
+          [...(fieldVisibilityOut.collapsed || []), ...(fieldVisibilityOut.expanded || [])]
+            .filter((k: string) => k in CARGO_FIELD_COLUMN_MAP),
+        );
+        if (allowedCargoKeys.size > 0 && shipmentIds.length > 0) {
+          const allowedCargoColumns = new Set<string>();
+          for (const key of allowedCargoKeys) {
+            for (const col of CARGO_FIELD_COLUMN_MAP[key] || []) allowedCargoColumns.add(col);
+          }
+
+          const { data: quotesForCargo } = await adminClient
+            .from("quotes")
+            .select("id, shipment_id")
+            .in("shipment_id", shipmentIds);
+
+          const quoteIdToShipmentId = new Map<string, string>();
+          for (const q of quotesForCargo || []) {
+            if (q.id && q.shipment_id) quoteIdToShipmentId.set(q.id, q.shipment_id);
+          }
+          const cargoQuoteIds = [...quoteIdToShipmentId.keys()];
+
+          if (cargoQuoteIds.length > 0) {
+            const { data: cargoItemsData } = await adminClient
+              .from("quote_items")
+              .select(["id", "quote_id", ...allowedCargoColumns].join(", "))
+              .in("quote_id", cargoQuoteIds);
+
+            const cargoItemsByShipment = new Map<string, any[]>();
+            for (const item of (cargoItemsData || []) as any[]) {
+              const shipmentIdForItem = quoteIdToShipmentId.get(item.quote_id);
+              if (!shipmentIdForItem) continue;
+              const { quote_id, ...rest } = item;
+              const list = cargoItemsByShipment.get(shipmentIdForItem) || [];
+              list.push(rest);
+              cargoItemsByShipment.set(shipmentIdForItem, list);
+            }
+
+            enrichedShipments = enrichedShipments.map((s: any) => ({
+              ...s,
+              cargo_items: cargoItemsByShipment.get(s.id) || [],
+            }));
+          }
+        }
       }
 
       return jsonResponse({ shipments: enrichedShipments, status_options: statusOptions, field_visibility: fieldVisibilityOut });

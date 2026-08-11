@@ -593,6 +593,12 @@ function earliestStorageDeadline(s: any): string | null {
   return s.storage_deadline || null;
 }
 
+const CARGO_KEYS = [
+  'cargo_container_type', 'cargo_weight', 'cargo_volume', 'cargo_chargeable_weight',
+  'cargo_dimensions', 'cargo_packages', 'cargo_commodity', 'cargo_dangerous_goods',
+  'cargo_vehicle_type', 'cargo_ncm', 'cargo_value',
+];
+
 function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded, fieldVisibility, colSpan }: {
   shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean;
   fieldVisibility: TrackingFieldVisibility; colSpan: number;
@@ -731,6 +737,53 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
                     <DetailItem label="Container" value="—" />
                   )
                 )}
+              </div>
+            )}
+
+            {/* Resumo da Carga — um card por item de quote_items (uma carga
+                pode ter mais de um item, ex.: containers de tipos diferentes). */}
+            {CARGO_KEYS.some(isExpandedVisible) && Array.isArray(s.cargo_items) && s.cargo_items.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Resumo da Carga</span>
+                <div className="space-y-2">
+                  {s.cargo_items.map((item: any, i: number) => (
+                    <div key={item.id || i} className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 rounded-lg bg-background">
+                      {isExpandedVisible('cargo_container_type') && item.container_type && (
+                        <DetailItem label="Tipo de Container" value={`${item.container_type}${item.container_qty ? ` × ${item.container_qty}` : ''}`} />
+                      )}
+                      {isExpandedVisible('cargo_weight') && item.weight_kg != null && (
+                        <DetailItem label="Peso (kg)" value={`${item.weight_kg} kg`} />
+                      )}
+                      {isExpandedVisible('cargo_volume') && item.volume_cbm != null && (
+                        <DetailItem label="Cubagem (m³)" value={`${item.volume_cbm} m³`} />
+                      )}
+                      {isExpandedVisible('cargo_chargeable_weight') && item.chargeable_weight != null && (
+                        <DetailItem label="Peso Taxável" value={`${item.chargeable_weight} kg`} />
+                      )}
+                      {isExpandedVisible('cargo_dimensions') && (item.length_cm != null || item.width_cm != null || item.height_cm != null) && (
+                        <DetailItem label="Dimensões (C x L x A)" value={`${item.length_cm ?? '—'} x ${item.width_cm ?? '—'} x ${item.height_cm ?? '—'} cm`} />
+                      )}
+                      {isExpandedVisible('cargo_packages') && item.packages != null && (
+                        <DetailItem label="Volumes" value={String(item.packages)} />
+                      )}
+                      {isExpandedVisible('cargo_commodity') && item.commodity && (
+                        <DetailItem label="Mercadoria" value={item.commodity} />
+                      )}
+                      {isExpandedVisible('cargo_dangerous_goods') && item.dangerous_goods != null && (
+                        <DetailItem label="Carga Perigosa (IMO)" value={item.dangerous_goods ? 'Sim' : 'Não'} />
+                      )}
+                      {isExpandedVisible('cargo_vehicle_type') && item.vehicle_type && (
+                        <DetailItem label="Tipo de Veículo" value={item.vehicle_type} />
+                      )}
+                      {isExpandedVisible('cargo_ncm') && item.ncm_code && (
+                        <DetailItem label="NCM" value={item.ncm_code} mono />
+                      )}
+                      {isExpandedVisible('cargo_value') && item.cargo_value != null && (
+                        <DetailItem label="Valor da Carga" value={`${item.cargo_value_currency || 'USD'} ${item.cargo_value}`} />
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
