@@ -2398,7 +2398,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                           value={form.storage_fee_amount}
                           onChange={(e) => setForm({ ...form, storage_fee_amount: e.target.value, storage_fee_currency: 'BRL' })}
                           placeholder="0,00"
-                          className="w-28 h-6 py-0 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-24 h-[18px] py-0 px-1.5 text-[11px] leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           disabled={!canEditGeneral}
                         />
                       </CardHeader>
