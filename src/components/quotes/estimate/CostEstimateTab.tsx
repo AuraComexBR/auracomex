@@ -791,6 +791,58 @@ export function CostEstimateTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverEstimate?.id, hasDirty, chargesKey, itemsKey, usdBrl, eurBrl, companyId]);
 
+  // ===== Auto-sync silencioso: Numerário total (numerario_total_usd) =====
+  // Esse valor alimenta o campo exposto no portal de tracking (fase 3,
+  // trackingFieldRegistry: numerario_total) e antes só era recalculado
+  // dentro do handleSave — ou seja, só ficava correto depois que alguém
+  // editasse e salvasse a aba Estimativa. Estimativas que já existiam antes
+  // dessa feature (ou que ninguém mexeu desde então) ficaram com o valor
+  // default da migration (0). Esse efeito roda sozinho ao abrir a aba
+  // (mesmo sem editar nada) e mantém o valor em dia, igual ao auto-sync de
+  // Taxas/Carga acima — só grava a própria coluna numerario_total_usd,
+  // nunca mexe em outro campo, então não tem risco de brigar com edição
+  // local pendente (mesmo assim, espera !hasDirty por consistência).
+  const numerarioExpensesKey = useMemo(() => JSON.stringify(
+    expenses.map((e: any) => ({ id: e.id, valor_brl: e.valor_brl, category: e.category, is_prepaid: e.is_prepaid })),
+  ), [expenses]);
+  const lastSyncedNumerarioRef = useRef<{ estimateId: string; value: number } | null>(null);
+  useEffect(() => {
+    if (!serverEstimate || hasDirty || !usdBrl) return;
+    const taxaSiscomexBrlNow = Number((estimate as any)?.taxa_siscomex_brl || 0);
+    const afrmmBrlNow = Number((estimate as any)?.afrmm_brl || 0);
+    const taxaSiscomexUsdNow = taxaSiscomexBrlNow / usdBrl;
+    const afrmmUsdNow = afrmmBrlNow / usdBrl;
+    const armazenagemUsdNow = armazenagemDestinoBrl / usdBrl;
+    const impostosUsdNow = breakdown.ii_usd + breakdown.ipi_usd + breakdown.pis_usd + breakdown.cofins_usd + breakdown.icms_usd + taxaSiscomexUsdNow;
+    const sumExpensesNow = (pred: (cat: string) => boolean) =>
+      expenses
+        .filter(e => pred((e as any).category || 'local') && !(e as any).is_prepaid)
+        .reduce((s, e) => s + (Number((e as any).valor_brl) || 0) / usdBrl, 0);
+    const desembaracoDestinoUsdNow = sumExpensesNow(cat => cat === 'destination' || cat === 'local') + armazenagemUsdNow;
+    const origemFreteSeguroUsdNow = sumExpensesNow(cat => cat === 'origin' || cat === 'freight');
+    const numerarioTotalUsdNow = Math.round((impostosUsdNow + afrmmUsdNow + desembaracoDestinoUsdNow + origemFreteSeguroUsdNow + Number.EPSILON) * 100) / 100;
+
+    const last = lastSyncedNumerarioRef.current;
+    if (last && last.estimateId === serverEstimate.id && last.value === numerarioTotalUsdNow) return;
+    const storedValue = Number((serverEstimate as any)?.numerario_total_usd || 0);
+    if (storedValue === numerarioTotalUsdNow) {
+      lastSyncedNumerarioRef.current = { estimateId: serverEstimate.id, value: numerarioTotalUsdNow };
+      return;
+    }
+    lastSyncedNumerarioRef.current = { estimateId: serverEstimate.id, value: numerarioTotalUsdNow };
+    (supabase as any)
+      .from('cost_estimates')
+      .update({ numerario_total_usd: numerarioTotalUsdNow })
+      .eq('id', serverEstimate.id)
+      .then(({ error }: any) => {
+        if (error) {
+          console.error('auto-sync numerario_total_usd falhou', error);
+          lastSyncedNumerarioRef.current = null;
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverEstimate?.id, hasDirty, usdBrl, armazenagemDestinoBrl, numerarioExpensesKey, breakdown.ii_usd, breakdown.ipi_usd, breakdown.pis_usd, breakdown.cofins_usd, breakdown.icms_usd]);
+
   // Não bloqueia mais por "estar em modo edição" (a aba é sempre editável
   // agora) — só evita rodar enquanto há uma alteração local ainda não salva,
   // pra não brigar com o rascunho.
