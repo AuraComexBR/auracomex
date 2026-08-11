@@ -231,7 +231,7 @@ export default function TrackingV2() {
   // visão colapsada é opt-in, configurado por cliente em Cadastros > Clientes
   // > Tracking (ver src/lib/trackingFieldRegistry.ts).
   const isCollapsedVisible = (key: string) => fieldVisibility.collapsed.includes(key);
-  const OPTIONAL_COLLAPSED_KEYS = ['client_reference', 'etd', 'eta', 'demurrage_deadline_calc', 'duimp_number', 'physical_location'];
+  const OPTIONAL_COLLAPSED_KEYS = ['client_reference', 'etd', 'eta', 'demurrage_deadline_calc', 'duimp_number', 'physical_location', 'cargo_container_type', 'cargo_value'];
   const visibleCollapsedColumnCount = 2 + OPTIONAL_COLLAPSED_KEYS.filter(isCollapsedVisible).length;
 
   const shipmentIds = shipments.map((s: any) => s.id);
@@ -455,6 +455,12 @@ export default function TrackingV2() {
                         {isCollapsedVisible('physical_location') && (
                           <SortableHeader label="Físico" sortKey="physical_location" state={sortState} onToggle={toggleSort} className="h-7 px-2 text-[11px]" />
                         )}
+                        {isCollapsedVisible('cargo_container_type') && (
+                          <TableHead className="h-7 px-2 text-[11px] whitespace-nowrap">Containers</TableHead>
+                        )}
+                        {isCollapsedVisible('cargo_value') && (
+                          <TableHead className="h-7 px-2 text-[11px] whitespace-nowrap">Valor da Carga</TableHead>
+                        )}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -593,6 +599,33 @@ function earliestStorageDeadline(s: any): string | null {
   return s.storage_deadline || null;
 }
 
+/** Total de containers do embarque, somando container_qty de cada item de
+ *  Resumo da Carga (usado na coluna colapsada "Containers"). */
+function cargoContainerTotal(cargoItems: any[] | undefined): number | null {
+  if (!Array.isArray(cargoItems) || cargoItems.length === 0) return null;
+  const withType = cargoItems.filter((it) => it.container_type != null || it.container_qty != null);
+  if (withType.length === 0) return null;
+  return withType.reduce((sum, it) => sum + (it.container_qty != null ? Number(it.container_qty) : 1), 0);
+}
+
+/** Valor total da carga do embarque, somando cargo_value de cada item —
+ *  agrupado por moeda (a maioria dos embarques usa uma moeda só). */
+function cargoValueTotal(cargoItems: any[] | undefined): string | null {
+  if (!Array.isArray(cargoItems) || cargoItems.length === 0) return null;
+  const totals: Record<string, number> = {};
+  let any = false;
+  for (const it of cargoItems) {
+    if (it.cargo_value == null) continue;
+    any = true;
+    const currency = it.cargo_value_currency || 'USD';
+    totals[currency] = (totals[currency] || 0) + Number(it.cargo_value);
+  }
+  if (!any) return null;
+  return Object.entries(totals)
+    .map(([currency, value]) => `${currency} ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+    .join(' + ');
+}
+
 const CARGO_KEYS = [
   'cargo_container_type', 'cargo_weight', 'cargo_volume', 'cargo_chargeable_weight',
   'cargo_dimensions', 'cargo_packages', 'cargo_commodity', 'cargo_dangerous_goods',
@@ -668,6 +701,16 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
         {isCollapsedVisible('physical_location') && (
           <TableCell className="py-1 px-2 max-w-[140px] truncate" title={s.physical_location || ''}>
             {s.physical_location || '—'}
+          </TableCell>
+        )}
+        {isCollapsedVisible('cargo_container_type') && (
+          <TableCell className="py-1 px-2">
+            {cargoContainerTotal(s.cargo_items) != null ? `${cargoContainerTotal(s.cargo_items)} container(s)` : '—'}
+          </TableCell>
+        )}
+        {isCollapsedVisible('cargo_value') && (
+          <TableCell className="py-1 px-2">
+            {cargoValueTotal(s.cargo_items) || '—'}
           </TableCell>
         )}
       </TableRow>
