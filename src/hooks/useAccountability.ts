@@ -32,6 +32,9 @@ export interface AccountabilityItemRow {
   confirmado: boolean;
   observacao: string | null;
   source_expense_id: string | null;
+  comprovante_document_id: string | null;
+  comprovante_url: string | null;
+  comprovante_name: string | null;
 }
 
 export function useAccountability(quoteId: string, companyId: string | undefined) {
@@ -149,6 +152,51 @@ export function useAccountability(quoteId: string, companyId: string | undefined
     invalidate();
   };
 
+  /**
+   * Sobe o comprovante de pagamento de um item pro Storage, registra em
+   * `documents` (pra aparecer também na aba Documentos do processo) e
+   * vincula o item da prestação a esse documento.
+   */
+  const attachComprovante = async (item: AccountabilityItemRow, file: File, quote: { id: string; company_id: string; shipment_id?: string | null }) => {
+    if (!companyId) throw new Error('Empresa não identificada');
+    const path = `${quote.company_id}/${quote.id}/comprovantes/${Date.now()}_${file.name}`;
+    const up = await supabase.storage.from('shipment-documents').upload(path, file, { contentType: file.type || undefined });
+    if (up.error) throw up.error;
+
+    const { data: doc, error: docErr } = await (supabase as any)
+      .from('documents')
+      .insert({
+        quote_id: quote.id,
+        shipment_id: quote.shipment_id || null,
+        company_id: quote.company_id,
+        name: file.name,
+        file_url: path,
+        file_size: file.size,
+        document_type: 'other',
+        custom_category: `Comprovante Numerário — ${item.descricao}`,
+      })
+      .select()
+      .single();
+    if (docErr) throw docErr;
+
+    const { error } = await (supabase as any)
+      .from('accountability_items')
+      .update({ comprovante_document_id: doc.id, comprovante_url: path, comprovante_name: file.name })
+      .eq('id', item.id);
+    if (error) throw error;
+    invalidate();
+  };
+
+  /** Remove só o vínculo do comprovante no item (mantém o documento na aba Documentos). */
+  const removeComprovante = async (itemId: string) => {
+    const { error } = await (supabase as any)
+      .from('accountability_items')
+      .update({ comprovante_document_id: null, comprovante_url: null, comprovante_name: null })
+      .eq('id', itemId);
+    if (error) throw error;
+    invalidate();
+  };
+
   /** Recalcula total_pago_brl / diferenca_brl no cabeçalho a partir dos itens (chamar após updateItem). */
   const recomputeTotals = async (accountabilityId: string) => {
     const { data: items } = await (supabase as any)
@@ -180,5 +228,5 @@ export function useAccountability(quoteId: string, companyId: string | undefined
     invalidate();
   };
 
-  return { ...query, createFromEstimate, updateItem, recomputeTotals, closeAccountability, removeAccountability, invalidate };
+  return { ...query, createFromEstimate, updateItem, attachComprovante, removeComprovante, recomputeTotals, closeAccountability, removeAccountability, invalidate };
 }

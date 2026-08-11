@@ -102,6 +102,9 @@ export type Database = {
           accountability_id: string
           categoria: string
           company_id: string
+          comprovante_document_id: string | null
+          comprovante_name: string | null
+          comprovante_url: string | null
           confirmado: boolean
           created_at: string
           descricao: string
@@ -117,6 +120,9 @@ export type Database = {
           accountability_id: string
           categoria?: string
           company_id: string
+          comprovante_document_id?: string | null
+          comprovante_name?: string | null
+          comprovante_url?: string | null
           confirmado?: boolean
           created_at?: string
           descricao: string
@@ -132,6 +138,9 @@ export type Database = {
           accountability_id?: string
           categoria?: string
           company_id?: string
+          comprovante_document_id?: string | null
+          comprovante_name?: string | null
+          comprovante_url?: string | null
           confirmado?: boolean
           created_at?: string
           descricao?: string
@@ -156,6 +165,13 @@ export type Database = {
             columns: ["source_expense_id"]
             isOneToOne: false
             referencedRelation: "cost_estimate_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accountability_items_comprovante_document_id_fkey"
+            columns: ["comprovante_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
             referencedColumns: ["id"]
           },
         ]

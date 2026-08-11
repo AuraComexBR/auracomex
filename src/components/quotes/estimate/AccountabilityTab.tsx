@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { FileDown, Trash2, Info } from 'lucide-react';
+import { FileDown, Trash2, Info, Paperclip, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAccountability, AccountabilityItemRow, AccountabilityCategoria } from '@/hooks/useAccountability';
 import { DebouncedInput } from './DebouncedInput';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { AccountabilityPdfDialog } from './AccountabilityPdfDialog';
+import { openSignedDoc } from '@/lib/storage';
 
 interface Props {
   quoteId: string;
@@ -33,10 +34,12 @@ const categoriaLabels: Record<AccountabilityCategoria, string> = {
 };
 
 export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
-  const { data, isLoading, updateItem, recomputeTotals, removeAccountability } = useAccountability(quoteId, companyId);
+  const { data, isLoading, updateItem, attachComprovante, removeComprovante, recomputeTotals, removeAccountability } = useAccountability(quoteId, companyId);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const accountability = data?.accountability || null;
   const items = data?.items || [];
@@ -73,11 +76,26 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
     }
   };
 
-  const handleCommitObs = async (item: AccountabilityItemRow, obs: string) => {
+  const handleSelectFile = async (item: AccountabilityItemRow, file: File | undefined) => {
+    if (!file) return;
+    setUploadingId(item.id);
     try {
-      await updateItem(item.id, { observacao: obs });
+      await attachComprovante(item, file, quote);
+      toast.success('Comprovante anexado e enviado pra aba Documentos.');
     } catch (e: any) {
-      toast.error(e.message || 'Erro ao salvar observação.');
+      toast.error(e.message || 'Erro ao enviar comprovante.');
+    } finally {
+      setUploadingId(null);
+      const input = fileInputRefs.current[item.id];
+      if (input) input.value = '';
+    }
+  };
+
+  const handleRemoveComprovante = async (item: AccountabilityItemRow) => {
+    try {
+      await removeComprovante(item.id);
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao remover comprovante.');
     }
   };
 
@@ -115,47 +133,75 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead className="text-right">Orçado (R$)</TableHead>
-                <TableHead className="text-right">Pago Real (R$)</TableHead>
-                <TableHead className="text-right">Diferença (R$)</TableHead>
-                <TableHead className="text-center">Confirmado</TableHead>
-                <TableHead>Observação</TableHead>
+              <TableRow className="h-7">
+                <TableHead className="py-1">Categoria</TableHead>
+                <TableHead className="py-1">Descrição</TableHead>
+                <TableHead className="py-1 text-right">Orçado (R$)</TableHead>
+                <TableHead className="py-1 text-right">Pago Real (R$)</TableHead>
+                <TableHead className="py-1 text-right">Diferença (R$)</TableHead>
+                <TableHead className="py-1 text-center">Confirmado</TableHead>
+                <TableHead className="py-1">Comprovante</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map(item => {
                 const pago = item.valor_pago_brl ?? item.valor_orcado_brl;
                 const diff = Number(pago) - Number(item.valor_orcado_brl);
+                const uploading = uploadingId === item.id;
                 return (
-                  <TableRow key={item.id} className={item.confirmado ? '' : 'bg-amber-50/40'}>
-                    <TableCell><Badge variant="outline" className="text-[10px]">{categoriaLabels[item.categoria] || item.categoria}</Badge></TableCell>
-                    <TableCell className="text-sm">{item.descricao}</TableCell>
-                    <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmtBRL(item.valor_orcado_brl)}</TableCell>
-                    <TableCell className="text-right">
+                  <TableRow key={item.id} className={`h-8 ${item.confirmado ? '' : 'bg-amber-50/40'}`}>
+                    <TableCell className="py-1"><Badge variant="outline" className="text-[10px]">{categoriaLabels[item.categoria] || item.categoria}</Badge></TableCell>
+                    <TableCell className="py-1 text-xs">{item.descricao}</TableCell>
+                    <TableCell className="py-1 text-right font-mono text-xs text-muted-foreground">{fmtBRL(item.valor_orcado_brl)}</TableCell>
+                    <TableCell className="py-1 text-right">
                       <DebouncedInput
                         type="number"
                         step="0.01"
                         value={pago}
                         onCommit={(v) => handleCommitPago(item, Number(v))}
-                        className="w-32 ml-auto text-right font-mono"
+                        className="h-7 w-28 ml-auto text-right text-xs font-mono"
                       />
                     </TableCell>
-                    <TableCell className={`text-right font-mono text-sm ${diff > 0 ? 'text-red-600' : diff < 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                    <TableCell className={`py-1 text-right font-mono text-xs ${diff > 0 ? 'text-red-600' : diff < 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
                       {diff > 0 ? '+' : ''}{fmtBRL(diff)}
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="py-1 text-center">
                       <Checkbox checked={item.confirmado} onCheckedChange={(c) => handleToggleConfirmado(item, !!c)} />
                     </TableCell>
-                    <TableCell>
-                      <DebouncedInput
-                        value={item.observacao || ''}
-                        onCommit={(v) => handleCommitObs(item, v)}
-                        placeholder="—"
-                        className="w-40 text-xs"
+                    <TableCell className="py-1">
+                      <input
+                        ref={(el) => { fileInputRefs.current[item.id] = el; }}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => handleSelectFile(item, e.target.files?.[0])}
                       />
+                      {uploading ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin" /> Enviando…</span>
+                      ) : item.comprovante_name ? (
+                        <div className="flex items-center gap-1 max-w-[160px]">
+                          <button
+                            type="button"
+                            className="text-[11px] text-primary underline truncate"
+                            title={item.comprovante_name}
+                            onClick={() => openSignedDoc(item.comprovante_url).catch((e: any) => toast.error(e.message))}
+                          >
+                            {item.comprovante_name}
+                          </button>
+                          <button type="button" title="Remover" onClick={() => handleRemoveComprovante(item)} className="text-muted-foreground hover:text-destructive shrink-0">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-[11px] text-muted-foreground"
+                          onClick={() => fileInputRefs.current[item.id]?.click()}
+                        >
+                          <Paperclip className="w-3 h-3 mr-1" /> Anexar
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
