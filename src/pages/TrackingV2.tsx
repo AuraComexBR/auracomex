@@ -486,6 +486,28 @@ function earliestDemurrageDeadline(s: any): string | null {
   return s.demurrage_deadline || null;
 }
 
+// Prazo pendente pro alerta de "limite de devolução vencido/vencendo" — igual
+// ao earliestDemurrageDeadline (coluna/ordenação), mas ignora containers que
+// já foram devolvidos (container_return_dates, mesmo índice de
+// container_demurrage_deadlines). Se todos os containers já têm devolução
+// registrada, não há mais risco de demurrage e o alerta não deve aparecer.
+function pendingDemurrageDeadline(s: any): string | null {
+  const perContainerDeadlines = parseContainerDates(s.container_demurrage_deadlines);
+  const returnDates = parseContainerDates(s.container_return_dates);
+  if (perContainerDeadlines.some(Boolean)) {
+    const pending = perContainerDeadlines
+      .map((d, i) => ({ d, returned: !!returnDates[i] }))
+      .filter((x) => x.d && !x.returned);
+    if (pending.length === 0) return null;
+    return pending.reduce((min, x) => (new Date(x.d).getTime() < new Date(min).getTime() ? x.d : min), pending[0].d);
+  }
+  // Sem prazo manual por container: se todos os containers do embarque já
+  // têm data de devolução registrada, considera devolvido por completo.
+  const containers = parseContainerNumbers(s.container_number);
+  if (containers.length > 0 && returnDates.filter(Boolean).length >= containers.length) return null;
+  return earliestDemurrageDeadline(s);
+}
+
 function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded }: { shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { kpis } = buildTimeline(s, statusOptions);
@@ -494,9 +516,11 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
   const statusLabel = statusMeta?.label || s.status;
   const statusBadgeClass = STATUS_CATEGORY_COLORS[category] || '';
   const containers = parseContainerNumbers(s.container_number);
+  const containerReturnDates = parseContainerDates(s.container_return_dates);
   const channelMeta = s.customs_channel ? CUSTOMS_CHANNEL_LABELS[s.customs_channel] : null;
   const demurrageDeadline = earliestDemurrageDeadline(s);
-  const demurrageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(demurrageDeadline) : null;
+  const pendingDeadline = pendingDemurrageDeadline(s);
+  const demurrageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(pendingDeadline) : null;
   const storageDays = !kpis.isFinished && !kpis.isCancelled && !s.cargo_delivered_at ? daysUntil(s.storage_deadline) : null;
   const demurrageUrgent = demurrageDays !== null && demurrageDays <= 3;
 
@@ -584,7 +608,12 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
               <DetailItem label="BL" value={s.master_bl || s.house_bl || '—'} />
               {containers.length > 0 ? (
                 containers.map((c, i) => (
-                  <DetailItem key={i} label={`Container #${i + 1}`} value={c} mono />
+                  <DetailItem
+                    key={i}
+                    label={`Container #${i + 1}${containerReturnDates[i] ? ` — Devolvido em ${shortDate(containerReturnDates[i])}` : ''}`}
+                    value={c}
+                    mono
+                  />
                 ))
               ) : (
                 <DetailItem label="Container" value="—" />
@@ -635,15 +664,7 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
             )}
 
             {/* Alertas */}
-            {kpis.isDelayed && (
-              <div className="flex items-center gap-2 text-xs text-red-600 bg-red-500/10 rounded-md px-3 py-2">
-                <AlertTriangle className="w-4 h-4" />
-                <span>
-                  Atraso: ETA em {format(new Date(s.eta), 'dd/MM/yyyy')} já passou.
-                </span>
-              </div>
-            )}
-            {!kpis.isDelayed && kpis.arrivingSoon && (
+            {kpis.arrivingSoon && (
               <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-500/10 rounded-md px-3 py-2">
                 <BellRing className="w-4 h-4" />
                 <span>Chegada prevista em {kpis.daysRemaining} dia(s).</span>

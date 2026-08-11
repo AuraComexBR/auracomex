@@ -318,6 +318,12 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   // não um campo único do embarque.
   const [containerDemurrage, setContainerDemurrage] = useState<string[]>(() => parseContainerDates((shipment as any).container_demurrage_deadlines));
 
+  // Data de devolução do container vazio — também por container (mesmo
+  // índice dos arrays acima). Usada pro tracking do cliente saber quais
+  // containers já foram devolvidos e não mostrar mais o alerta de limite
+  // de devolução vencido pra eles.
+  const [containerReturnDates, setContainerReturnDates] = useState<string[]>(() => parseContainerDates((shipment as any).container_return_dates));
+
   // Quantidade de campos de container exibidos: acompanha exatamente a
   // Resumo da Carga (containerCount) uma vez que os dados terminaram de
   // carregar — inclusive encolhendo se um container for removido lá. Antes
@@ -325,7 +331,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   // não piscar "1 container" por uma fração de segundo enquanto carrega.
   const containerSlotCount = containerDataReady
     ? containerCount
-    : Math.max(containerNumbers.length, containerDemurrage.length);
+    : Math.max(containerNumbers.length, containerDemurrage.length, containerReturnDates.length);
 
   // Se a Resumo da Carga encolheu (ex: um container foi removido), corta os
   // números/prazos que sobraram além da nova quantidade — sem isso, o
@@ -335,6 +341,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     if (!isFCL || !containerDataReady) return;
     setContainerNumbers(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
     setContainerDemurrage(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
+    setContainerReturnDates(prev => (prev.length > containerCount ? prev.slice(0, containerCount) : prev));
   }, [isFCL, containerDataReady, containerCount]);
 
   // "Achata" os itens da Resumo da Carga em uma lista de 1 tipo por
@@ -361,6 +368,15 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
 
   function setContainerDemurrageAt(idx: number, value: string) {
     setContainerDemurrage(prev => {
+      const arr = [...prev];
+      while (arr.length <= idx) arr.push('');
+      arr[idx] = value;
+      return arr;
+    });
+  }
+
+  function setContainerReturnDateAt(idx: number, value: string) {
+    setContainerReturnDates(prev => {
       const arr = [...prev];
       while (arr.length <= idx) arr.push('');
       arr[idx] = value;
@@ -468,6 +484,12 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
       const oldT = existingDemurrage[i] ? new Date(existingDemurrage[i]).getTime() : null;
       if (newT !== oldT) return true;
     }
+    const existingReturnDates = parseContainerDates((shipment as any).container_return_dates);
+    for (let i = 0; i < Math.max(existingReturnDates.length, containerReturnDates.length); i++) {
+      const newT = containerReturnDates[i] ? new Date(containerReturnDates[i]).getTime() : null;
+      const oldT = existingReturnDates[i] ? new Date(existingReturnDates[i]).getTime() : null;
+      if (newT !== oldT) return true;
+    }
     if (linkedQuote) {
       if ((form.transit_time || '') !== (linkedQuote.transit_time != null ? String(linkedQuote.transit_time) : '')) return true;
       const newValidUntilT = form.valid_until ? new Date(form.valid_until).getTime() : null;
@@ -476,7 +498,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     }
     return false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, containerNumbers, containerDemurrage, shipment, isFCL, containerCount, linkedQuote]);
+  }, [form, containerNumbers, containerDemurrage, containerReturnDates, shipment, isFCL, containerCount, linkedQuote]);
 
   // Auto-save: nenhum botão "Salvar" próprio. Antes disparava sozinho 900ms
   // depois de qualquer tecla digitada — o que salvava no meio da digitação
@@ -496,12 +518,15 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
       // Números e prazos de demurrage são arrays paralelos (mesmo índice =
       // mesmo container) — alinha os dois no mesmo tamanho antes de salvar,
       // pra nunca desalinhar o prazo do container #2 com o número do #1.
-      const alignedLength = Math.max(containerNumbers.length, containerDemurrage.length);
+      const alignedLength = Math.max(containerNumbers.length, containerDemurrage.length, containerReturnDates.length);
       const containerNumberValue = containerNumbers.filter(Boolean).length > 0
         ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => (containerNumbers[i] || '').trim()))
         : null;
       const containerDemurrageValue = containerDemurrage.some(Boolean)
         ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => containerDemurrage[i] || ''))
+        : null;
+      const containerReturnDatesValue = containerReturnDates.some(Boolean)
+        ? JSON.stringify(Array.from({ length: alignedLength }, (_, i) => containerReturnDates[i] || ''))
         : null;
 
       const updates: Record<string, any> = {
@@ -535,6 +560,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         transport_mode: form.transport_mode as any,
         container_number: containerNumberValue,
         container_demurrage_deadlines: containerDemurrageValue,
+        container_return_dates: containerReturnDatesValue,
         courier_provider: form.courier_provider || null,
         courier_tracking_number: form.courier_tracking_number || null,
         customs_channel: form.customs_channel || null,
@@ -561,7 +587,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         'vessel_flight', 'booking_number',
         'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
         'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
-        'container_demurrage_deadlines',
+        'container_demurrage_deadlines', 'container_return_dates',
         'courier_provider', 'courier_tracking_number',
         'customs_channel', 'duimp_number', 'physical_location', 'customs_registration_date', 'terminal_entry_date',
         'storage_deadline', 'cargo_delivered_at', 'invoice_sent_at',
@@ -1088,6 +1114,11 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
                   label="Prazo Demurrage"
                   value={containerDemurrage[idx] || ''}
                   onChange={(v) => setContainerDemurrageAt(idx, v)}
+                />
+                <InlineDateField
+                  label="Devolvido em"
+                  value={containerReturnDates[idx] || ''}
+                  onChange={(v) => setContainerReturnDateAt(idx, v)}
                 />
               </div>
             ))}
