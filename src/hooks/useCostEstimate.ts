@@ -377,6 +377,49 @@ export function useDebouncedSave<T>(value: T, onSave: (v: T) => Promise<void> | 
   return saving;
 }
 
+const AFRMM_FRETE_KEYWORDS = ['FRETE', 'FREIGHT', 'OCEAN FREIGHT', 'AIR FREIGHT'];
+const AFRMM_SEGURO_KEYWORDS = ['SEGURO', 'INSURANCE'];
+function hasAfrmmKeyword(text: string | null | undefined, keywords: string[]) {
+  const upper = (text || '').toUpperCase();
+  return keywords.some(k => upper.includes(k));
+}
+
+/** Frete marítimo TOTAL (BRL) pra base do AFRMM — soma o frete Collect
+ *  (estimate.frete_intl_usd, já convertido pelo câmbio) com qualquer frete
+ *  Prepaid lançado nas despesas (category='freight', is_prepaid=true,
+ *  excluindo Seguro pela descrição).
+ *
+ *  Importante: isso é DIFERENTE de usar frete_intl_usd sozinho.
+ *  frete_intl_usd deliberadamente EXCLUI o frete Prepaid (ver
+ *  estimateSync.ts) pra não duplicar a base do VMLD/II — o Prepaid já está
+ *  embutido no valor comercial (Incoterm CFR/CIF). Mas o AFRMM (Adicional
+ *  ao Frete p/ Renovação da Marinha Mercante) incide sobre o frete
+ *  marítimo total pago, Prepaid ou Collect — por isso precisa somar os
+ *  dois aqui, mesmo que o Prepaid não entre no Numerário (valor a
+ *  depositar) por já ter sido pago na origem. */
+export function computeFreteMaritimoTotalBrl(
+  estimate: Pick<EstimateRow, 'frete_intl_usd' | 'usd_brl'> | null,
+  expenses: Pick<EstimateExpenseRow, 'descricao' | 'valor_brl' | 'category' | 'is_prepaid'>[],
+): number {
+  if (!estimate) return 0;
+  const collectBrl = Number(estimate.frete_intl_usd || 0) * Number(estimate.usd_brl || 0);
+  const prepaidFreightBrl = expenses
+    .filter(e => e.category === 'freight' && e.is_prepaid
+      && hasAfrmmKeyword(e.descricao, AFRMM_FRETE_KEYWORDS)
+      && !hasAfrmmKeyword(e.descricao, AFRMM_SEGURO_KEYWORDS))
+    .reduce((sum, e) => sum + (Number(e.valor_brl) || 0), 0);
+  return collectBrl + prepaidFreightBrl;
+}
+
+/** AFRMM automático: 8% do frete marítimo total (Prepaid + Collect, ver
+ *  computeFreteMaritimoTotalBrl) + R$ 20,00 de taxa fixa de emissão. */
+export function computeAfrmmAutoBrl(
+  estimate: Pick<EstimateRow, 'frete_intl_usd' | 'usd_brl'> | null,
+  expenses: Pick<EstimateExpenseRow, 'descricao' | 'valor_brl' | 'category' | 'is_prepaid'>[],
+): number {
+  return Number((computeFreteMaritimoTotalBrl(estimate, expenses) * 0.08 + 20).toFixed(2));
+}
+
 export function computeBreakdown(
   estimate: EstimateRow | null,
   items: EstimateItemRow[],
@@ -394,7 +437,7 @@ export function computeBreakdown(
     rateio_metodo: estimate.rateio_metodo || 'valor',
     taxa_siscomex_brl: Number((estimate as any).taxa_siscomex_brl || 0),
     afrmm_brl: (estimate as any).afrmm_auto
-      ? Number((((estimate.frete_intl_usd || 0) * (estimate.usd_brl || 0) * 0.08) + 20).toFixed(2))
+      ? computeAfrmmAutoBrl(estimate, expenses)
       : Number((estimate as any).afrmm_brl || 0),
     armazenagem_destino_brl: Number(armazenagemDestinoBrl || 0),
     items: items.map(i => ({

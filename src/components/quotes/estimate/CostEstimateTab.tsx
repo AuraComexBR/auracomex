@@ -13,7 +13,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAuditEvent } from '@/lib/auditLog';
-import { useCostEstimate, computeBreakdown, EstimateItemRow, EstimateExpenseRow, EstimateRow, syncEstimateFromCharges, syncEstimateItemsFromQuote } from '@/hooks/useCostEstimate';
+import { useCostEstimate, computeBreakdown, computeAfrmmAutoBrl, EstimateItemRow, EstimateExpenseRow, EstimateRow, syncEstimateFromCharges, syncEstimateItemsFromQuote } from '@/hooks/useCostEstimate';
 import { useAccountability } from '@/hooks/useAccountability';
 import { pct, toBRL, calcSiscomexFee, countSiscomexAdditions } from '@/lib/costEstimate';
 import { countryCodeToName } from '@/lib/countries';
@@ -466,7 +466,14 @@ export function CostEstimateTab({
       // mesmo sem nenhum campo do header da estimativa ter mudado.
       if (usdBrl > 0) {
         const taxaSiscomexBrlNow = Number((draftEstimate as any)?.taxa_siscomex_brl || 0);
-        const afrmmBrlNow = Number((draftEstimate as any)?.afrmm_brl || 0);
+        // Quando AFRMM está em modo automático, usa o mesmo cálculo (8% do
+        // frete marítimo TOTAL — Prepaid + Collect — + R$20), não o valor
+        // cru salvo em afrmm_brl (que só é atualizado quando o botão "Auto"
+        // é clicado de novo). Frete Prepaid entra na base do AFRMM mesmo
+        // não entrando no Numerário (ver computeFreteMaritimoTotalBrl).
+        const afrmmBrlNow = (draftEstimate as any)?.afrmm_auto
+          ? computeAfrmmAutoBrl(draftEstimate as any, draftExpenses as any)
+          : Number((draftEstimate as any)?.afrmm_brl || 0);
         const taxaSiscomexUsdNow = taxaSiscomexBrlNow / usdBrl;
         const afrmmUsdNow = afrmmBrlNow / usdBrl;
         const armazenagemUsdNow = armazenagemDestinoBrl / usdBrl;
@@ -819,7 +826,11 @@ export function CostEstimateTab({
     // deveriam andar juntos, mas é mais seguro não assumir.
     if (!serverEstimate || !breakdown || hasDirty || !usdBrl) return;
     const taxaSiscomexBrlNow = Number((estimate as any)?.taxa_siscomex_brl || 0);
-    const afrmmBrlNow = Number((estimate as any)?.afrmm_brl || 0);
+    // Mesmo cálculo do handleSave: em modo automático o AFRMM usa o frete
+    // marítimo total (Prepaid + Collect), não o valor cru salvo em afrmm_brl.
+    const afrmmBrlNow = (estimate as any)?.afrmm_auto
+      ? computeAfrmmAutoBrl(estimate as any, expenses as any)
+      : Number((estimate as any)?.afrmm_brl || 0);
     const taxaSiscomexUsdNow = taxaSiscomexBrlNow / usdBrl;
     const afrmmUsdNow = afrmmBrlNow / usdBrl;
     const armazenagemUsdNow = armazenagemDestinoBrl / usdBrl;
@@ -1066,7 +1077,7 @@ export function CostEstimateTab({
                 step="0.01"
                 value={
                   (estimate as any).afrmm_auto && (quote?.transport_mode === 'ocean_fcl' || quote?.transport_mode === 'ocean_lcl')
-                    ? Number((((estimate.frete_intl_usd || 0) * (estimate.usd_brl || 0) * 0.08) + 20).toFixed(2))
+                    ? computeAfrmmAutoBrl(estimate, expenses)
                     : ((estimate as any).afrmm_brl || 0)
                 }
                 onCommit={(v) => patchEstimate({ afrmm_brl: v } as any)}
@@ -1080,7 +1091,7 @@ export function CostEstimateTab({
                   const next = !(estimate as any).afrmm_auto;
                   const patch: any = { afrmm_auto: next };
                   if (next && (quote?.transport_mode === 'ocean_fcl' || quote?.transport_mode === 'ocean_lcl')) {
-                    patch.afrmm_brl = Number((((estimate.frete_intl_usd || 0) * (estimate.usd_brl || 0) * 0.08) + 20).toFixed(2));
+                    patch.afrmm_brl = computeAfrmmAutoBrl(estimate, expenses);
                   }
                   patchEstimate(patch);
                 }}

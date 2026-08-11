@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { EstimateRow, EstimateItemRow, EstimateExpenseRow } from '@/hooks/useCostEstimate';
+import { EstimateRow, EstimateItemRow, EstimateExpenseRow, computeAfrmmAutoBrl } from '@/hooks/useCostEstimate';
 import { EstimateBreakdown, calcEstimativa, pct } from '@/lib/costEstimate';
 
 interface Props {
@@ -157,7 +157,13 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
   // Nacionais — calculados uma vez, reaproveitados na tabela de custos e no
   // box "Valores para Depósito" abaixo.
   const taxaSiscomexBrl = Number((estimate as any).taxa_siscomex_brl || 0);
-  const afrmmBrl = Number((estimate as any).afrmm_brl || 0);
+  // Em modo automático usa o frete marítimo TOTAL (Prepaid + Collect) na
+  // base do AFRMM, não o valor cru salvo — mesmo cálculo de
+  // CostEstimateTab.tsx/useCostEstimate.ts (computeAfrmmAutoBrl). Frete
+  // Prepaid entra aqui mesmo sem entrar no Numerário.
+  const afrmmBrl = (estimate as any).afrmm_auto
+    ? computeAfrmmAutoBrl(estimate, expenses)
+    : Number((estimate as any).afrmm_brl || 0);
   const armazenagemBrl = Number((quote as any)?.storage_fee_amount || 0);
   const taxaSiscomexUsd = taxaSiscomexBrl / rate;
   const afrmmUsd = afrmmBrl / rate;
