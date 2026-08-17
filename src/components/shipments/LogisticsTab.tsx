@@ -285,6 +285,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
     ce_mercante_manifest: shipment.ce_mercante_manifest || '',
     ce_mercante_master: shipment.ce_mercante_master || '',
     ce_mercante_house: shipment.ce_mercante_house || '',
+    dta_number: (shipment as any).dta_number || '',
+    other_info: (shipment as any).other_info || '',
     etd: shipment.etd || '',
     eta: shipment.eta || '',
     atd: shipment.atd || '',
@@ -464,6 +466,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
       'destination_city', 'destination_country', 'destination_port',
       'vessel_flight', 'booking_number',
       'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
+      'dta_number', 'other_info',
       'etd', 'eta', 'atd', 'ata', 'incoterm', 'transport_mode',
       'courier_provider', 'courier_tracking_number',
       'customs_channel', 'duimp_number', 'physical_location', 'customs_registration_date',
@@ -573,6 +576,8 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         ce_mercante_manifest: form.ce_mercante_manifest || null,
         ce_mercante_master: form.ce_mercante_master || null,
         ce_mercante_house: form.ce_mercante_house || null,
+        dta_number: form.dta_number || null,
+        other_info: form.other_info || null,
         etd: form.etd || null,
         eta: form.eta || null,
         atd: form.atd || null,
@@ -607,6 +612,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         'destination_city', 'destination_country', 'destination_port',
         'vessel_flight', 'booking_number',
         'master_bl', 'house_bl', 'ce_mercante_manifest', 'ce_mercante_master', 'ce_mercante_house',
+        'dta_number', 'other_info',
         'etd', 'eta', 'atd', 'ata', 'status', 'incoterm', 'transport_mode', 'container_number',
         'container_seals', 'container_terminal_entry_dates', 'container_return_dates',
         'courier_provider', 'courier_tracking_number',
@@ -1109,6 +1115,14 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
             <div className="space-y-1">
               <Label className="text-xs">CE Mercante House</Label>
               <Input value={form.ce_mercante_house} onChange={e => updateField('ce_mercante_house', e.target.value)} placeholder="CE House..." />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">DTA</Label>
+              <Input value={form.dta_number} onChange={e => updateField('dta_number', e.target.value)} placeholder="Número DTA..." />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Outros</Label>
+              <Input value={form.other_info} onChange={e => updateField('other_info', e.target.value)} placeholder="Outras informações..." />
             </div>
           </div>
         </div>

@@ -2872,6 +2872,7 @@ export type Database = {
           destination_city: string | null
           destination_country: string | null
           destination_port: string | null
+          dta_number: string | null
           duimp_number: string | null
           duimp_version: number | null
           eta: string | null
@@ -2891,6 +2892,7 @@ export type Database = {
           origin_city: string | null
           origin_country: string | null
           origin_port: string | null
+          other_info: string | null
           packages: number | null
           reference_number: string
           shipper_id: string | null
@@ -2932,6 +2934,7 @@ export type Database = {
           destination_city?: string | null
           destination_country?: string | null
           destination_port?: string | null
+          dta_number?: string | null
           duimp_number?: string | null
           duimp_version?: number | null
           eta?: string | null
@@ -2951,6 +2954,7 @@ export type Database = {
           origin_city?: string | null
           origin_country?: string | null
           origin_port?: string | null
+          other_info?: string | null
           packages?: number | null
           reference_number: string
           shipper_id?: string | null
@@ -2992,6 +2996,7 @@ export type Database = {
           destination_city?: string | null
           destination_country?: string | null
           destination_port?: string | null
+          dta_number?: string | null
           duimp_number?: string | null
           duimp_version?: number | null
           eta?: string | null
@@ -3011,6 +3016,7 @@ export type Database = {
           origin_city?: string | null
           origin_country?: string | null
           origin_port?: string | null
+          other_info?: string | null
           packages?: number | null
           reference_number?: string
           shipper_id?: string | null
