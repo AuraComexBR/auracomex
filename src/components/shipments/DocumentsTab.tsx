@@ -297,6 +297,8 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
                   <SelectItem value="certificate_origin">Certificado de Origem</SelectItem>
                   <SelectItem value="customs_declaration">Declaração Aduaneira</SelectItem>
                   <SelectItem value="insurance">Seguro</SelectItem>
+                  <SelectItem value="dta">DTA</SelectItem>
+                  <SelectItem value="outros">Outros</SelectItem>
                   {customCategories.map((c) => (
                     <SelectItem key={c.id} value={`${CUSTOM_PREFIX}${c.name}`}>{c.name}</SelectItem>
                   ))}

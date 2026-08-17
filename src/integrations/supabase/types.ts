@@ -3345,6 +3345,8 @@ export type Database = {
         | "insurance"
         | "other"
         | "debit_note_supplier"
+        | "dta"
+        | "outros"
       invoice_status_type: "pending" | "invoiced" | "paid"
       notification_type:
         | "deadline_warning"
@@ -3565,6 +3567,8 @@ export const Constants = {
         "insurance",
         "other",
         "debit_note_supplier",
+        "dta",
+        "outros",
       ],
       invoice_status_type: ["pending", "invoiced", "paid"],
       notification_type: [

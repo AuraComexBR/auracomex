@@ -9,6 +9,8 @@ export const DOC_TYPE_LABELS: Record<string, string> = {
   certificate_origin: 'Certificado de Origem',
   customs_declaration: 'Declaração Aduaneira',
   insurance: 'Seguro',
+  dta: 'DTA',
+  outros: 'Outros',
   other: 'Outro',
   debit_note_supplier: 'DN Fornecedor',
 };
