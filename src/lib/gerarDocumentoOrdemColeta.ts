@@ -6,7 +6,7 @@
 import { generatePdfFromElement } from '@/lib/pdf-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { DOCS_BUCKET } from '@/lib/storage';
-import type { ColetaOrdemColeta, ColetaOrdemNotaFiscal, ColetaMotorista, ColetaVeiculo } from '@/hooks/useColeta';
+import type { ColetaOrdemColeta, ColetaOrdemNotaFiscal, ColetaMotorista, ColetaCavalo, ColetaCarreta } from '@/hooks/useColeta';
 
 interface ShipmentSummary {
   reference_number: string;
@@ -23,7 +23,8 @@ interface GerarDocumentoParams {
   ordem: ColetaOrdemColeta;
   notasFiscais: ColetaOrdemNotaFiscal[];
   motorista: ColetaMotorista | null;
-  veiculo: ColetaVeiculo | null;
+  cavalo: ColetaCavalo | null;
+  carreta: ColetaCarreta | null;
   shipment: ShipmentSummary;
   clientName: string; // importador (ex: Metropoly)
   uploadedBy: string | null;
@@ -71,8 +72,8 @@ function renderOrdemColetaHtml(p: GerarDocumentoParams): string {
         <td style="border:1px solid #ccc; padding:4px;">${p.motorista?.nome ?? '-'}</td>
         <td style="border:1px solid #ccc; padding:4px;">${p.motorista?.cnh ?? '-'}</td>
         <td style="border:1px solid #ccc; padding:4px;">${p.motorista?.rg ?? '-'}</td>
-        <td style="border:1px solid #ccc; padding:4px;">${p.veiculo?.placa_cavalo ?? '-'}</td>
-        <td style="border:1px solid #ccc; padding:4px;">${p.veiculo?.placa_carreta ?? '-'}</td>
+        <td style="border:1px solid #ccc; padding:4px;">${p.cavalo?.placa ?? '-'}</td>
+        <td style="border:1px solid #ccc; padding:4px;">${p.carreta?.placa ?? '-'}</td>
       </tr>
     </table>
 

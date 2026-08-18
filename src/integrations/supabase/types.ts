@@ -720,6 +720,105 @@ export type Database = {
           },
         ]
       }
+      coleta_carretas: {
+        Row: {
+          active: boolean
+          client_id: string
+          company_id: string
+          created_at: string
+          id: string
+          placa: string
+          tipo: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          client_id: string
+          company_id: string
+          created_at?: string
+          id?: string
+          placa: string
+          tipo?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          client_id?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          placa?: string
+          tipo?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coleta_carretas_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coleta_carretas_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coleta_cavalos: {
+        Row: {
+          active: boolean
+          client_id: string
+          company_id: string
+          cor: string | null
+          created_at: string
+          id: string
+          modelo: string | null
+          placa: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          client_id: string
+          company_id: string
+          cor?: string | null
+          created_at?: string
+          id?: string
+          modelo?: string | null
+          placa: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          client_id?: string
+          company_id?: string
+          cor?: string | null
+          created_at?: string
+          id?: string
+          modelo?: string | null
+          placa?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coleta_cavalos_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coleta_cavalos_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coleta_motoristas: {
         Row: {
           active: boolean
@@ -826,6 +925,8 @@ export type Database = {
       }
       coleta_ordens_coleta: {
         Row: {
+          carreta_id: string | null
+          cavalo_id: string | null
           company_id: string
           created_at: string
           created_by: string | null
@@ -844,9 +945,10 @@ export type Database = {
           terminal: string | null
           termo_avaria: string | null
           updated_at: string
-          veiculo_id: string | null
         }
         Insert: {
+          carreta_id?: string | null
+          cavalo_id?: string | null
           company_id: string
           created_at?: string
           created_by?: string | null
@@ -865,9 +967,10 @@ export type Database = {
           terminal?: string | null
           termo_avaria?: string | null
           updated_at?: string
-          veiculo_id?: string | null
         }
         Update: {
+          carreta_id?: string | null
+          cavalo_id?: string | null
           company_id?: string
           created_at?: string
           created_by?: string | null
@@ -886,9 +989,22 @@ export type Database = {
           terminal?: string | null
           termo_avaria?: string | null
           updated_at?: string
-          veiculo_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "coleta_ordens_coleta_carreta_id_fkey"
+            columns: ["carreta_id"]
+            isOneToOne: false
+            referencedRelation: "coleta_carretas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coleta_ordens_coleta_cavalo_id_fkey"
+            columns: ["cavalo_id"]
+            isOneToOne: false
+            referencedRelation: "coleta_cavalos"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "coleta_ordens_coleta_company_id_fkey"
             columns: ["company_id"]
@@ -915,67 +1031,6 @@ export type Database = {
             columns: ["shipment_id"]
             isOneToOne: false
             referencedRelation: "shipments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "coleta_ordens_coleta_veiculo_id_fkey"
-            columns: ["veiculo_id"]
-            isOneToOne: false
-            referencedRelation: "coleta_veiculos"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      coleta_veiculos: {
-        Row: {
-          active: boolean
-          client_id: string
-          company_id: string
-          cor: string | null
-          created_at: string
-          id: string
-          modelo: string | null
-          placa_carreta: string | null
-          placa_cavalo: string
-          updated_at: string
-        }
-        Insert: {
-          active?: boolean
-          client_id: string
-          company_id: string
-          cor?: string | null
-          created_at?: string
-          id?: string
-          modelo?: string | null
-          placa_carreta?: string | null
-          placa_cavalo: string
-          updated_at?: string
-        }
-        Update: {
-          active?: boolean
-          client_id?: string
-          company_id?: string
-          cor?: string | null
-          created_at?: string
-          id?: string
-          modelo?: string | null
-          placa_carreta?: string | null
-          placa_cavalo?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "coleta_veiculos_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "coleta_veiculos_company_id_fkey"
-            columns: ["company_id"]
-            isOneToOne: false
-            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]

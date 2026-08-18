@@ -1,5 +1,9 @@
 // Hooks React Query para o módulo de Coleta (ordem de coleta com frota
 // própria do cliente). Segue o mesmo padrão de outros hooks do projeto.
+//
+// Cavalo (trator) e carreta são cadastros independentes — no dia a dia a
+// combinação muda (a mesma carreta pode ir com cavalos diferentes e
+// vice-versa), então não dá pra tratar como um único "veículo".
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,14 +23,22 @@ export interface ColetaMotorista {
   active: boolean;
 }
 
-export interface ColetaVeiculo {
+export interface ColetaCavalo {
   id: string;
   company_id: string;
   client_id: string;
-  placa_cavalo: string;
-  placa_carreta: string | null;
+  placa: string;
   cor: string | null;
   modelo: string | null;
+  active: boolean;
+}
+
+export interface ColetaCarreta {
+  id: string;
+  company_id: string;
+  client_id: string;
+  placa: string;
+  tipo: string | null;
   active: boolean;
 }
 
@@ -44,7 +56,8 @@ export interface ColetaOrdemColeta {
   company_id: string;
   shipment_id: string;
   motorista_id: string | null;
-  veiculo_id: string | null;
+  cavalo_id: string | null;
+  carreta_id: string | null;
   numero_documento: string | null;
   terminal: string | null;
   patio: string | null;
@@ -98,40 +111,79 @@ export function useCreateColetaMotorista() {
 }
 
 // ---------------------------------------------------------------------------
-// Veículos
+// Cavalos (trator)
 // ---------------------------------------------------------------------------
 
-export function useColetaVeiculos(clientId: string | undefined) {
+export function useColetaCavalos(clientId: string | undefined) {
   return useQuery({
-    queryKey: ['coleta_veiculos', clientId],
+    queryKey: ['coleta_cavalos', clientId],
     queryFn: async () => {
       const { data, error } = await (supabase
-        .from('coleta_veiculos' as any)
+        .from('coleta_cavalos' as any)
         .select('*') as any)
         .eq('client_id', clientId)
         .eq('active', true)
-        .order('placa_cavalo');
+        .order('placa');
       if (error) throw error;
-      return (data || []) as ColetaVeiculo[];
+      return (data || []) as ColetaCavalo[];
     },
     enabled: !!clientId,
   });
 }
 
-export function useCreateColetaVeiculo() {
+export function useCreateColetaCavalo() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: Omit<ColetaVeiculo, 'id' | 'active'>) => {
+    mutationFn: async (payload: Omit<ColetaCavalo, 'id' | 'active'>) => {
       const { data, error } = await (supabase
-        .from('coleta_veiculos' as any)
+        .from('coleta_cavalos' as any)
         .insert(payload as any)
         .select()
         .single() as any);
       if (error) throw error;
-      return data as ColetaVeiculo;
+      return data as ColetaCavalo;
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['coleta_veiculos', variables.client_id] });
+      queryClient.invalidateQueries({ queryKey: ['coleta_cavalos', variables.client_id] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Carretas
+// ---------------------------------------------------------------------------
+
+export function useColetaCarretas(clientId: string | undefined) {
+  return useQuery({
+    queryKey: ['coleta_carretas', clientId],
+    queryFn: async () => {
+      const { data, error } = await (supabase
+        .from('coleta_carretas' as any)
+        .select('*') as any)
+        .eq('client_id', clientId)
+        .eq('active', true)
+        .order('placa');
+      if (error) throw error;
+      return (data || []) as ColetaCarreta[];
+    },
+    enabled: !!clientId,
+  });
+}
+
+export function useCreateColetaCarreta() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: Omit<ColetaCarreta, 'id' | 'active'>) => {
+      const { data, error } = await (supabase
+        .from('coleta_carretas' as any)
+        .insert(payload as any)
+        .select()
+        .single() as any);
+      if (error) throw error;
+      return data as ColetaCarreta;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['coleta_carretas', variables.client_id] });
     },
   });
 }
@@ -164,7 +216,8 @@ export function useUpsertColetaOrdem() {
       company_id: string;
       shipment_id: string;
       motorista_id: string | null;
-      veiculo_id: string | null;
+      cavalo_id: string | null;
+      carreta_id: string | null;
       terminal: string | null;
       patio: string | null;
       data_agendada: string | null;

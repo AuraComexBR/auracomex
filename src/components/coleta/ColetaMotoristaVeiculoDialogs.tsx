@@ -1,5 +1,7 @@
-// Dialogs de cadastro rápido de motorista e veículo, usados dentro do select
-// da ordem de coleta ("+ novo motorista" / "+ novo veículo").
+// Dialogs de cadastro rápido de motorista, cavalo e carreta, usados dentro
+// dos selects da ordem de coleta ("+ novo motorista" / "+ novo cavalo" /
+// "+ nova carreta"). Cavalo e carreta são cadastros independentes — a
+// combinação muda no dia a dia.
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -10,7 +12,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { useCreateColetaMotorista, useCreateColetaVeiculo, ColetaMotorista, ColetaVeiculo } from '@/hooks/useColeta';
+import {
+  useCreateColetaMotorista,
+  useCreateColetaCavalo,
+  useCreateColetaCarreta,
+  ColetaMotorista,
+  ColetaCavalo,
+  ColetaCarreta,
+} from '@/hooks/useColeta';
 
 const motoristaSchema = z.object({
   nome: z.string().min(1, 'Obrigatório'),
@@ -23,11 +32,15 @@ const motoristaSchema = z.object({
   nextel: z.string().optional(),
 });
 
-const veiculoSchema = z.object({
-  placa_cavalo: z.string().min(1, 'Obrigatório'),
-  placa_carreta: z.string().optional(),
+const cavaloSchema = z.object({
+  placa: z.string().min(1, 'Obrigatório'),
   cor: z.string().optional(),
   modelo: z.string().optional(),
+});
+
+const carretaSchema = z.object({
+  placa: z.string().min(1, 'Obrigatório'),
+  tipo: z.string().optional(),
 });
 
 export function NovoMotoristaDialog({
@@ -109,55 +122,48 @@ export function NovoMotoristaDialog({
   );
 }
 
-export function NovoVeiculoDialog({
+export function NovoCavaloDialog({
   companyId,
   clientId,
   onCreated,
 }: {
   companyId: string;
   clientId: string;
-  onCreated: (veiculo: ColetaVeiculo) => void;
+  onCreated: (cavalo: ColetaCavalo) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const createVeiculo = useCreateColetaVeiculo();
-  const form = useForm<z.infer<typeof veiculoSchema>>({ resolver: zodResolver(veiculoSchema) });
+  const createCavalo = useCreateColetaCavalo();
+  const form = useForm<z.infer<typeof cavaloSchema>>({ resolver: zodResolver(cavaloSchema) });
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const veiculo = await createVeiculo.mutateAsync({
+      const cavalo = await createCavalo.mutateAsync({
         company_id: companyId,
         client_id: clientId,
-        placa_carreta: null,
         cor: null,
         modelo: null,
         ...values,
       } as any);
-      toast.success('Veículo cadastrado');
-      onCreated(veiculo);
+      toast.success('Cavalo cadastrado');
+      onCreated(cavalo);
       setOpen(false);
       form.reset();
     } catch (err: any) {
-      toast.error('Erro ao cadastrar veículo', { description: err.message });
+      toast.error('Erro ao cadastrar cavalo', { description: err.message });
     }
   });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">+ Novo veículo</Button>
+        <Button type="button" variant="outline" size="sm">+ Novo cavalo</Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>Novo veículo</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Novo cavalo (trator)</DialogTitle></DialogHeader>
         <form onSubmit={onSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="placa_cavalo">Placa cavalo</Label>
-              <Input id="placa_cavalo" {...form.register('placa_cavalo')} />
-            </div>
-            <div>
-              <Label htmlFor="placa_carreta">Placa carreta</Label>
-              <Input id="placa_carreta" {...form.register('placa_carreta')} />
-            </div>
+          <div>
+            <Label htmlFor="placa">Placa</Label>
+            <Input id="placa" {...form.register('placa')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -166,10 +172,63 @@ export function NovoVeiculoDialog({
             </div>
             <div>
               <Label htmlFor="modelo">Modelo</Label>
-              <Input id="modelo" {...form.register('modelo')} />
+              <Input id="modelo" placeholder="Ex.: FH 500 6X2T" {...form.register('modelo')} />
             </div>
           </div>
-          <Button type="submit" disabled={createVeiculo.isPending}>Salvar</Button>
+          <Button type="submit" disabled={createCavalo.isPending}>Salvar</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function NovaCarretaDialog({
+  companyId,
+  clientId,
+  onCreated,
+}: {
+  companyId: string;
+  clientId: string;
+  onCreated: (carreta: ColetaCarreta) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const createCarreta = useCreateColetaCarreta();
+  const form = useForm<z.infer<typeof carretaSchema>>({ resolver: zodResolver(carretaSchema) });
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    try {
+      const carreta = await createCarreta.mutateAsync({
+        company_id: companyId,
+        client_id: clientId,
+        tipo: null,
+        ...values,
+      } as any);
+      toast.success('Carreta cadastrada');
+      onCreated(carreta);
+      setOpen(false);
+      form.reset();
+    } catch (err: any) {
+      toast.error('Erro ao cadastrar carreta', { description: err.message });
+    }
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm">+ Nova carreta</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Nova carreta</DialogTitle></DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-3">
+          <div>
+            <Label htmlFor="placa">Placa</Label>
+            <Input id="placa" {...form.register('placa')} />
+          </div>
+          <div>
+            <Label htmlFor="tipo">Tipo</Label>
+            <Input id="tipo" placeholder="Ex.: Baú, Graneleiro, Prancha" {...form.register('tipo')} />
+          </div>
+          <Button type="submit" disabled={createCarreta.isPending}>Salvar</Button>
         </form>
       </DialogContent>
     </Dialog>

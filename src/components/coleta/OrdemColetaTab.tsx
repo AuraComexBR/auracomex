@@ -1,10 +1,11 @@
 // Aba "Coleta" dentro do detalhe do shipment/embarque. Mostra o formulário
-// de ordem de coleta (motorista, veículo, terminal, pátio, lacres, notas
-// fiscais) e o botão de gerar o PDF entregue ao motorista.
+// de ordem de coleta (motorista, cavalo, carreta, terminal, pátio, lacres,
+// notas fiscais) e o botão de gerar o PDF entregue ao motorista.
 //
 // Só faz sentido quando o cliente do embarque faz coleta com frota própria
-// (não uma transportadora terceirizada) — motorista/veículo são cadastrados
-// vinculados ao client_id do embarque.
+// (não uma transportadora terceirizada) — motorista/cavalo/carreta são
+// cadastrados vinculados ao client_id do embarque. Cavalo e carreta são
+// cadastros independentes porque a combinação muda no dia a dia.
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -18,12 +19,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   useColetaMotoristas,
-  useColetaVeiculos,
+  useColetaCavalos,
+  useColetaCarretas,
   useColetaOrdem,
   useUpsertColetaOrdem,
   ColetaOrdemNotaFiscal,
 } from '@/hooks/useColeta';
-import { NovoMotoristaDialog, NovoVeiculoDialog } from './ColetaMotoristaVeiculoDialogs';
+import { NovoMotoristaDialog, NovoCavaloDialog, NovaCarretaDialog } from './ColetaMotoristaVeiculoDialogs';
 import { gerarDocumentoOrdemColeta } from '@/lib/gerarDocumentoOrdemColeta';
 import { openSignedDoc } from '@/lib/storage';
 
@@ -44,7 +46,8 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
   const { profile } = useAuth();
   const { data: ordem } = useColetaOrdem(shipmentId);
   const { data: motoristas = [] } = useColetaMotoristas(clientId ?? undefined);
-  const { data: veiculos = [] } = useColetaVeiculos(clientId ?? undefined);
+  const { data: cavalos = [] } = useColetaCavalos(clientId ?? undefined);
+  const { data: carretas = [] } = useColetaCarretas(clientId ?? undefined);
   const upsertOrdem = useUpsertColetaOrdem();
 
   const { data: company } = useQuery({
@@ -68,7 +71,8 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
   });
 
   const [motoristaId, setMotoristaId] = useState<string | null>(null);
-  const [veiculoId, setVeiculoId] = useState<string | null>(null);
+  const [cavaloId, setCavaloId] = useState<string | null>(null);
+  const [carretaId, setCarretaId] = useState<string | null>(null);
   const [terminal, setTerminal] = useState('');
   const [patio, setPatio] = useState('');
   const [dataAgendada, setDataAgendada] = useState('');
@@ -83,7 +87,8 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
   useEffect(() => {
     if (!ordem) return;
     setMotoristaId(ordem.motorista_id);
-    setVeiculoId(ordem.veiculo_id);
+    setCavaloId(ordem.cavalo_id);
+    setCarretaId(ordem.carreta_id);
     setTerminal(ordem.terminal ?? '');
     setPatio(ordem.patio ?? '');
     setDataAgendada(ordem.data_agendada ? ordem.data_agendada.slice(0, 16) : '');
@@ -112,7 +117,8 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
         company_id: companyId,
         shipment_id: shipmentId,
         motorista_id: motoristaId,
-        veiculo_id: veiculoId,
+        cavalo_id: cavaloId,
+        carreta_id: carretaId,
         terminal: terminal || null,
         patio: patio || null,
         data_agendada: dataAgendada ? new Date(dataAgendada).toISOString() : null,
@@ -136,9 +142,10 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
       return;
     }
     const motorista = motoristas.find((m) => m.id === motoristaId) ?? null;
-    const veiculo = veiculos.find((v) => v.id === veiculoId) ?? null;
-    if (!motorista || !veiculo) {
-      toast.error('Selecione motorista e veículo antes de gerar o documento');
+    const cavalo = cavalos.find((c) => c.id === cavaloId) ?? null;
+    const carreta = carretas.find((c) => c.id === carretaId) ?? null;
+    if (!motorista || !cavalo) {
+      toast.error('Selecione motorista e cavalo antes de gerar o documento');
       return;
     }
 
@@ -160,7 +167,8 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
         ordem: { ...ordem, numero_documento: numeroDocumento },
         notasFiscais,
         motorista,
-        veiculo,
+        cavalo,
+        carreta,
         clientName: client?.name ?? '',
         uploadedBy: profile?.user_id ?? null,
       });
@@ -180,35 +188,52 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
         <CardTitle className="text-sm font-semibold">Ordem de Coleta</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div>
+          <Label>Motorista</Label>
+          <div className="flex gap-2">
+            <Select value={motoristaId ?? undefined} onValueChange={setMotoristaId}>
+              <SelectTrigger><SelectValue placeholder="Selecione o motorista" /></SelectTrigger>
+              <SelectContent>
+                {motoristas.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <NovoMotoristaDialog companyId={companyId} clientId={clientId} onCreated={(m) => setMotoristaId(m.id)} />
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label>Motorista</Label>
+            <Label>Cavalo</Label>
             <div className="flex gap-2">
-              <Select value={motoristaId ?? undefined} onValueChange={setMotoristaId}>
-                <SelectTrigger><SelectValue placeholder="Selecione o motorista" /></SelectTrigger>
+              <Select value={cavaloId ?? undefined} onValueChange={setCavaloId}>
+                <SelectTrigger><SelectValue placeholder="Selecione o cavalo" /></SelectTrigger>
                 <SelectContent>
-                  {motoristas.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <NovoMotoristaDialog companyId={companyId} clientId={clientId} onCreated={(m) => setMotoristaId(m.id)} />
-            </div>
-          </div>
-          <div>
-            <Label>Veículo</Label>
-            <div className="flex gap-2">
-              <Select value={veiculoId ?? undefined} onValueChange={setVeiculoId}>
-                <SelectTrigger><SelectValue placeholder="Selecione o veículo" /></SelectTrigger>
-                <SelectContent>
-                  {veiculos.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.placa_cavalo} {v.placa_carreta ? `/ ${v.placa_carreta}` : ''}
+                  {cavalos.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.placa} {c.modelo ? `— ${c.modelo}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <NovoVeiculoDialog companyId={companyId} clientId={clientId} onCreated={(v) => setVeiculoId(v.id)} />
+              <NovoCavaloDialog companyId={companyId} clientId={clientId} onCreated={(c) => setCavaloId(c.id)} />
+            </div>
+          </div>
+          <div>
+            <Label>Carreta</Label>
+            <div className="flex gap-2">
+              <Select value={carretaId ?? undefined} onValueChange={setCarretaId}>
+                <SelectTrigger><SelectValue placeholder="Selecione a carreta" /></SelectTrigger>
+                <SelectContent>
+                  {carretas.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.placa} {c.tipo ? `— ${c.tipo}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <NovaCarretaDialog companyId={companyId} clientId={clientId} onCreated={(c) => setCarretaId(c.id)} />
             </div>
           </div>
         </div>
