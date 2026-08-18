@@ -5,7 +5,7 @@
 // (html2canvas). Um <div> fora da tela criado via innerHTML já causou PDF
 // em branco; não reintroduzir esse padrão.
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Download, Loader2 } from 'lucide-react';
@@ -60,9 +60,21 @@ export function OrdemColetaPdfDialog({
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
+  // Espelha ordem.numero_documento, mas atualiza na hora (antes do prop
+  // "ordem" ser recarregado do banco) pra o número aparecer no PDF que
+  // acabou de ser numerado — sem isso o html2canvas captura o cabeçalho
+  // ainda com "Nº -", já que a geração e o re-render do prop não são
+  // síncronos.
+  const [numeroDocumentoExibido, setNumeroDocumentoExibido] = useState(ordem.numero_documento);
+
+  // Ordem muda (troca de container ou reabre pra outra ordem) — realinha o
+  // número exibido com o que veio do banco pra essa ordem específica.
+  useEffect(() => {
+    setNumeroDocumentoExibido(ordem.numero_documento);
+  }, [ordem.id, ordem.numero_documento]);
 
   const dataAgendada = ordem.data_agendada ? new Date(ordem.data_agendada).toLocaleString('pt-BR') : '-';
-  const filename = `${ordem.numero_documento ?? 'ordem-de-coleta'}.pdf`;
+  const filename = `${numeroDocumentoExibido ?? 'ordem-de-coleta'}.pdf`;
 
   const dataEmissao = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
   const enderecoTerminal = [ordem.terminal, ordem.patio].filter(Boolean).join(' – ') || '-';
@@ -80,6 +92,11 @@ export function OrdemColetaPdfDialog({
         if (error) throw error;
         numeroDocumento = numero as string;
         await (supabase.from('coleta_ordens_coleta' as any).update({ numero_documento: numeroDocumento } as any).eq('id', ordem.id) as any);
+        // Atualiza o número na tela ANTES de capturar — sem isso o
+        // html2canvas fotografa o cabeçalho ainda com "Nº -", porque
+        // "ordem" (prop do pai) só é recarregada do banco depois.
+        setNumeroDocumentoExibido(numeroDocumento);
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       }
 
       // Baixa direto no navegador do usuário (mesmo comportamento dos
@@ -109,7 +126,7 @@ export function OrdemColetaPdfDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
         <DialogHeader>
-          <DialogTitle>Ordem de Coleta {ordem.numero_documento ?? ''}</DialogTitle>
+          <DialogTitle>Ordem de Coleta {numeroDocumentoExibido ?? ''}</DialogTitle>
         </DialogHeader>
 
         <div style={{ background: '#fff', padding: 24 }}>
@@ -122,7 +139,7 @@ export function OrdemColetaPdfDialog({
                 <img src={companyLogoUrl} alt="" crossOrigin="anonymous" style={{ maxHeight: 60, maxWidth: 220, marginBottom: 8 }} />
               )}
               <div style={{ fontSize: 16, fontWeight: 'bold' }}>ORDEM DE COLETA</div>
-              <div style={{ fontSize: 13 }}>Nº {ordem.numero_documento ?? '-'}</div>
+              <div style={{ fontSize: 13 }}>Nº {numeroDocumentoExibido ?? '-'}</div>
               <div style={{ fontSize: 11, color: '#555' }}>Emitido por {companyName}</div>
             </div>
 
