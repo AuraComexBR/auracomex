@@ -18,10 +18,28 @@ export default function ResetPassword() {
   const { t } = useLanguage();
 
   useEffect(() => {
-    // Check if we have a recovery session from the URL hash
+    // Check if we have a recovery session from the URL hash (implicit flow)
     const hash = window.location.hash;
-    if (hash.includes('type=recovery')) {
+    const hasRecoveryHash = hash.includes('type=recovery');
+    if (hasRecoveryHash) {
       setReady(true);
+    }
+
+    // PKCE flow: the link redirects with ?code=... in the query string. The Supabase
+    // client already starts exchanging that code for a session (detectSessionInUrl) as
+    // soon as the module is imported — before this effect runs and registers the
+    // PASSWORD_RECOVERY listener below. If the exchange finishes first, the event is
+    // missed and `ready` never becomes true even for a valid, unused link. When there's
+    // any sign of a recovery flow (hash or ?code=), check getSession() directly to cover
+    // that race, in addition to keeping the listener for the case where the exchange
+    // completes after mount.
+    const hasRecoveryCode = new URLSearchParams(window.location.search).has('code');
+    if (hasRecoveryHash || hasRecoveryCode) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          setReady(true);
+        }
+      });
     }
 
     // Also listen for PASSWORD_RECOVERY event
