@@ -146,24 +146,34 @@ export function OrdemColetaPdfDialog({
               </tbody>
             </table>
 
-            <div style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>Dados do Transporte</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
+            <div style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>Dados do Motorista</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', marginBottom: 8 }}>
               <tbody>
                 <tr>
                   <th style={th}>Motorista</th>
                   <th style={th}>CPF</th>
                   <th style={th}>CNH</th>
                   <th style={th}>RG</th>
-                  <th style={th}>Placa Cavalo</th>
-                  <th style={th}>Modelo Cavalo</th>
-                  <th style={th}>Cor Cavalo</th>
-                  <th style={th}>Placa Carreta</th>
                 </tr>
                 <tr>
                   <td style={td}>{motorista.nome}</td>
                   <td style={td}>{motorista.cpf ?? '-'}</td>
                   <td style={td}>{motorista.cnh ?? '-'}</td>
                   <td style={td}>{motorista.rg ?? '-'}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>Dados do Veículo</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
+              <tbody>
+                <tr>
+                  <th style={th}>Placa Cavalo</th>
+                  <th style={th}>Modelo Cavalo</th>
+                  <th style={th}>Cor Cavalo</th>
+                  <th style={th}>Placa Carreta</th>
+                </tr>
+                <tr>
                   <td style={td}>{cavalo.placa}</td>
                   <td style={td}>{cavalo.modelo ?? '-'}</td>
                   <td style={td}>{cavalo.cor ?? '-'}</td>
@@ -206,24 +216,6 @@ export function OrdemColetaPdfDialog({
                   <td style={td}>{ordem.terminal ?? '-'}</td>
                   <td style={td}>{ordem.patio ?? '-'}</td>
                   <td style={td}>{dataAgendada}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>Dados dos Lacres</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
-              <tbody>
-                <tr>
-                  <th style={th}>Encontrado</th>
-                  <th style={th}>Adicional</th>
-                  <th style={th}>IPA</th>
-                  <th style={th}>Termo de Avaria</th>
-                </tr>
-                <tr>
-                  <td style={td}>{ordem.lacre_encontrado ?? '-'}</td>
-                  <td style={td}>{ordem.lacre_adicional ?? '-'}</td>
-                  <td style={td}>{ordem.lacre_ipa ?? '-'}</td>
-                  <td style={td}>{ordem.termo_avaria ?? '-'}</td>
                 </tr>
               </tbody>
             </table>
