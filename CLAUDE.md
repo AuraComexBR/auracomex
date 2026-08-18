@@ -3,11 +3,33 @@
 SaaS de gestão de frete internacional (comex), em português. Usuário: Marcos Martini
 (marcos.f.martini@gmail.com), superadmin da plataforma. Responder sempre em português.
 
-## Acesso ao código (fazer isso primeiro, sempre)
+## Acesso ao código e às automações (fazer isso primeiro, sempre)
 
 Antes de qualquer tarefa que envolva ler ou editar código, pedir/conectar a pasta local
 do projeto (`C:\auracomex\auracomex`, via `request_cowork_directory` com esse path) logo
 no início da conversa — não esperar o usuário pedir. Sem isso não há acesso ao repo.
+
+**Toda conversa nova nasce sem os MCPs conectados** — Supabase MCP e Vercel MCP são
+conexões por sessão, não algo que este arquivo consiga ligar sozinho. Isso é normal, não
+é bug: cada conversa nova precisa reconectar. Por isso, logo no início (junto com o pedido
+da pasta), checar se `mcp__supabase__execute_sql` (ou nome equivalente do Supabase) e
+`mcp__vercel__list_deployments` (ou equivalente) já aparecem na lista de ferramentas —
+via `ToolSearch` se estiverem deferred. Se não aparecerem nem via busca, usar
+`mcp__mcp-registry__search_mcp_registry` com termos como "supabase"/"vercel" e depois
+`suggest_connectors` pra oferecer a conexão ao usuário, ANTES de tentar qualquer
+`execute_sql`/`apply_migration`/`list_deployments` — não sair tentando chamar a ferramenta
+às cegas e só desistir depois do erro.
+
+**GitHub não é um MCP separado aqui** — não existe (nem precisa existir) um conector MCP
+de GitHub pra esse projeto. Todo o fluxo de commit/push acontece via `git` direto no
+repositório montado localmente (`C:\auracomex\auracomex`, ver seção "Git no ambiente
+sandbox" abaixo). PORÉM: o push passa por um proxy de git que só injeta credencial pra
+repositórios autorizados na sessão. Se o push falhar com 403 e "not in this session's
+authorized repository set", a conversa não foi criada dentro do projeto AuraComex (que tem
+o repo `AuraComexBR/auracomex` vinculado como fonte) — a correção é o usuário criar a
+conversa dentro do projeto AuraComex no app do Claude, ou adicionar o repo GitHub como
+fonte da conversa no seletor de fontes/conhecimento. Não adianta mexer em credencial,
+remote ou config do git — o bloqueio é do proxy, não do repositório.
 
 ## Stack e referências
 
