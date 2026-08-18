@@ -25,11 +25,12 @@ de GitHub pra esse projeto. Todo o fluxo de commit/push acontece via `git` diret
 repositório montado localmente (`C:\auracomex\auracomex`, ver seção "Git no ambiente
 sandbox" abaixo). PORÉM: o push passa por um proxy de git que só injeta credencial pra
 repositórios autorizados na sessão. Se o push falhar com 403 e "not in this session's
-authorized repository set", a conversa não foi criada dentro do projeto AuraComex (que tem
-o repo `AuraComexBR/auracomex` vinculado como fonte) — a correção é o usuário criar a
-conversa dentro do projeto AuraComex no app do Claude, ou adicionar o repo GitHub como
-fonte da conversa no seletor de fontes/conhecimento. Não adianta mexer em credencial,
-remote ou config do git — o bloqueio é do proxy, não do repositório.
+authorized repository set": estar dentro do projeto AuraComex NÃO basta — o repo
+`AuraComexBR/auracomex` precisa estar adicionado como FONTE da própria conversa (seletor
+de fontes/conhecimento da conversa). A correção é o usuário adicionar o repo GitHub como
+fonte da conversa. Não adianta mexer em credencial, remote ou config do git — o bloqueio
+é do proxy, não do repositório. Enquanto isso, o commit local não se perde: qualquer
+sessão autorizada (ou o próprio usuário na máquina dele) consegue dar o push depois.
 
 ## Stack e referências
 
