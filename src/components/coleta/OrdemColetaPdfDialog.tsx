@@ -64,6 +64,9 @@ export function OrdemColetaPdfDialog({
   const dataAgendada = ordem.data_agendada ? new Date(ordem.data_agendada).toLocaleString('pt-BR') : '-';
   const filename = `${ordem.numero_documento ?? 'ordem-de-coleta'}.pdf`;
 
+  const dataEmissao = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const enderecoTerminal = [ordem.terminal, ordem.patio].filter(Boolean).join(' – ') || '-';
+
   const th: React.CSSProperties = { border: '1px solid #ccc', padding: 4, background: '#f0f0f0' };
   const td: React.CSSProperties = { border: '1px solid #ccc', padding: 4 };
 
@@ -123,6 +126,19 @@ export function OrdemColetaPdfDialog({
               <div style={{ fontSize: 11, color: '#555' }}>Emitido por {companyName}</div>
             </div>
 
+            <div style={{ textAlign: 'right', marginBottom: 12 }}>São Bernardo do Campo, {dataEmissao}.</div>
+
+            <div style={{ marginBottom: 12 }}>
+              A<br />
+              {enderecoTerminal}<br />
+              NÚMERO – {shipment.reference_number}
+            </div>
+
+            <div style={{ marginBottom: 16, textAlign: 'justify' }}>
+              Vimos por meio desta, autorizar o REGISTRO / CARREGAMENTO, do processo abaixo, devido ao mesmo ser
+              efetuado diretamente pelo importador.
+            </div>
+
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
               <tbody>
                 <tr><td style={{ background: '#0D1E30', color: '#fff', padding: '4px 8px', fontWeight: 'bold' }}>IMPORTADOR</td></tr>
@@ -135,16 +151,22 @@ export function OrdemColetaPdfDialog({
               <tbody>
                 <tr>
                   <th style={th}>Motorista</th>
+                  <th style={th}>CPF</th>
                   <th style={th}>CNH</th>
                   <th style={th}>RG</th>
                   <th style={th}>Placa Cavalo</th>
+                  <th style={th}>Modelo Cavalo</th>
+                  <th style={th}>Cor Cavalo</th>
                   <th style={th}>Placa Carreta</th>
                 </tr>
                 <tr>
                   <td style={td}>{motorista.nome}</td>
+                  <td style={td}>{motorista.cpf ?? '-'}</td>
                   <td style={td}>{motorista.cnh ?? '-'}</td>
                   <td style={td}>{motorista.rg ?? '-'}</td>
                   <td style={td}>{cavalo.placa}</td>
+                  <td style={td}>{cavalo.modelo ?? '-'}</td>
+                  <td style={td}>{cavalo.cor ?? '-'}</td>
                   <td style={td}>{carreta?.placa ?? '-'}</td>
                 </tr>
               </tbody>
@@ -159,6 +181,7 @@ export function OrdemColetaPdfDialog({
                   <th style={th}>BL</th>
                   <th style={th}>DUIMP</th>
                   <th style={th}>Peso Bruto Apurado</th>
+                  <th style={th}>Peso Líquido</th>
                 </tr>
                 <tr>
                   <td style={td}>{shipment.reference_number}</td>
@@ -166,6 +189,7 @@ export function OrdemColetaPdfDialog({
                   <td style={td}>{shipment.master_bl ?? shipment.house_bl ?? '-'}</td>
                   <td style={td}>{shipment.duimp_number ?? '-'}</td>
                   <td style={td}>{ordem.peso_bruto_apurado ?? '-'}</td>
+                  <td style={td}>{ordem.peso_liquido_apurado ?? '-'}</td>
                 </tr>
               </tbody>
             </table>
@@ -230,10 +254,21 @@ export function OrdemColetaPdfDialog({
               </>
             )}
 
-            <div style={{ marginTop: 24, fontSize: 11, color: '#555' }}>
-              Documento gerado pela Aura Comex em {new Date().toLocaleString('pt-BR')}. Este documento não
-              substitui a autorização/agendamento oficial do terminal, apenas acompanha o motorista com os
-              dados da coleta.
+            <div style={{ marginTop: 24, textAlign: 'justify' }}>
+              Sem mais para o presente momento, subscrevemo-nos.
+            </div>
+            <div style={{ marginTop: 8 }}>Atenciosamente</div>
+
+            <div style={{ marginTop: 32, textAlign: 'center' }}>
+              <div style={{ fontWeight: 'bold' }}>PETERSON DE CARVALHO SILVA</div>
+              <div>E-MAIL: atlas@atlas.log.br – Tel. - (11) 91914-5723</div>
+              <div>CPF: 317.599.998-06</div>
+              <div style={{ marginTop: 8 }}>End.: R. Tiradentes, 1837 – SBC/SP – 09780-900</div>
+              <div>Site: www.atlas.log.br</div>
+            </div>
+
+            <div style={{ marginTop: 24, fontSize: 10, color: '#999' }}>
+              Documento gerado em {new Date().toLocaleString('pt-BR')}.
             </div>
           </div>
         </div>

@@ -121,6 +121,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
   const [lacreIpa, setLacreIpa] = useState('');
   const [termoAvaria, setTermoAvaria] = useState('');
   const [pesoBrutoApurado, setPesoBrutoApurado] = useState('');
+  const [pesoLiquidoApurado, setPesoLiquidoApurado] = useState('');
   const [notasFiscais, setNotasFiscais] = useState<ColetaOrdemNotaFiscal[]>([]);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
 
@@ -140,6 +141,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
       setLacreIpa('');
       setTermoAvaria('');
       setPesoBrutoApurado('');
+      setPesoLiquidoApurado('');
       setNotasFiscais([]);
       return;
     }
@@ -154,6 +156,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
     setLacreIpa(ordem.lacre_ipa ?? '');
     setTermoAvaria(ordem.termo_avaria ?? '');
     setPesoBrutoApurado(ordem.peso_bruto_apurado?.toString() ?? '');
+    setPesoLiquidoApurado(ordem.peso_liquido_apurado?.toString() ?? '');
     setNotasFiscais((ordem as any).coleta_ordem_notas_fiscais ?? []);
   }, [ordem]);
 
@@ -185,6 +188,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
         lacre_ipa: lacreIpa || null,
         termo_avaria: termoAvaria || null,
         peso_bruto_apurado: pesoBrutoApurado ? Number(pesoBrutoApurado) : null,
+        peso_liquido_apurado: pesoLiquidoApurado ? Number(pesoLiquidoApurado) : null,
         created_by: profile?.user_id ?? null,
         notas_fiscais: notasFiscais,
       });
@@ -331,6 +335,10 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
           <div>
             <Label>Peso bruto apurado (kg)</Label>
             <Input type="number" value={pesoBrutoApurado} onChange={(e) => setPesoBrutoApurado(e.target.value)} />
+          </div>
+          <div>
+            <Label>Peso líquido apurado (kg)</Label>
+            <Input type="number" value={pesoLiquidoApurado} onChange={(e) => setPesoLiquidoApurado(e.target.value)} />
           </div>
         </div>
 

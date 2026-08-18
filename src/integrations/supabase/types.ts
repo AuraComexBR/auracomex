@@ -941,6 +941,7 @@ export type Database = {
           numero_documento: string | null
           patio: string | null
           peso_bruto_apurado: number | null
+          peso_liquido_apurado: number | null
           shipment_id: string
           status: string
           terminal: string | null
@@ -964,6 +965,7 @@ export type Database = {
           numero_documento?: string | null
           patio?: string | null
           peso_bruto_apurado?: number | null
+          peso_liquido_apurado?: number | null
           shipment_id: string
           status?: string
           terminal?: string | null
@@ -987,6 +989,7 @@ export type Database = {
           numero_documento?: string | null
           patio?: string | null
           peso_bruto_apurado?: number | null
+          peso_liquido_apurado?: number | null
           shipment_id?: string
           status?: string
           terminal?: string | null

@@ -69,6 +69,7 @@ export interface ColetaOrdemColeta {
   lacre_ipa: string | null;
   termo_avaria: string | null;
   peso_bruto_apurado: number | null;
+  peso_liquido_apurado: number | null;
   document_id: string | null;
 }
 
@@ -232,6 +233,7 @@ export function useUpsertColetaOrdem() {
       lacre_ipa: string | null;
       termo_avaria: string | null;
       peso_bruto_apurado: number | null;
+      peso_liquido_apurado: number | null;
       created_by?: string | null;
       notas_fiscais: ColetaOrdemNotaFiscal[];
     }) => {
