@@ -928,6 +928,7 @@ export type Database = {
           carreta_id: string | null
           cavalo_id: string | null
           company_id: string
+          container_number: string | null
           created_at: string
           created_by: string | null
           data_agendada: string | null
@@ -950,6 +951,7 @@ export type Database = {
           carreta_id?: string | null
           cavalo_id?: string | null
           company_id: string
+          container_number?: string | null
           created_at?: string
           created_by?: string | null
           data_agendada?: string | null
@@ -972,6 +974,7 @@ export type Database = {
           carreta_id?: string | null
           cavalo_id?: string | null
           company_id?: string
+          container_number?: string | null
           created_at?: string
           created_by?: string | null
           data_agendada?: string | null

@@ -55,6 +55,7 @@ export interface ColetaOrdemColeta {
   id: string;
   company_id: string;
   shipment_id: string;
+  container_number: string | null;
   motorista_id: string | null;
   cavalo_id: string | null;
   carreta_id: string | null;
@@ -192,17 +193,21 @@ export function useCreateColetaCarreta() {
 // Ordem de coleta
 // ---------------------------------------------------------------------------
 
-export function useColetaOrdem(shipmentId: string | undefined) {
+// Uma ordem por container do embarque — shipment.container_number é um
+// array (JSON, ou legado separado por vírgula; ver parseContainerNumbers em
+// src/lib/containerNumbers.ts), então retorna TODAS as ordens do shipment,
+// e quem consome escolhe qual container está editando.
+export function useColetaOrdens(shipmentId: string | undefined) {
   return useQuery({
-    queryKey: ['coleta_ordem_coleta', shipmentId],
+    queryKey: ['coleta_ordens_coleta', shipmentId],
     queryFn: async () => {
       const { data, error } = await (supabase
         .from('coleta_ordens_coleta' as any)
         .select('*, coleta_ordem_notas_fiscais(*)') as any)
         .eq('shipment_id', shipmentId)
-        .maybeSingle();
+        .order('created_at');
       if (error) throw error;
-      return data as (ColetaOrdemColeta & { coleta_ordem_notas_fiscais: ColetaOrdemNotaFiscal[] }) | null;
+      return (data || []) as (ColetaOrdemColeta & { coleta_ordem_notas_fiscais: ColetaOrdemNotaFiscal[] })[];
     },
     enabled: !!shipmentId,
   });
@@ -215,6 +220,7 @@ export function useUpsertColetaOrdem() {
       id?: string;
       company_id: string;
       shipment_id: string;
+      container_number: string | null;
       motorista_id: string | null;
       cavalo_id: string | null;
       carreta_id: string | null;
@@ -258,7 +264,7 @@ export function useUpsertColetaOrdem() {
       return ordemId as string;
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['coleta_ordem_coleta', variables.shipment_id] });
+      queryClient.invalidateQueries({ queryKey: ['coleta_ordens_coleta', variables.shipment_id] });
     },
   });
 }

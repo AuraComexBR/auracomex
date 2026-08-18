@@ -157,7 +157,7 @@ export function OrdemColetaPdfDialog({
                 </tr>
                 <tr>
                   <td style={td}>{shipment.reference_number}</td>
-                  <td style={td}>{shipment.container_number ?? '-'}</td>
+                  <td style={td}>{ordem.container_number ?? shipment.container_number ?? '-'}</td>
                   <td style={td}>{shipment.master_bl ?? shipment.house_bl ?? '-'}</td>
                   <td style={td}>{shipment.duimp_number ?? '-'}</td>
                   <td style={td}>{ordem.peso_bruto_apurado ?? '-'}</td>
@@ -213,7 +213,7 @@ export function OrdemColetaPdfDialog({
                     </tr>
                     {notasFiscais.map((nf, i) => (
                       <tr key={i}>
-                        <td style={td}>{shipment.container_number ?? '-'}</td>
+                        <td style={td}>{ordem.container_number ?? shipment.container_number ?? '-'}</td>
                         <td style={td}>{nf.numero}</td>
                         <td style={td}>{nf.serie ?? '-'}</td>
                         <td style={td}>{nf.emissao ? new Date(nf.emissao).toLocaleDateString('pt-BR') : '-'}</td>

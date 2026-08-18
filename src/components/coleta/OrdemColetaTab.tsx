@@ -1,27 +1,30 @@
-// Aba "Coleta" dentro do detalhe do shipment/embarque. Mostra o formulário
-// de ordem de coleta (motorista, cavalo, carreta, terminal, pátio, lacres,
-// notas fiscais) e o botão de gerar o PDF entregue ao motorista.
+// Aba "Coleta" dentro do detalhe do shipment/embarque. Cada container do
+// embarque tem sua própria ordem de coleta (motorista/cavalo/carreta/lacres/
+// NF podem mudar de um container pro outro), então primeiro escolhe o
+// container e só depois preenche/edita os dados daquela ordem específica.
 //
 // Só faz sentido quando o cliente do embarque faz coleta com frota própria
 // (não uma transportadora terceirizada) — motorista/cavalo/carreta são
 // cadastrados vinculados ao client_id do embarque. Cavalo e carreta são
 // cadastros independentes porque a combinação muda no dia a dia.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CheckCircle2, Circle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { parseContainerNumbers } from '@/lib/containerNumbers';
 import {
   useColetaMotoristas,
   useColetaCavalos,
   useColetaCarretas,
-  useColetaOrdem,
+  useColetaOrdens,
   useUpsertColetaOrdem,
   ColetaOrdemNotaFiscal,
 } from '@/hooks/useColeta';
@@ -44,11 +47,26 @@ interface Props {
 export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Props) {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
-  const { data: ordem } = useColetaOrdem(shipmentId);
+  const { data: ordens = [] } = useColetaOrdens(shipmentId);
   const { data: motoristas = [] } = useColetaMotoristas(clientId ?? undefined);
   const { data: cavalos = [] } = useColetaCavalos(clientId ?? undefined);
   const { data: carretas = [] } = useColetaCarretas(clientId ?? undefined);
   const upsertOrdem = useUpsertColetaOrdem();
+
+  const containers = useMemo(() => parseContainerNumbers(shipment.container_number), [shipment.container_number]);
+  const [selectedContainer, setSelectedContainer] = useState<string | null>(null);
+
+  // Container selecionado por padrão: o primeiro sem ordem ainda, ou o
+  // primeiro da lista se todos já tiverem.
+  useEffect(() => {
+    if (selectedContainer || containers.length === 0) return;
+    const semOrdem = containers.find((c) => !ordens.some((o) => o.container_number === c));
+    setSelectedContainer(semOrdem ?? containers[0]);
+  }, [containers, ordens, selectedContainer]);
+
+  const ordem = containers.length > 0
+    ? ordens.find((o) => o.container_number === selectedContainer)
+    : ordens[0]; // embarque sem container cadastrado (ex.: LCL/aéreo) — uma ordem só
 
   const { data: company } = useQuery({
     queryKey: ['company-name', companyId],
@@ -84,8 +102,25 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
   const [notasFiscais, setNotasFiscais] = useState<ColetaOrdemNotaFiscal[]>([]);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
 
+  // Recarrega o formulário sempre que troca de container ou os dados da
+  // ordem daquele container mudam — some (fica tudo em branco) se o
+  // container escolhido ainda não tem ordem criada.
   useEffect(() => {
-    if (!ordem) return;
+    if (!ordem) {
+      setMotoristaId(null);
+      setCavaloId(null);
+      setCarretaId(null);
+      setTerminal('');
+      setPatio('');
+      setDataAgendada('');
+      setLacreEncontrado('');
+      setLacreAdicional('');
+      setLacreIpa('');
+      setTermoAvaria('');
+      setPesoBrutoApurado('');
+      setNotasFiscais([]);
+      return;
+    }
     setMotoristaId(ordem.motorista_id);
     setCavaloId(ordem.cavalo_id);
     setCarretaId(ordem.carreta_id);
@@ -116,6 +151,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
         id: ordem?.id,
         company_id: companyId,
         shipment_id: shipmentId,
+        container_number: containers.length > 0 ? selectedContainer : null,
         motorista_id: motoristaId,
         cavalo_id: cavaloId,
         carreta_id: carretaId,
@@ -158,6 +194,33 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
         <CardTitle className="text-sm font-semibold">Ordem de Coleta</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {containers.length > 1 && (
+          <div>
+            <Label>Container</Label>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {containers.map((c) => {
+                const temOrdem = ordens.some((o) => o.container_number === c);
+                return (
+                  <Button
+                    key={c}
+                    type="button"
+                    variant={selectedContainer === c ? 'default' : 'outline'}
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => setSelectedContainer(c)}
+                  >
+                    {temOrdem ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <Circle className="w-3.5 h-3.5 text-muted-foreground" />}
+                    {c}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {containers.length === 1 && (
+          <div className="text-sm text-muted-foreground">Container: <span className="font-mono">{containers[0]}</span></div>
+        )}
+
         <div>
           <Label>Motorista</Label>
           <div className="flex gap-2">
@@ -320,7 +383,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
         <OrdemColetaPdfDialog
           open={pdfDialogOpen}
           onClose={() => setPdfDialogOpen(false)}
-          onSaved={() => queryClient.invalidateQueries({ queryKey: ['coleta_ordem_coleta', shipmentId] })}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['coleta_ordens_coleta', shipmentId] })}
           companyId={companyId}
           companyName={company?.name ?? ''}
           shipmentId={shipmentId}
@@ -329,7 +392,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
           motorista={motoristaSelecionado}
           cavalo={cavaloSelecionado}
           carreta={carretaSelecionada}
-          shipment={shipment}
+          shipment={{ ...shipment, container_number: ordem.container_number ?? shipment.container_number }}
           clientName={client?.name ?? ''}
           uploadedBy={profile?.user_id ?? null}
         />
