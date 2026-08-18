@@ -139,7 +139,7 @@ export function OrdemColetaPdfDialog({
                 <img src={companyLogoUrl} alt="" crossOrigin="anonymous" style={{ maxHeight: 60, maxWidth: 220, marginBottom: 8 }} />
               )}
               <div style={{ fontSize: 16, fontWeight: 'bold' }}>ORDEM DE COLETA</div>
-              <div style={{ fontSize: 13 }}>Nº {numeroDocumentoExibido ?? '-'}</div>
+              <div style={{ fontSize: 13 }}>Nº {numeroDocumentoExibido ?? '-'} — Ref. {shipment.reference_number}</div>
               <div style={{ fontSize: 11, color: '#555' }}>Emitido por {companyName}</div>
             </div>
 
@@ -274,10 +274,6 @@ export function OrdemColetaPdfDialog({
               <div>CPF: 317.599.998-06</div>
               <div style={{ marginTop: 8 }}>End.: R. Tiradentes, 1837 – SBC/SP – 09780-900</div>
               <div>Site: www.atlas.log.br</div>
-            </div>
-
-            <div style={{ marginTop: 24, fontSize: 10, color: '#999' }}>
-              Documento gerado em {new Date().toLocaleString('pt-BR')}.
             </div>
           </div>
         </div>
