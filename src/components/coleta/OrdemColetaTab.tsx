@@ -8,7 +8,7 @@
 // cadastros independentes porque a combinação muda no dia a dia.
 
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,8 +26,7 @@ import {
   ColetaOrdemNotaFiscal,
 } from '@/hooks/useColeta';
 import { NovoMotoristaDialog, NovoCavaloDialog, NovaCarretaDialog } from './ColetaMotoristaVeiculoDialogs';
-import { gerarDocumentoOrdemColeta } from '@/lib/gerarDocumentoOrdemColeta';
-import { openSignedDoc } from '@/lib/storage';
+import { OrdemColetaPdfDialog } from './OrdemColetaPdfDialog';
 
 interface Props {
   shipmentId: string;
@@ -44,6 +43,7 @@ interface Props {
 
 export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Props) {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const { data: ordem } = useColetaOrdem(shipmentId);
   const { data: motoristas = [] } = useColetaMotoristas(clientId ?? undefined);
   const { data: cavalos = [] } = useColetaCavalos(clientId ?? undefined);
@@ -82,7 +82,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
   const [termoAvaria, setTermoAvaria] = useState('');
   const [pesoBrutoApurado, setPesoBrutoApurado] = useState('');
   const [notasFiscais, setNotasFiscais] = useState<ColetaOrdemNotaFiscal[]>([]);
-  const [gerando, setGerando] = useState(false);
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!ordem) return;
@@ -136,50 +136,20 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
     }
   };
 
-  const gerarDocumento = async () => {
+  const motoristaSelecionado = motoristas.find((m) => m.id === motoristaId) ?? null;
+  const cavaloSelecionado = cavalos.find((c) => c.id === cavaloId) ?? null;
+  const carretaSelecionada = carretas.find((c) => c.id === carretaId) ?? null;
+
+  const abrirGeracaoDocumento = () => {
     if (!ordem?.id) {
       toast.error('Salve a ordem de coleta antes de gerar o documento');
       return;
     }
-    const motorista = motoristas.find((m) => m.id === motoristaId) ?? null;
-    const cavalo = cavalos.find((c) => c.id === cavaloId) ?? null;
-    const carreta = carretas.find((c) => c.id === carretaId) ?? null;
-    if (!motorista || !cavalo) {
+    if (!motoristaSelecionado || !cavaloSelecionado) {
       toast.error('Selecione motorista e cavalo antes de gerar o documento');
       return;
     }
-
-    setGerando(true);
-    try {
-      let numeroDocumento = ordem.numero_documento;
-      if (!numeroDocumento) {
-        const { data: numero, error } = await supabase.rpc('next_oc_number' as any, { p_company_id: companyId } as any);
-        if (error) throw error;
-        numeroDocumento = numero as string;
-        await (supabase.from('coleta_ordens_coleta' as any).update({ numero_documento: numeroDocumento } as any).eq('id', ordem.id) as any);
-      }
-
-      const { path } = await gerarDocumentoOrdemColeta({
-        companyId,
-        companyName: company?.name ?? '',
-        shipmentId,
-        shipment,
-        ordem: { ...ordem, numero_documento: numeroDocumento },
-        notasFiscais,
-        motorista,
-        cavalo,
-        carreta,
-        clientName: client?.name ?? '',
-        uploadedBy: profile?.user_id ?? null,
-      });
-
-      toast.success('Documento gerado');
-      await openSignedDoc(path);
-    } catch (err: any) {
-      toast.error('Erro ao gerar documento', { description: err.message });
-    } finally {
-      setGerando(false);
-    }
+    setPdfDialogOpen(true);
   };
 
   return (
@@ -337,14 +307,33 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
 
         <div className="flex gap-2 pt-2">
           <Button onClick={salvar} disabled={upsertOrdem.isPending}>Salvar</Button>
-          <Button onClick={gerarDocumento} variant="secondary" disabled={gerando || !ordem?.id}>
-            {gerando ? 'Gerando...' : 'Gerar documento'}
+          <Button onClick={abrirGeracaoDocumento} variant="secondary" disabled={!ordem?.id}>
+            Gerar documento
           </Button>
           {ordem?.numero_documento && (
             <span className="text-sm text-muted-foreground self-center">Doc. {ordem.numero_documento}</span>
           )}
         </div>
       </CardContent>
+
+      {ordem?.id && motoristaSelecionado && cavaloSelecionado && (
+        <OrdemColetaPdfDialog
+          open={pdfDialogOpen}
+          onClose={() => setPdfDialogOpen(false)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['coleta_ordem_coleta', shipmentId] })}
+          companyId={companyId}
+          companyName={company?.name ?? ''}
+          shipmentId={shipmentId}
+          ordem={ordem}
+          notasFiscais={notasFiscais}
+          motorista={motoristaSelecionado}
+          cavalo={cavaloSelecionado}
+          carreta={carretaSelecionada}
+          shipment={shipment}
+          clientName={client?.name ?? ''}
+          uploadedBy={profile?.user_id ?? null}
+        />
+      )}
     </Card>
   );
 }
