@@ -139,7 +139,7 @@ export function OrdemColetaPdfDialog({
                 <img src={companyLogoUrl} alt="" crossOrigin="anonymous" style={{ maxHeight: 60, maxWidth: 220, marginBottom: 8 }} />
               )}
               <div style={{ fontSize: 16, fontWeight: 'bold' }}>ORDEM DE COLETA</div>
-              <div style={{ fontSize: 13 }}>Nº {numeroDocumentoExibido ?? '-'} — Ref. {shipment.reference_number}</div>
+              <div style={{ fontSize: 13, fontWeight: 'bold' }}>Nº {numeroDocumentoExibido ?? '-'} — Ref. {shipment.reference_number}</div>
               <div style={{ fontSize: 11, color: '#555' }}>Emitido por {companyName}</div>
             </div>
 
@@ -147,8 +147,7 @@ export function OrdemColetaPdfDialog({
 
             <div style={{ marginBottom: 12 }}>
               A<br />
-              {enderecoTerminal}<br />
-              NÚMERO – {shipment.reference_number}
+              {enderecoTerminal}
             </div>
 
             <div style={{ marginBottom: 16, textAlign: 'justify' }}>
