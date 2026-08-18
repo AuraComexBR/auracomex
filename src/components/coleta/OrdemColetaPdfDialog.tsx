@@ -29,6 +29,7 @@ interface Props {
   onSaved: () => void;
   companyId: string;
   companyName: string;
+  companyLogoUrl: string | null;
   shipmentId: string;
   ordem: ColetaOrdemColeta;
   notasFiscais: ColetaOrdemNotaFiscal[];
@@ -46,6 +47,7 @@ export function OrdemColetaPdfDialog({
   onSaved,
   companyId,
   companyName,
+  companyLogoUrl,
   shipmentId,
   ordem,
   notasFiscais,
@@ -113,6 +115,9 @@ export function OrdemColetaPdfDialog({
             style={{ width: 720, background: '#fff', color: '#0A0A0E', fontFamily: 'Arial, sans-serif', fontSize: 12, margin: '0 auto', padding: 24 }}
           >
             <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              {companyLogoUrl && (
+                <img src={companyLogoUrl} alt="" crossOrigin="anonymous" style={{ maxHeight: 60, maxWidth: 220, marginBottom: 8 }} />
+              )}
               <div style={{ fontSize: 16, fontWeight: 'bold' }}>ORDEM DE COLETA</div>
               <div style={{ fontSize: 13 }}>Nº {ordem.numero_documento ?? '-'}</div>
               <div style={{ fontSize: 11, color: '#555' }}>Emitido por {companyName}</div>

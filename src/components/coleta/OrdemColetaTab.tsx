@@ -20,6 +20,28 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { parseContainerNumbers } from '@/lib/containerNumbers';
+
+// datetime-local não carrega timezone — value/onChange dele é sempre "hora
+// da parede" do navegador. new Date(str)/toISOString() e slice(0,16) num
+// timestamptz misturam local com UTC e desalinham a hora exibida a cada
+// ida-e-volta do banco (parecia "não salvar" mas na real salvava com o
+// fuso errado). Estas duas funções convertem timestamptz <-> string local
+// sempre à mão, sem passar pelo relógio UTC do Date.toISOString().
+function timestamptzToLocalInput(ts: string | null): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localInputToTimestamptz(local: string): string | null {
+  if (!local) return null;
+  const [datePart, timePart] = local.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = timePart.split(':').map(Number);
+  const d = new Date(year, month - 1, day, hour, minute, 0, 0);
+  return d.toISOString();
+}
 import {
   useColetaMotoristas,
   useColetaCavalos,
@@ -69,11 +91,11 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
     : ordens[0]; // embarque sem container cadastrado (ex.: LCL/aéreo) — uma ordem só
 
   const { data: company } = useQuery({
-    queryKey: ['company-name', companyId],
+    queryKey: ['company-name-logo', companyId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('companies').select('name').eq('id', companyId).single();
+      const { data, error } = await (supabase.from('companies').select('name, logo_url') as any).eq('id', companyId).single();
       if (error) throw error;
-      return data;
+      return data as { name: string; logo_url: string | null };
     },
     enabled: !!companyId,
   });
@@ -126,7 +148,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
     setCarretaId(ordem.carreta_id);
     setTerminal(ordem.terminal ?? '');
     setPatio(ordem.patio ?? '');
-    setDataAgendada(ordem.data_agendada ? ordem.data_agendada.slice(0, 16) : '');
+    setDataAgendada(timestamptzToLocalInput(ordem.data_agendada));
     setLacreEncontrado(ordem.lacre_encontrado ?? '');
     setLacreAdicional(ordem.lacre_adicional ?? '');
     setLacreIpa(ordem.lacre_ipa ?? '');
@@ -157,7 +179,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
         carreta_id: carretaId,
         terminal: terminal || null,
         patio: patio || null,
-        data_agendada: dataAgendada ? new Date(dataAgendada).toISOString() : null,
+        data_agendada: localInputToTimestamptz(dataAgendada),
         lacre_encontrado: lacreEncontrado || null,
         lacre_adicional: lacreAdicional || null,
         lacre_ipa: lacreIpa || null,
@@ -386,6 +408,7 @@ export function OrdemColetaTab({ shipmentId, companyId, clientId, shipment }: Pr
           onSaved={() => queryClient.invalidateQueries({ queryKey: ['coleta_ordens_coleta', shipmentId] })}
           companyId={companyId}
           companyName={company?.name ?? ''}
+          companyLogoUrl={company?.logo_url ?? null}
           shipmentId={shipmentId}
           ordem={ordem}
           notasFiscais={notasFiscais}
