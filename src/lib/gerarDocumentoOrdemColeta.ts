@@ -155,15 +155,33 @@ export async function gerarDocumentoOrdemColeta(
 ): Promise<{ documentId: string; path: string }> {
   const html = renderOrdemColetaHtml(p);
 
+  // IMPORTANTE: nada de `left: -9999px` — coordenadas negativas fazem o
+  // html2canvas capturar em branco em vários casos (getBoundingClientRect
+  // fora do viewport). Em vez disso, fica em (0,0), dentro da área visível,
+  // só escondido atrás do resto da página via z-index negativo.
   const container = document.createElement('div');
   container.innerHTML = html;
   container.style.position = 'fixed';
-  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.left = '0';
+  container.style.zIndex = '-9999';
+  container.style.background = '#ffffff';
   document.body.appendChild(container);
+
+  // Garante que o layout/paint do conteúdo recém-inserido terminou antes de
+  // capturar — dois rAF cobrem o ciclo de layout + paint do navegador.
+  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
   try {
     const filename = `${p.ordem.numero_documento ?? 'ordem-de-coleta'}.pdf`;
     const pdfBlob = await generatePdfFromElement(container, filename, { download: false });
+
+    // Um PDF de uma página com essa tabela nunca fica abaixo de ~5KB — se vier
+    // menor que isso é sinal de captura em branco (falha silenciosa do
+    // html2canvas), então falha alto em vez de subir um PDF vazio.
+    if (pdfBlob.size < 3000) {
+      throw new Error('PDF gerado ficou vazio/em branco — tente novamente.');
+    }
 
     const path = `${p.companyId}/${p.shipmentId}/${Date.now()}_${filename}`;
     const { error: uploadError } = await supabase.storage.from(DOCS_BUCKET).upload(path, pdfBlob, {
