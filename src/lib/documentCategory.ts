@@ -13,4 +13,5 @@ export const DOC_TYPE_LABELS: Record<string, string> = {
   outros: 'Outros',
   other: 'Outro',
   debit_note_supplier: 'DN Fornecedor',
+  ordem_coleta: 'Ordem de Coleta',
 };

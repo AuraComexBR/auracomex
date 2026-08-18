@@ -161,17 +161,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "accountability_items_source_expense_id_fkey"
-            columns: ["source_expense_id"]
-            isOneToOne: false
-            referencedRelation: "cost_estimate_expenses"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "accountability_items_comprovante_document_id_fkey"
             columns: ["comprovante_document_id"]
             isOneToOne: false
             referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accountability_items_source_expense_id_fkey"
+            columns: ["source_expense_id"]
+            isOneToOne: false
+            referencedRelation: "cost_estimate_expenses"
             referencedColumns: ["id"]
           },
         ]
@@ -660,6 +660,7 @@ export type Database = {
           storage_rebate_percent: number | null
           tax_id: string | null
           tax_id_type: string | null
+          tracking_field_visibility: Json
           type: Database["public"]["Enums"]["client_type"]
           updated_at: string
         }
@@ -682,6 +683,7 @@ export type Database = {
           storage_rebate_percent?: number | null
           tax_id?: string | null
           tax_id_type?: string | null
+          tracking_field_visibility?: Json
           type?: Database["public"]["Enums"]["client_type"]
           updated_at?: string
         }
@@ -704,12 +706,273 @@ export type Database = {
           storage_rebate_percent?: number | null
           tax_id?: string | null
           tax_id_type?: string | null
+          tracking_field_visibility?: Json
           type?: Database["public"]["Enums"]["client_type"]
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "clients_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coleta_motoristas: {
+        Row: {
+          active: boolean
+          client_id: string
+          cnh: string | null
+          cnh_emissao: string | null
+          company_id: string
+          cpf: string | null
+          created_at: string
+          id: string
+          nextel: string | null
+          nome: string
+          orgao_emissor: string | null
+          rg: string | null
+          telefone: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          client_id: string
+          cnh?: string | null
+          cnh_emissao?: string | null
+          company_id: string
+          cpf?: string | null
+          created_at?: string
+          id?: string
+          nextel?: string | null
+          nome: string
+          orgao_emissor?: string | null
+          rg?: string | null
+          telefone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          client_id?: string
+          cnh?: string | null
+          cnh_emissao?: string | null
+          company_id?: string
+          cpf?: string | null
+          created_at?: string
+          id?: string
+          nextel?: string | null
+          nome?: string
+          orgao_emissor?: string | null
+          rg?: string | null
+          telefone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coleta_motoristas_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coleta_motoristas_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coleta_ordem_notas_fiscais: {
+        Row: {
+          created_at: string
+          emissao: string | null
+          id: string
+          lote: string | null
+          numero: string
+          ordem_coleta_id: string
+          serie: string | null
+        }
+        Insert: {
+          created_at?: string
+          emissao?: string | null
+          id?: string
+          lote?: string | null
+          numero: string
+          ordem_coleta_id: string
+          serie?: string | null
+        }
+        Update: {
+          created_at?: string
+          emissao?: string | null
+          id?: string
+          lote?: string | null
+          numero?: string
+          ordem_coleta_id?: string
+          serie?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coleta_ordem_notas_fiscais_ordem_coleta_id_fkey"
+            columns: ["ordem_coleta_id"]
+            isOneToOne: false
+            referencedRelation: "coleta_ordens_coleta"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coleta_ordens_coleta: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          data_agendada: string | null
+          document_id: string | null
+          id: string
+          lacre_adicional: string | null
+          lacre_encontrado: string | null
+          lacre_ipa: string | null
+          motorista_id: string | null
+          numero_documento: string | null
+          patio: string | null
+          peso_bruto_apurado: number | null
+          shipment_id: string
+          status: string
+          terminal: string | null
+          termo_avaria: string | null
+          updated_at: string
+          veiculo_id: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          data_agendada?: string | null
+          document_id?: string | null
+          id?: string
+          lacre_adicional?: string | null
+          lacre_encontrado?: string | null
+          lacre_ipa?: string | null
+          motorista_id?: string | null
+          numero_documento?: string | null
+          patio?: string | null
+          peso_bruto_apurado?: number | null
+          shipment_id: string
+          status?: string
+          terminal?: string | null
+          termo_avaria?: string | null
+          updated_at?: string
+          veiculo_id?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          data_agendada?: string | null
+          document_id?: string | null
+          id?: string
+          lacre_adicional?: string | null
+          lacre_encontrado?: string | null
+          lacre_ipa?: string | null
+          motorista_id?: string | null
+          numero_documento?: string | null
+          patio?: string | null
+          peso_bruto_apurado?: number | null
+          shipment_id?: string
+          status?: string
+          terminal?: string | null
+          termo_avaria?: string | null
+          updated_at?: string
+          veiculo_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coleta_ordens_coleta_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coleta_ordens_coleta_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coleta_ordens_coleta_motorista_id_fkey"
+            columns: ["motorista_id"]
+            isOneToOne: false
+            referencedRelation: "coleta_motoristas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coleta_ordens_coleta_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coleta_ordens_coleta_veiculo_id_fkey"
+            columns: ["veiculo_id"]
+            isOneToOne: false
+            referencedRelation: "coleta_veiculos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coleta_veiculos: {
+        Row: {
+          active: boolean
+          client_id: string
+          company_id: string
+          cor: string | null
+          created_at: string
+          id: string
+          modelo: string | null
+          placa_carreta: string | null
+          placa_cavalo: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          client_id: string
+          company_id: string
+          cor?: string | null
+          created_at?: string
+          id?: string
+          modelo?: string | null
+          placa_carreta?: string | null
+          placa_cavalo: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          client_id?: string
+          company_id?: string
+          cor?: string | null
+          created_at?: string
+          id?: string
+          modelo?: string | null
+          placa_carreta?: string | null
+          placa_cavalo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coleta_veiculos_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coleta_veiculos_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
@@ -1272,6 +1535,8 @@ export type Database = {
           ii_usd: number | null
           incoterm: string | null
           ipi_usd: number | null
+          numerario_total_brl: number
+          numerario_total_usd: number
           pais_origem: string | null
           peso_liquido_kg: number | null
           pis_usd: number | null
@@ -1317,6 +1582,8 @@ export type Database = {
           ii_usd?: number | null
           incoterm?: string | null
           ipi_usd?: number | null
+          numerario_total_brl?: number
+          numerario_total_usd?: number
           pais_origem?: string | null
           peso_liquido_kg?: number | null
           pis_usd?: number | null
@@ -1362,6 +1629,8 @@ export type Database = {
           ii_usd?: number | null
           incoterm?: string | null
           ipi_usd?: number | null
+          numerario_total_brl?: number
+          numerario_total_usd?: number
           pais_origem?: string | null
           peso_liquido_kg?: number | null
           pis_usd?: number | null
@@ -2094,6 +2363,62 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      portalunico_webhook_events: {
+        Row: {
+          canal: string | null
+          company_id: string | null
+          created_at: string
+          data_evento: string | null
+          event_type: string | null
+          id: string
+          matched: boolean
+          message: string | null
+          numero: string | null
+          raw_body: Json | null
+          shipment_ids: string[]
+          situacao_duimp: string | null
+          versao: number | null
+        }
+        Insert: {
+          canal?: string | null
+          company_id?: string | null
+          created_at?: string
+          data_evento?: string | null
+          event_type?: string | null
+          id?: string
+          matched?: boolean
+          message?: string | null
+          numero?: string | null
+          raw_body?: Json | null
+          shipment_ids?: string[]
+          situacao_duimp?: string | null
+          versao?: number | null
+        }
+        Update: {
+          canal?: string | null
+          company_id?: string | null
+          created_at?: string
+          data_evento?: string | null
+          event_type?: string | null
+          id?: string
+          matched?: boolean
+          message?: string | null
+          numero?: string | null
+          raw_body?: Json | null
+          shipment_ids?: string[]
+          situacao_duimp?: string | null
+          versao?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portalunico_webhook_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ports: {
         Row: {
@@ -2862,6 +3187,9 @@ export type Database = {
           container_demurrage_deadlines: string | null
           container_number: string | null
           container_quantity: number | null
+          container_return_dates: string | null
+          container_seals: string | null
+          container_terminal_entry_dates: string | null
           courier_provider: string | null
           courier_tracking_number: string | null
           created_at: string
@@ -2894,6 +3222,7 @@ export type Database = {
           origin_port: string | null
           other_info: string | null
           packages: number | null
+          physical_location: string | null
           reference_number: string
           shipper_id: string | null
           status: string
@@ -2924,6 +3253,9 @@ export type Database = {
           container_demurrage_deadlines?: string | null
           container_number?: string | null
           container_quantity?: number | null
+          container_return_dates?: string | null
+          container_seals?: string | null
+          container_terminal_entry_dates?: string | null
           courier_provider?: string | null
           courier_tracking_number?: string | null
           created_at?: string
@@ -2956,6 +3288,7 @@ export type Database = {
           origin_port?: string | null
           other_info?: string | null
           packages?: number | null
+          physical_location?: string | null
           reference_number: string
           shipper_id?: string | null
           status?: string
@@ -2986,6 +3319,9 @@ export type Database = {
           container_demurrage_deadlines?: string | null
           container_number?: string | null
           container_quantity?: number | null
+          container_return_dates?: string | null
+          container_seals?: string | null
+          container_terminal_entry_dates?: string | null
           courier_provider?: string | null
           courier_tracking_number?: string | null
           created_at?: string
@@ -3018,6 +3354,7 @@ export type Database = {
           origin_port?: string | null
           other_info?: string | null
           packages?: number | null
+          physical_location?: string | null
           reference_number?: string
           shipper_id?: string | null
           status?: string
@@ -3293,6 +3630,7 @@ export type Database = {
       is_superadmin: { Args: never; Returns: boolean }
       my_company_id: { Args: never; Returns: string }
       next_dn_number: { Args: { p_company_id: string }; Returns: string }
+      next_oc_number: { Args: { p_company_id: string }; Returns: string }
       reset_demo_data: { Args: never; Returns: undefined }
     }
     Enums: {
@@ -3353,6 +3691,7 @@ export type Database = {
         | "debit_note_supplier"
         | "dta"
         | "outros"
+        | "ordem_coleta"
       invoice_status_type: "pending" | "invoiced" | "paid"
       notification_type:
         | "deadline_warning"
@@ -3575,6 +3914,7 @@ export const Constants = {
         "debit_note_supplier",
         "dta",
         "outros",
+        "ordem_coleta",
       ],
       invoice_status_type: ["pending", "invoiced", "paid"],
       notification_type: [

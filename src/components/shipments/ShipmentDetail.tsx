@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { ArrowLeft, MapPin, DollarSign, FileText, History, AlertTriangle, Package, Info, Users, ShoppingCart, Undo2, Copy, NotebookPen } from 'lucide-react';
+import { ArrowLeft, MapPin, DollarSign, FileText, History, AlertTriangle, Package, Info, Users, ShoppingCart, Undo2, Copy, NotebookPen, Truck } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,7 @@ import { LogisticsTab } from './LogisticsTab';
 import { ShipmentPartnersCard } from './ShipmentPartnersCard';
 import { DocumentsTab } from './DocumentsTab';
 import { ShipmentEventsTab } from './ShipmentEventsTab';
+import { OrdemColetaTab } from '@/components/coleta/OrdemColetaTab';
 import { HistoryPanel } from '@/components/quotes/HistoryPanel';
 import { QuoteDetail } from '@/components/quotes/QuoteDetail';
 import { DuplicateShipmentDialog } from './DuplicateShipmentDialog';
@@ -196,6 +197,9 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
           <TabsTrigger value="documents" className="gap-1.5">
             <FileText className="w-4 h-4" /> {t('shipments.documents')}
           </TabsTrigger>
+          <TabsTrigger value="coleta" className="gap-1.5">
+            <Truck className="w-4 h-4" /> Coleta
+          </TabsTrigger>
         </TabsList>
 
         {/* General Tab */}
@@ -290,6 +294,20 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
         </TabsContent>
         <TabsContent value="documents">
           <DocumentsTab shipmentId={id} companyId={shipment.company_id} />
+        </TabsContent>
+        <TabsContent value="coleta">
+          <OrdemColetaTab
+            shipmentId={id}
+            companyId={shipment.company_id}
+            clientId={shipment.client_id ?? null}
+            shipment={{
+              reference_number: shipment.reference_number,
+              container_number: (shipment as any).container_number ?? null,
+              master_bl: (shipment as any).master_bl ?? null,
+              house_bl: (shipment as any).house_bl ?? null,
+              duimp_number: (shipment as any).duimp_number ?? null,
+            }}
+          />
         </TabsContent>
       </Tabs>
 

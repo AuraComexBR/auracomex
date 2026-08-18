@@ -83,6 +83,19 @@ acrescentar uma entrada nova aqui (mesmo padrão desta primeira).
   **Não existe consulta ativa/síncrona de DUIMP** para intervenientes privados no Portal
   Único — só assinatura de eventos futuros (webhook), sem backfill do estado atual. Ver
   armadilha detalhada na seção abaixo.
+- **Coleta (frete rodoviário com frota própria do cliente)**: quando o próprio cliente
+  (importador) faz a coleta do contêiner no terminal com motorista/veículo próprios (não uma
+  transportadora terceirizada), a Aura registra isso em `coleta_motoristas`/`coleta_veiculos`
+  (vinculados a `client_id`, não `company_id` — a frota é do cliente) e `coleta_ordens_coleta`
+  (vinculada ao `shipment_id`). O PDF entregue ao motorista (não é o certificado oficial do
+  terminal, é documento próprio da Aura) é gerado por `src/lib/gerarDocumentoOrdemColeta.ts`
+  reaproveitando `generatePdfFromElement` (`src/lib/pdf-utils.ts`) e o bucket
+  `shipment-documents` (`DOCS_BUCKET` em `src/lib/storage.ts`), registrado em `documents` com
+  `document_type = 'ordem_coleta'`. Número do documento vem de `next_oc_number(company_id)`
+  (mesmo padrão de `next_dn_number`). UI: aba "Coleta" em `src/components/coleta/OrdemColetaTab.tsx`,
+  plugada tanto em `QuoteDetail.tsx` (embarque com cotação vinculada, o caminho mais comum) quanto
+  em `ShipmentDetail.tsx` (embarque avulso). Geração do PDF é manual (botão), não automática na
+  mudança de status — motorista/veículo normalmente só são conhecidos perto da data real da coleta.
 - **Versionamento/build da sidebar**: ver seção "Fluxo de trabalho obrigatório" logo abaixo
   (`app_releases` = histórico por assunto fechado; `app_build_version` = versão exibida na
   sidebar, atualizada em todo deploy).
@@ -136,6 +149,14 @@ for root, dirs, files in os.walk('.git'):
 Warnings tipo `unable to unlink '...lock'` ou `tmp_obj_...` são cosméticos e inofensivos —
 o que importa é o resultado do commit/push. Confirmar com `git log --oneline -1 origin/main`
 após um `git fetch`.
+
+Se `git merge`/`git checkout` falhar tentando SUBSTITUIR um arquivo já versionado (não só
+`.lock`) com "unable to unlink ... Operation not permitted" — ex. ao dar fast-forward num
+arquivo que mudou no remoto — não insistir no merge normal. Usar `git reset --soft
+origin/main` (só move HEAD/index, não toca no working tree) e depois sobrescrever o
+conteúdo do(s) arquivo(s) divergente(s) manualmente (`git show origin/main:<arquivo>` pra
+ver o alvo, aplicar via ferramenta de edição, `git add`) antes de continuar com o commit
+novo. Mais lento que um merge normal, mas não esbarra na limitação do FUSE.
 
 Commits com crase/caractere especial na mensagem: usar `git commit -F /tmp/msg.txt`.
 

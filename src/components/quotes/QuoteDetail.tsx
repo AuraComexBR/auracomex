@@ -7,7 +7,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useHasAddon } from '@/hooks/useSubscription';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, Package, Info, Users, ShoppingCart, Undo2, Calculator, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History, NotebookPen, Receipt } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Copy, FileText, Building2, Bell, CheckCircle, Send, MapPin, Package, Info, Users, ShoppingCart, Undo2, Calculator, HelpCircle, ChevronRight, ChevronLeft, Sparkles, ListChecks, Building, Wallet, History, NotebookPen, Receipt, Truck } from 'lucide-react';
 import { CostEstimateTab } from './estimate/CostEstimateTab';
 import { AccountabilityTab } from './estimate/AccountabilityTab';
 import { useAccountability } from '@/hooks/useAccountability';
@@ -50,6 +50,7 @@ import { PercentBaseDialog } from '@/components/quotes/PercentBaseDialog';
 
 import { DocumentsTab } from '@/components/shipments/DocumentsTab';
 import { ShipmentEventsTab } from '@/components/shipments/ShipmentEventsTab';
+import { OrdemColetaTab } from '@/components/coleta/OrdemColetaTab';
 import { HistoryPanel } from './HistoryPanel';
 // ActivityTab removida como aba própria: histórico agora é unificado no HistoryPanel (botão no header).
 import { logAuditChanges, logAuditEvent } from '@/lib/auditLog';
@@ -1961,6 +1962,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     <NotebookPen className={iconCls} /> Diário
                   </TabsTrigger>
                 )}
+                {isShipmentMode && (
+                  <TabsTrigger value="coleta" className={triggerCls}>
+                    <Truck className={iconCls} /> Coleta
+                  </TabsTrigger>
+                )}
               </>
             );
           })()}
@@ -2984,6 +2990,22 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         {isShipmentMode && shipment && (
           <TabsContent value="events">
             <ShipmentEventsTab shipmentId={shipment.id} companyId={shipment.company_id} />
+          </TabsContent>
+        )}
+        {isShipmentMode && shipment && (
+          <TabsContent value="coleta">
+            <OrdemColetaTab
+              shipmentId={shipment.id}
+              companyId={shipment.company_id}
+              clientId={(quote as any)?.client_id || null}
+              shipment={{
+                reference_number: shipment.reference_number,
+                container_number: (shipment as any).container_number ?? null,
+                master_bl: (shipment as any).master_bl ?? null,
+                house_bl: (shipment as any).house_bl ?? null,
+                duimp_number: (shipment as any).duimp_number ?? null,
+              }}
+            />
           </TabsContent>
         )}
       </Tabs>
