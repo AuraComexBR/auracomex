@@ -18,7 +18,10 @@ via `ToolSearch` se estiverem deferred. Se não aparecerem nem via busca, usar
 `mcp__mcp-registry__search_mcp_registry` com termos como "supabase"/"vercel" e depois
 `suggest_connectors` pra oferecer a conexão ao usuário, ANTES de tentar qualquer
 `execute_sql`/`apply_migration`/`list_deployments` — não sair tentando chamar a ferramenta
-às cegas e só desistir depois do erro.
+às cegas e só desistir depois do erro. Se `list_projects`/`get_project` do Vercel voltar
+vazio ou 404 mesmo com o MCP conectado, o conector perdeu o escopo do projeto — pedir pro
+usuário reconectá-lo em Configurações → Conectores, dando acesso explícito ao projeto
+`auracomex` (não precisa remover e readicionar, só reautorizar).
 
 **GitHub não é um MCP separado aqui** — não existe (nem precisa existir) um conector MCP
 de GitHub pra esse projeto. Todo o fluxo de commit/push acontece via `git` direto no
@@ -32,6 +35,19 @@ fonte da conversa. Não adianta mexer em credencial, remote ou config do git —
 é do proxy, não do repositório. Enquanto isso, o commit local não se perde: qualquer
 sessão autorizada (ou o próprio usuário na máquina dele) consegue dar o push depois.
 
+**Sessão sem pasta local montada (ex: Cowork sem `C:\auracomex\auracomex` conectado)**:
+sem `git`, ler/editar arquivo do repo por `web_fetch` direto em
+`https://raw.githubusercontent.com/AuraComexBR/auracomex/main/<caminho>` (rápido,
+confiável, um arquivo por vez). `api.github.com` (search/tree/contents) não responde
+nem pelo `bash` do sandbox nem sempre pelo `web_fetch`; pra listar diretório ou navegar
+histórico, usar o Chrome (`github.com/AuraComexBR/auracomex/tree/main/<pasta>`) — o
+`web_fetch` direto em `github.com` normal não retorna conteúdo (página client-rendered).
+Pra COMMITAR sem pasta local, editar pelo Chrome no editor web do GitHub
+(`github.com/AuraComexBR/auracomex/edit/main/<arquivo>`) e commitar direto na `main`;
+depois disso o Vercel faz o deploy automático como qualquer outro push. Abrir/mergear PR
+pelo Chrome às vezes trava na primeira tentativa ("This page is taking too long to
+load") — recarregar a comparação (`compare/main...branch`) e tentar de novo resolve.
+
 ## Stack e referências
 
 - React 18 + TypeScript + Vite + shadcn/ui (Radix) + Tailwind + TanStack React Query + React Router
@@ -43,6 +59,33 @@ sessão autorizada (ou o próprio usuário na máquina dele) consegue dar o push
 - Deploy Hook manual (se o auto-deploy falhar): colar no navegador
   `https://api.vercel.com/v1/integrations/deploy/prj_gS2iVXFhlHTqHspNQ79m2AsDz0wA/5OG2kJBvaA`
   (o sandbox NÃO alcança api.vercel.com — pedir pro usuário abrir a URL no navegador dele)
+
+## Índice de módulos por assunto (crescer isto a cada investigação nova)
+
+Mapa rápido de "onde mexer" por área, pra não explorar o repo do zero toda vez. Sempre que
+uma investigação render descoberta de arquivo/fluxo que valha a pena não redescobrir depois,
+acrescentar uma entrada nova aqui (mesmo padrão desta primeira).
+
+- **Portal Único / DUIMP (PUCOMEX)**: autenticação mTLS roda em `api/portalunico/test-connection.ts`
+  e `api/portalunico/subscribe-webhook.ts` (função serverless Node no Vercel — Supabase Edge
+  Function/Deno não suporta apresentar certificado cliente em conexão TLS). A lógica de auth é
+  DUPLICADA nos dois arquivos DE PROPÓSITO — não extrair pra um `_lib.ts` compartilhado, já
+  quebrou os dois endpoints em produção (Vercel aparentemente excluiu o módulo prefixado com
+  `_` do bundle; ver comentário no topo dos dois arquivos).
+  `supabase/functions/portalunico-gateway/index.ts` só grava a credencial da empresa
+  (`company_portalunico_configs`), sem chamada de rede nenhuma.
+  `supabase/functions/portalunico-webhook/index.ts` recebe o PUSH de eventos do Portal Único,
+  casa pelo `duimp_number` do embarque (tabela `shipments`) e grava log durável de TODO evento
+  recebido em `portalunico_webhook_events` (colunas `numero`, `matched`, `shipment_ids`,
+  `raw_body`) — é o primeiro lugar pra olhar num chamado de "a DUIMP não atualizou".
+  Campo no formulário: `src/components/shipments/LogisticsTab.tsx`, Card 5 "Desembaraço,
+  Entrega & Faturamento" (`duimp_number`, texto livre, sem botão de busca).
+  **Não existe consulta ativa/síncrona de DUIMP** para intervenientes privados no Portal
+  Único — só assinatura de eventos futuros (webhook), sem backfill do estado atual. Ver
+  armadilha detalhada na seção abaixo.
+- **Versionamento/build da sidebar**: ver seção "Fluxo de trabalho obrigatório" logo abaixo
+  (`app_releases` = histórico por assunto fechado; `app_build_version` = versão exibida na
+  sidebar, atualizada em todo deploy).
 
 ## Fluxo de trabalho obrigatório
 
@@ -114,9 +157,35 @@ Commits com crase/caractere especial na mensagem: usar `git commit -F /tmp/msg.t
   margem contra arredondamento subpixel do html2canvas/jsPDF que gerava página em branco extra.
   Não usar `maxHeight`/`overflow:hidden` (risco de cortar conteúdo).
 - Auto-save do app é no `onBlur` (não debounce durante digitação).
+- **Portal Único / DUIMP — webhook sem backfill (investigado 18/ago/2026)**: preencher
+  `duimp_number` num embarque só atualiza `customs_channel`/situação sozinho se houver uma
+  transição de estado NOVA na DUIMP depois que a assinatura do webhook foi ativada
+  (`company_portalunico_configs.webhook_active`). Se a DUIMP já estava registrada ou já tinha
+  canal definido ANTES de digitar o número no Aura, nunca chega evento pra ela — não existe
+  consulta ativa (o Portal Único não oferece isso pra intervenientes privados, só push de
+  eventos futuros). Diagnóstico rápido: `SELECT * FROM portalunico_webhook_events WHERE
+  numero = '<duimp>'` — se não retornar nada, o Portal Único nunca notificou essa DUIMP nesta
+  assinatura; nesse caso a orientação é preencher canal/situação manualmente (o campo aceita
+  edição livre) e deixar o automático cuidar só da PRÓXIMA mudança de status.
+- **Assinatura de webhook do Portal Único incompleta**: normalmente só 3 dos 4 eventos
+  (`dimp-situacao-import`, `dimp-registro-import`, `dimp-retifica-import`) são aceitos por
+  empresa — falta `dimp-diag-import`. Confirmado assim pra ATLAS LOGISTICA em 18/ago/2026;
+  não investigado ainda por que o Portal Único rejeita esse evento específico. Re-rodar
+  `subscribe-webhook` não resolveu sozinho.
 
 ## Ferramentas MCP disponíveis
 
 - Supabase MCP: `execute_sql`, `apply_migration`, `get_logs` etc. (projeto `pqiuxojgjmqhdajdhgqk`)
 - Vercel MCP: `list_deployments`, `get_deployment_build_logs` etc.
 - O sandbox NÃO tem acesso de rede irrestrito (curl pra APIs externas pode falhar com exit 56).
+
+## Diagnóstico — confiabilidade das ferramentas (aprendido na prática, não teórico)
+
+- **`query_logs`/`get_logs` do Supabase MCP é instável**: numa sessão inteira (18/ago/2026)
+  retornou "Backend error! Retry your query" em toda tentativa, mesmo com SQL trivial (`select
+  ... limit 5`). Não insistir mais que 2-3 vezes — preferir consultar direto uma tabela de log
+  própria do app quando existir (ex: `portalunico_webhook_events`) via `execute_sql`, que é
+  estável.
+- **`get_advisors` retorna payload grande** (pode passar do limite de tokens da tool call) —
+  já vem salvo em arquivo quando isso acontece; ler em pedaços com `offset`/`limit` em vez de
+  tentar de novo esperando resposta menor.
