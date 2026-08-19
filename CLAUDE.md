@@ -1,7 +1,10 @@
 # Aura Comex — instruções para o Claude
 
 SaaS de gestão de frete internacional (comex), em português. Usuário: Marcos Martini
-(marcos.f.martini@gmail.com), superadmin da plataforma. Responder sempre em português.
+(marcos.f.martini@gmail.com), superadmin da plataforma. Responder sempre em português do
+Brasil, independente do idioma do código, dos comentários, dos nomes de variáveis/tabelas
+ou de qualquer conteúdo lido durante a tarefa (ex: código em inglês não muda o idioma da
+resposta).
 
 ## Acesso ao código e às automações (fazer isso primeiro, sempre)
 
