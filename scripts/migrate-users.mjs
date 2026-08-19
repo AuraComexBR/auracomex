@@ -11,13 +11,17 @@
  *
  * A SERVICE_ROLE_KEY fica em: Supabase Dashboard -> Settings -> API -> service_role (secret).
  *
- * Todos os usuários criados recebem a MESMA senha temporária abaixo e são
- * marcados com must_change_password = true (trocam no primeiro acesso).
+ * Cada usuário criado recebe uma senha temporária ALEATÓRIA (impressa no console
+ * pra você repassar) e é marcado com must_change_password = true (troca no
+ * primeiro acesso).
  */
 
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'node:crypto';
 
-const TEMP_PASSWORD = 'Aura@2026'; // troque se quiser outra senha temporária
+function generateTempPassword() {
+  return `${crypto.randomBytes(16).toString('base64url')}!Aa1`;
+}
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SERVICE_ROLE_KEY;
@@ -71,9 +75,10 @@ async function main() {
     console.log(`\n📋 ${toCreate.length} usuário(s) para criar:\n`);
     for (const p of toCreate) {
       const role = roleByUser.get(p.user_id) || 'operator';
+      const tempPassword = generateTempPassword();
       const { error } = await admin.auth.admin.createUser({
         email: p.email,
-        password: TEMP_PASSWORD,
+        password: tempPassword,
         email_confirm: true,
         user_metadata: {
           full_name: p.full_name || p.email,
@@ -85,7 +90,7 @@ async function main() {
       if (error) {
         console.log(`  ❌ ${p.email} (${role}) — ${error.message}`);
       } else {
-        console.log(`  ✅ ${p.email} (${role})`);
+        console.log(`  ✅ ${p.email} (${role}) — senha temporária: ${tempPassword}`);
       }
     }
   }
@@ -108,7 +113,7 @@ async function main() {
     console.log('  Nada a limpar.');
   }
 
-  console.log(`\n🎉 Concluído. Senha temporária de todos: ${TEMP_PASSWORD}`);
+  console.log('\n🎉 Concluído. Cada usuário criado tem sua própria senha temporária (impressa acima).');
   console.log('   (cada um troca no primeiro acesso).');
 }
 
