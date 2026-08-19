@@ -60,6 +60,64 @@ load") — recarregar a comparação (`compare/main...branch`) e tentar de novo 
   `https://api.vercel.com/v1/integrations/deploy/prj_gS2iVXFhlHTqHspNQ79m2AsDz0wA/5OG2kJBvaA`
   (o sandbox NÃO alcança api.vercel.com — pedir pro usuário abrir a URL no navegador dele)
 
+## Comandos
+
+- `npm run dev` — servidor de desenvolvimento (Vite, porta 8080, HMR; libera hosts
+  `*.trycloudflare.com` pra expor via `cloudflared tunnel --url http://localhost:8080`)
+- `npm run build` / `npm run build:dev` — build de produção / build em modo development
+- `npm run preview` — preview do build
+- `npm run lint` — ESLint (`eslint.config.js`; `@typescript-eslint/no-unused-vars` desligado
+  de propósito)
+- `npx tsc --noEmit -p tsconfig.app.json` — checagem de tipos (ver passo 1 do "Fluxo de
+  trabalho obrigatório" abaixo; NUNCA `-p .`)
+- `npm run test` / `npm run test:watch` — Vitest (`jsdom`, setup em `src/test/setup.ts`,
+  arquivos `src/**/*.{test,spec}.{ts,tsx}`). Um arquivo só: `npx vitest run
+  src/test/costEstimate.test.ts`. Um teste só por nome: `npx vitest run -t "nome do teste"`.
+- Playwright (`@playwright/test`) está configurado (`playwright.config.ts`, via
+  `lovable-agent-playwright-config`) mas sem specs no repo ainda.
+- Banco (Supabase CLI, fora do MCP): `supabase migration new <nome>` cria migração em
+  `supabase/migrations/`; `supabase db push` aplica no remoto; `supabase gen types typescript
+  --project-id pqiuxojgjmqhdajdhgqk > src/integrations/supabase/types.ts` regenera os tipos;
+  `supabase functions deploy [nome-da-function] --project-ref pqiuxojgjmqhdajdhgqk` publica
+  Edge Functions.
+
+## Arquitetura
+
+- **SPA React Router** (`src/App.tsx`): todas as rotas num `Routes` só, a maioria com
+  `lazy()` (code splitting) exceto `Auth`/`Index` (caminho crítico). Guards: `ProtectedRoute`
+  (exige `user` + permissão via `usePermissions`, envolve em `AppLayout`), `SuperAdminRoute`
+  (fullscreen, sem `AppLayout`), `DashboardRoute` (redireciona superadmin sem empresa ativa
+  pra `/admin`).
+- **Auth + impersonação de empresa** (`src/contexts/AuthContext.tsx`): dono da sessão/profile/
+  role do Supabase. Superadmin "entra" numa empresa via `switchCompany`/`exitCompany`, que
+  reescrevem `profile.company_id` e guardam o `originalCompanyId` pra restaurar na saída —
+  não é uma sessão separada, é o mesmo profile temporariamente redirecionado.
+- **Permissões são por role, não tabela no banco**: `src/hooks/usePermissions.ts` deriva flags
+  booleanas (`canAccessQuotes`, `canAccessFinancial` etc.) de listas de roles hardcoded no topo
+  do arquivo. Pra dar/tirar acesso de um módulo a um role, mexe ali, não numa tabela de RBAC.
+- **Multi-tenancy via RLS**: toda tabela de dado tem `company_id`; policies filtram por
+  `my_company_id()` (SECURITY DEFINER, evita recursão em RLS). `is_superadmin()` idem.
+- **Dois backends serverless, de propósito diferente**: a maior parte da lógica de servidor
+  é Supabase Edge Function (Deno, `supabase/functions/*` — Stripe checkout/webhook, gestão de
+  usuário, fila de e-mail, tracking, gateways Siscomex/Portal Único). `api/` (Vercel, Node) só
+  existe pro único caso que Deno não cobre: apresentar certificado cliente mTLS ao Portal Único
+  (ver entrada "Portal Único / DUIMP" no índice de módulos abaixo, com a duplicação de código
+  proposital entre os dois arquivos).
+- **Organização por domínio**: `src/components/<domínio>` (quotes, shipments, financial,
+  coleta, superadmin, registrations...) concentra a UI de cada área; `src/pages` tem os
+  containers de rota; `src/lib` concentra regra de negócio/cálculo (`costEstimate.ts`,
+  `estimateSync.ts`, `cargoValue.ts`, `debitNotes.ts`, `pdf-utils.ts` etc.) separada da UI
+  pra ficar testável via Vitest sem montar componente.
+- **Dados**: TanStack React Query, sem store global — `QueryClient` configurado em `App.tsx`
+  com `staleTime` de 3 min e `refetchOnWindowFocus: false` (trade-off deliberado de custo/
+  performance, não default esquecido).
+- **Geração de PDF**: client-side, via `generatePdfFromElement` (`src/lib/pdf-utils.ts`,
+  html2canvas + jsPDF/html2pdf.js) renderizando um elemento DOM oculto; o PDF resultante sobe
+  pro bucket `shipment-documents` do Storage (`DOCS_BUCKET` em `src/lib/storage.ts`) e é
+  registrado na tabela `documents`. Padrão usado tanto pra estimativa quanto pra Ordem de
+  Coleta (ver entrada "Coleta" no índice de módulos).
+- **i18n**: `src/contexts/LanguageContext.tsx`.
+
 ## Índice de módulos por assunto (crescer isto a cada investigação nova)
 
 Mapa rápido de "onde mexer" por área, pra não explorar o repo do zero toda vez. Sempre que
