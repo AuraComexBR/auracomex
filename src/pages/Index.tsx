@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -12,8 +13,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
+
+// recharts é pesado (~100kB+ gzip) — lazy pra não entrar no bundle principal,
+// carregado em toda página (Index não passa por Suspense de rota, é crítico).
+const DashboardCharts = lazy(() => import('@/components/dashboard/DashboardCharts'));
 
 const MODE_LABELS: Record<string, string> = {
   ocean_fcl: 'Marítimo FCL',
@@ -385,57 +388,22 @@ export default function Index() {
 
       {/* Gráfico de pizza (modais) + gráfico de linha (evolução mensal) */}
       {canAccessShipments && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card className="glass">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Embarques em andamento por modal</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {modeDistribution.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t('common.no_data')}</p>
-              ) : (
-                <ChartContainer config={modeChartConfig} className="max-h-64 w-full">
-                  <PieChart>
-                    <RechartsTooltip content={<ChartTooltipContent nameKey="label" />} />
-                    <Legend
-                      verticalAlign="bottom"
-                      formatter={(_value, entry: any) => entry?.payload?.label ?? _value}
-                    />
-                    <Pie
-                      data={modeDistribution}
-                      dataKey="count"
-                      nameKey="label"
-                      innerRadius={50}
-                      outerRadius={90}
-                      paddingAngle={2}
-                    >
-                      {modeDistribution.map((d) => (
-                        <Cell key={d.mode} fill={d.fill} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ChartContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="glass">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Evolução de embarques por mês</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={evolutionChartConfig} className="max-h-64 w-full">
-                <LineChart data={monthlyEvolution}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={30} />
-                  <RechartsTooltip content={<ChartTooltipContent />} />
-                  <Line type="monotone" dataKey="count" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
-                </LineChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-        </div>
+        <Suspense
+          fallback={
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card className="glass"><CardContent className="h-64 animate-pulse" /></Card>
+              <Card className="glass"><CardContent className="h-64 animate-pulse" /></Card>
+            </div>
+          }
+        >
+          <DashboardCharts
+            noDataLabel={t('common.no_data')}
+            modeDistribution={modeDistribution}
+            modeChartConfig={modeChartConfig}
+            monthlyEvolution={monthlyEvolution}
+            evolutionChartConfig={evolutionChartConfig}
+          />
+        </Suspense>
       )}
     </div>
   );
