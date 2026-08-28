@@ -138,8 +138,20 @@ export function useAccountability(quoteId: string, companyId: string | undefined
         valor_orcado_brl: l.valor_orcado_brl,
         source_expense_id: l.source_expense_id || null,
       }));
-      const { error: itemsErr } = await (supabase as any).from('accountability_items').insert(payload);
-      if (itemsErr) throw itemsErr;
+      let { error: itemsErr } = await (supabase as any).from('accountability_items').insert(payload);
+      // Se uma despesa referenciada em source_expense_id foi editada/excluída entre o
+      // cálculo em tela e este insert (FK stale), tenta de novo sem o vínculo de
+      // rastreabilidade em vez de deixar o cabeçalho órfão sem nenhum item.
+      if (itemsErr && itemsErr.code === '23503') {
+        const payloadNoRef = payload.map(p => ({ ...p, source_expense_id: null }));
+        const retry = await (supabase as any).from('accountability_items').insert(payloadNoRef);
+        itemsErr = retry.error;
+      }
+      if (itemsErr) {
+        // Não deixa o cabeçalho órfão (sem nenhum item) — desfaz e propaga o erro.
+        await (supabase as any).from('accountability').delete().eq('id', acc.id);
+        throw itemsErr;
+      }
     }
 
     invalidate();
