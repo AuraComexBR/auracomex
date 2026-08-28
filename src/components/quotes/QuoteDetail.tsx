@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { groupByCurrency, formatCurrencyMap } from '@/lib/utils';
@@ -52,7 +52,7 @@ import { DocumentsTab } from '@/components/shipments/DocumentsTab';
 import { ShipmentEventsTab } from '@/components/shipments/ShipmentEventsTab';
 import { OrdemColetaTab } from '@/components/coleta/OrdemColetaTab';
 import { HistoryPanel } from './HistoryPanel';
-// ActivityTab removida como aba prÃ³pria: histÃ³rico agora Ã© unificado no HistoryPanel (botÃ£o no header).
+// ActivityTab removida como aba própria: histórico agora é unificado no HistoryPanel (botão no header).
 import { logAuditChanges, logAuditEvent } from '@/lib/auditLog';
 import { deleteSupplierDn, deleteClientDn } from '@/lib/debitNotes';
 
@@ -133,15 +133,15 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const queryClient = useQueryClient();
   const legacyEstimateFlag = !!(profile as any)?.estimateEnabled;
   const hasEstimateAddon = useHasAddon('cost_estimate_premium');
-  // MantÃ©m compat com a flag antiga da empresa; add-on comercial libera o mesmo mÃ³dulo.
+  // Mantém compat com a flag antiga da empresa; add-on comercial libera o mesmo módulo.
   const estimateEnabled = legacyEstimateFlag && hasEstimateAddon;
-  // PrestaÃ§Ã£o de Contas: sÃ³ existe (e sÃ³ aparece como aba) depois que o NumerÃ¡rio
-  // Ã© aprovado na aba Estimativa (ver CostEstimateTab/EstimatePdfDialog).
+  // Prestação de Contas: só existe (e só aparece como aba) depois que o Numerário
+  // é aprovado na aba Estimativa (ver CostEstimateTab/EstimatePdfDialog).
   const { data: accountabilityData } = useAccountability(quoteId, profile?.company_id);
   const accountability = accountabilityData?.accountability || null;
   // Estimativa de custo: quando preenchida, seus itens (peso/NCM/mercadoria) passam a ser a
-  // fonte usada no cÃ¡lculo das Taxas por kg/ton, em vez da Resumo da Carga. Volume (mÂ³) e
-  // containers continuam sempre vindos da Resumo da Carga, pois a Estimativa nÃ£o tem esses campos.
+  // fonte usada no cálculo das Taxas por kg/ton, em vez da Resumo da Carga. Volume (m³) e
+  // containers continuam sempre vindos da Resumo da Carga, pois a Estimativa não tem esses campos.
   const { data: costEstimateData } = useCostEstimate(quoteId, profile?.company_id);
   const estimateItemsForCargo = costEstimateData?.estimate ? (costEstimateData.items || []) : [];
   const hasEstimateOverride = estimateItemsForCargo.length > 0;
@@ -188,9 +188,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const [percentDialogChargeId, setPercentDialogChargeId] = useState<string | null>(null);
   const [isAddingCharge, setIsAddingCharge] = useState(false);
   const [addChargeOpen, setAddChargeOpen] = useState(false);
-  // Campos do lado "Venda" â€” independentes dos campos de compra (chargeForm),
-  // permitindo empresa, unidade de cobranÃ§a, moeda e valor diferentes para cada lado.
-  // Basta deixar um dos lados sem valor para criar a taxa sÃ³ de compra ou sÃ³ de venda.
+  // Campos do lado "Venda" — independentes dos campos de compra (chargeForm),
+  // permitindo empresa, unidade de cobrança, moeda e valor diferentes para cada lado.
+  // Basta deixar um dos lados sem valor para criar a taxa só de compra ou só de venda.
   const [sellPartnerId, setSellPartnerId] = useState('');
   const [sellBillingUnit, setSellBillingUnit] = useState('fixed');
   const [sellCurrency, setSellCurrency] = useState('USD');
@@ -210,12 +210,12 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const [backConfirmOpen, setBackConfirmOpen] = useState(false);
   const [pendingClientChange, setPendingClientChange] = useState<string | null>(null);
   const [clientChangeWarnings, setClientChangeWarnings] = useState<string[]>([]);
-  // BotÃ£o "Enviar DN" no cabeÃ§alho de cada fornecedor na aba Taxas (Compra).
+  // Botão "Enviar DN" no cabeçalho de cada fornecedor na aba Taxas (Compra).
   const [sendDnPartner, setSendDnPartner] = useState<{ id: string; name: string; amount: number; currency: string; chargeIds: string[] } | null>(null);
-  // BotÃ£o "Gerar ND" no cabeÃ§alho de cada empresa na aba Taxas (Venda).
+  // Botão "Gerar ND" no cabeçalho de cada empresa na aba Taxas (Venda).
   const [generateNdPartner, setGenerateNdPartner] = useState<{ id: string; name: string; charges: any[] } | null>(null);
 
-  // Handler para o botÃ£o voltar: se houver alteraÃ§Ãµes nÃ£o salvas, confirma antes.
+  // Handler para o botão voltar: se houver alterações não salvas, confirma antes.
   const handleBackClick = () => {
     const unsavedInQuoteMode = hasChanges && form.status !== 'converted' && !isShipmentMode;
     const unsavedCargoInShipment = hasChanges && isShipmentMode && canEditCargo;
@@ -227,12 +227,12 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   };
 
   const handleTabChange = async (next: string) => {
-    // Geral e Carga (e agora tambÃ©m Estimativa) salvam sozinhas ao sair do
-    // campo (onBlur) â€” trocar de aba jÃ¡ blura o campo focado e dispara o
-    // save antes da troca, na maioria dos casos. Mas aÃ§Ãµes que nÃ£o passam
-    // por um input (ex: excluir um item da Carga clicando na lixeira) nÃ£o
-    // disparam blur nenhum â€” antes disso caÃ­a num modal pedindo pra
-    // "descartar" a exclusÃ£o, o que nÃ£o faz sentido pra uma aÃ§Ã£o que jÃ¡ foi
+    // Geral e Carga (e agora também Estimativa) salvam sozinhas ao sair do
+    // campo (onBlur) — trocar de aba já blura o campo focado e dispara o
+    // save antes da troca, na maioria dos casos. Mas ações que não passam
+    // por um input (ex: excluir um item da Carga clicando na lixeira) não
+    // disparam blur nenhum — antes disso caía num modal pedindo pra
+    // "descartar" a exclusão, o que não faz sentido pra uma ação que já foi
     // deliberada. Em vez de perguntar, salva direto e troca de aba.
     const autoSavingTab = activeTab === 'cargo' || activeTab === 'general';
     if (autoSavingTab && hasChanges && next !== activeTab && canEditCargoForAutoSave) {
@@ -293,8 +293,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     },
   });
 
-  // SugestÃµes filtradas do catÃ¡logo de taxas pra descriÃ§Ã£o (compartilhado entre
-  // renderizaÃ§Ã£o e navegaÃ§Ã£o por teclado).
+  // Sugestões filtradas do catálogo de taxas pra descrição (compartilhado entre
+  // renderização e navegação por teclado).
   const chargeFilteredSuggestions = useMemo(() => {
     const activeLeg = chargeForm.leg;
     return catalog
@@ -314,7 +314,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     [catalog, chargeDescSearch]
   );
 
-  // "Adicionar ao catÃ¡logo" conta como mais um item navegÃ¡vel no fim da lista.
+  // "Adicionar ao catálogo" conta como mais um item navegável no fim da lista.
   const chargeDescShowAddOption = chargeDescSearch.length >= 2 && !chargeDescExactMatch;
   const chargeDescOptionCount = chargeFilteredSuggestions.length + (chargeDescShowAddOption ? 1 : 0);
 
@@ -398,7 +398,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     },
   });
 
-  // Empresas (fornecedores) vinculadas ao processo â€” usadas para a DN
+  // Empresas (fornecedores) vinculadas ao processo — usadas para a DN
   // Fornecedor anexada na aba Documentos.
   const linkedPartnersForDn = (() => {
     const allowedIds = new Set(
@@ -424,7 +424,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     },
   });
 
-  // Country codes for origin/destination port codes â€” looked up directly from the
+  // Country codes for origin/destination port codes — looked up directly from the
   // `ports` table (reliable for both UN/LOCODEs and IATA airport codes), instead of
   // guessing the country from the code's characters.
   const { data: routeCountries } = useQuery({
@@ -472,8 +472,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   }
 
   // Resumo em texto da aba Geral, pra colar em e-mail/whatsapp com fornecedores.
-  // Mesmo formato do "Copiar Resumo" do modal de criaÃ§Ã£o (QuoteCreateModal.buildSummaryText)
-  // â€” Coleta e Entrega sÃ³ entram na lista se estiverem preenchidos.
+  // Mesmo formato do "Copiar Resumo" do modal de criação (QuoteCreateModal.buildSummaryText)
+  // — Coleta e Entrega só entram na lista se estiverem preenchidos.
   function handleCopyGeneralSummary() {
     const mode = form.transport_mode;
     const modeLabel = t(`mode.${mode}`);
@@ -495,7 +495,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       }
     });
 
-    const lines: string[] = [`ðŸ“‹ CotaÃ§Ã£o - ${modeLabel}`, ''];
+    const lines: string[] = [`📋 Cotação - ${modeLabel}`, ''];
     if (form.pickup_address) lines.push(`Coleta: ${form.pickup_address}`);
     lines.push(`Origem: ${form.origin || '-'}`);
     lines.push(`Destino: ${form.destination || '-'}`);
@@ -503,33 +503,33 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     lines.push(`Incoterm: ${(form.incoterm && form.incoterm !== 'NONE') ? form.incoterm : '-'}`);
     if (form.client_reference) lines.push(`Ref. do Cliente: ${form.client_reference}`);
     lines.push('');
-    lines.push('ðŸ“Š Totais da Carga:');
+    lines.push('📊 Totais da Carga:');
     if ((mode === 'ocean_fcl' || mode === 'multimodal') && totalContainers > 0) {
       lines.push(`  Containers: ${totalContainers}`);
     }
     if (totalWeight > 0) lines.push(`  Peso Total: ${totalWeight} kg`);
-    if (totalVolume > 0) lines.push(`  Volume Total: ${totalVolume.toFixed(4)} mÂ³`);
+    if (totalVolume > 0) lines.push(`  Volume Total: ${totalVolume.toFixed(4)} m³`);
     if (totalPackages > 0) lines.push(`  Total Volumes: ${totalPackages}`);
 
     lines.push('');
-    lines.push('ðŸ“¦ Detalhamento por Item:');
+    lines.push('📦 Detalhamento por Item:');
     cargoItems.forEach((item, idx) => {
       lines.push(`  Item ${idx + 1}:`);
       if (mode === 'ocean_fcl' || mode === 'multimodal') {
         lines.push(`    Container: ${item.container_type} x ${item.container_qty}`);
       }
       if (item.weight_kg) lines.push(`    Peso: ${item.weight_kg} kg`);
-      if (item.volume_cbm) lines.push(`    Volume: ${item.volume_cbm} mÂ³`);
+      if (item.volume_cbm) lines.push(`    Volume: ${item.volume_cbm} m³`);
       const l = parseFloat(item.length_cm), w = parseFloat(item.width_cm), h = parseFloat(item.height_cm);
       if (l && w && h) {
-        lines.push(`    DimensÃµes: ${item.length_cm} x ${item.width_cm} x ${item.height_cm} cm`);
+        lines.push(`    Dimensões: ${item.length_cm} x ${item.width_cm} x ${item.height_cm} cm`);
         const cbm = (l * w * h / 1_000_000) * (parseInt(item.packages) || 1);
-        lines.push(`    Volume calc.: ${cbm.toFixed(4)} mÂ³`);
+        lines.push(`    Volume calc.: ${cbm.toFixed(4)} m³`);
       }
       if (item.packages) lines.push(`    Volumes: ${item.packages}`);
       if (item.commodity) lines.push(`    Mercadoria: ${item.commodity}`);
-      if (item.dangerous_goods) lines.push(`    âš ï¸ Carga Perigosa`);
-      if (mode === 'road' && item.vehicle_type) lines.push(`    VeÃ­culo: ${item.vehicle_type}`);
+      if (item.dangerous_goods) lines.push(`    ⚠️ Carga Perigosa`);
+      if (mode === 'road' && item.vehicle_type) lines.push(`    Veículo: ${item.vehicle_type}`);
     });
 
     if (form.notes) {
@@ -596,8 +596,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const incoterms = useMemo(() => INCOTERMS_BY_MODE[form.transport_mode] || INCOTERMS_BY_MODE.ocean_fcl, [form.transport_mode]);
 
   // Cargo metrics for billing unit calculations.
-  // Volume e containers vÃªm sempre da Resumo da Carga (a Estimativa nÃ£o tem esses campos).
-  // Peso vem da Estimativa quando ela estiver preenchida; senÃ£o, vem da Resumo da Carga.
+  // Volume e containers vêm sempre da Resumo da Carga (a Estimativa não tem esses campos).
+  // Peso vem da Estimativa quando ela estiver preenchida; senão, vem da Resumo da Carga.
   const cargoMetrics = useMemo(() => {
     const totalCbm = cargoItems.reduce((s, i) => s + getEffectiveVolume(i), 0);
     let totalContainers20 = 0;
@@ -680,21 +680,21 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const dirtyCount = hasChanges ? 1 : 0;
 
   // Auto-save das abas Geral e Resumo da Carga: nenhuma das duas tem mais
-  // botÃ£o "Salvar" prÃ³prio. Antes disparava sozinho 900ms depois de qualquer
-  // tecla digitada â€” o que salvava no meio da digitaÃ§Ã£o se o usuÃ¡rio parasse
-  // de pensar por menos de um segundo. Agora sÃ³ salva quando o usuÃ¡rio sai do
+  // botão "Salvar" próprio. Antes disparava sozinho 900ms depois de qualquer
+  // tecla digitada — o que salvava no meio da digitação se o usuário parasse
+  // de pensar por menos de um segundo. Agora só salva quando o usuário sai do
   // campo (onBlur), anexado no container de cada aba (o blur do React
-  // borbulha, entÃ£o cobre qualquer input dentro dele).
-  // OBS: precisa ficar antes do "if (isLoading || !quote) return" lÃ¡ embaixo,
-  // senÃ£o o nÃºmero de hooks muda entre o primeiro render (carregando) e os
+  // borbulha, então cobre qualquer input dentro dele).
+  // OBS: precisa ficar antes do "if (isLoading || !quote) return" lá embaixo,
+  // senão o número de hooks muda entre o primeiro render (carregando) e os
   // seguintes, e o React quebra com "Rendered more hooks than during the
-  // previous render" â€” por isso a checagem de permissÃ£o aqui Ã© feita de
+  // previous render" — por isso a checagem de permissão aqui é feita de
   // forma independente (com optional chaining), sem usar `canEditCargo`.
   const canEditCargoForAutoSave =
     (!isShipmentMode && form.status !== 'converted') || isFullAccess || (profile?.user_id === quote?.created_by);
-  // 'logistics' entra na lista pra cobrir o Card 6 (ObservaÃ§Ãµes/CondiÃ§Ãµes de
-  // pagamento) mesclado lÃ¡ apÃ³s virar embarque; 'charges' cobre o campo
-  // Armazenagem no destino, que mudou de aba (Geral â†’ Taxas).
+  // 'logistics' entra na lista pra cobrir o Card 6 (Observações/Condições de
+  // pagamento) mesclado lá após virar embarque; 'charges' cobre o campo
+  // Armazenagem no destino, que mudou de aba (Geral → Taxas).
   function handleAutoSaveBlur(tab: 'general' | 'cargo' | 'logistics' | 'charges') {
     if (!quote || activeTab !== tab || !canEditCargoForAutoSave || !hasChanges || saving) return;
     handleSave();
@@ -707,15 +707,15 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }, [estimateEnabled, activeTab, isShipmentMode]);
 
-  // Se a PrestaÃ§Ã£o de Contas for excluÃ­da (destravando a Estimativa) enquanto
-  // o usuÃ¡rio estÃ¡ nela, a aba some â€” volta pra Estimativa.
+  // Se a Prestação de Contas for excluída (destravando a Estimativa) enquanto
+  // o usuário está nela, a aba some — volta pra Estimativa.
   useEffect(() => {
     if (!accountability && activeTab === 'accountability') {
       setActiveTab('estimate');
     }
   }, [accountability, activeTab]);
 
-  // Onboarding da aba Taxas: mostra automaticamente na primeira vez que o usuÃ¡rio abre a aba.
+  // Onboarding da aba Taxas: mostra automaticamente na primeira vez que o usuário abre a aba.
   useEffect(() => {
     if (activeTab !== 'charges') return;
     try {
@@ -724,10 +724,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         setChargesOnboardingStep(0);
         setShowChargesOnboarding(true);
       }
-    } catch { /* localStorage indisponÃ­vel â€” ignora */ }
+    } catch { /* localStorage indisponível — ignora */ }
   }, [activeTab]);
 
-  // Aviso nativo do navegador ao recarregar/fechar com alteraÃ§Ãµes nÃ£o salvas.
+  // Aviso nativo do navegador ao recarregar/fechar com alterações não salvas.
   useEffect(() => {
     if (!hasChanges || form.status === 'converted' || isShipmentMode) return;
     const handler = (e: BeforeUnloadEvent) => {
@@ -760,10 +760,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // Helper: check if a charge is a discount (DESCONTO in description)
   const isDiscount = (c: any) => (c.description || '').toUpperCase().includes('DESCONTO');
 
-  // Taxa prepaid (jÃ¡ paga na origem) continua aparecendo nas listas de
-  // compra/venda e na Estimativa/NumerÃ¡rio â€” sÃ³ nÃ£o conta no Lucro do
-  // processo. Por isso filtra aqui, na base do cÃ¡lculo de lucro, e nÃ£o em
-  // `charges` (que alimenta as tabelas de exibiÃ§Ã£o mais abaixo).
+  // Taxa prepaid (já paga na origem) continua aparecendo nas listas de
+  // compra/venda e na Estimativa/Numerário — só não conta no Lucro do
+  // processo. Por isso filtra aqui, na base do cálculo de lucro, e não em
+  // `charges` (que alimenta as tabelas de exibição mais abaixo).
   const profitCharges = charges.filter((c: any) => c.payment_term !== 'prepaid');
 
   // Currency-grouped totals (accounting for billing unit multipliers and DESCONTO)
@@ -832,7 +832,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const fmtMoney = (cur: string, v: number) => `${cur} ${v.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const detailLine = (map: Record<string, number>) => {
     const entries = Object.entries(map).filter(([, v]) => v !== 0);
-    if (entries.length === 0) return 'â€”';
+    if (entries.length === 0) return '—';
     return entries.map(([cur, v]) => fmtMoney(cur, v)).join(' + ');
   };
 
@@ -883,7 +883,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     await supabase.from('quotes').update({ total_buy: tb, total_sell: ts } as any).eq('id', quoteId);
   }
 
-  // Recalcula todas as taxas percentuais (Collect Fee etc.) da cotaÃ§Ã£o apÃ³s qualquer alteraÃ§Ã£o
+  // Recalcula todas as taxas percentuais (Collect Fee etc.) da cotação após qualquer alteração
   // em charges base. Persiste os novos buy_amount/sell_amount.
   async function recalcPercentCharges() {
     const { data } = await supabase
@@ -898,16 +898,16 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
-  // Regra de negÃ³cio: todo embarque LCL ou FCL com armazenagem lanÃ§ada deve
-  // gerar (ou atualizar) uma conta a receber automÃ¡tica. Se o valor for
-  // zerado e a conta ainda nÃ£o tiver sido recebida, ela Ã© removida.
+  // Regra de negócio: todo embarque LCL ou FCL com armazenagem lançada deve
+  // gerar (ou atualizar) uma conta a receber automática. Se o valor for
+  // zerado e a conta ainda não tiver sido recebida, ela é removida.
   //
-  // LCL: pagador Ã© o Co-loader (aba Empresas) e o valor Ã© um PERCENTUAL de
-  // rebate cadastrado nele, calculado em cima da armazenagem lanÃ§ada aqui.
+  // LCL: pagador é o Co-loader (aba Empresas) e o valor é um PERCENTUAL de
+  // rebate cadastrado nele, calculado em cima da armazenagem lançada aqui.
   //
-  // FCL: pagador Ã© o Terminal (aba Empresas) e o valor Ã© FIXO, cadastrado
-  // direto no Terminal (nÃ£o Ã© calculado a partir da armazenagem lanÃ§ada
-  // aqui â€” Ã© o rebate fixo que ele repassa por container/processo).
+  // FCL: pagador é o Terminal (aba Empresas) e o valor é FIXO, cadastrado
+  // direto no Terminal (não é calculado a partir da armazenagem lançada
+  // aqui — é o rebate fixo que ele repassa por container/processo).
   async function syncStorageFeeReceivable() {
     if (!isShipmentMode || !shipmentId || !profile) return;
     const isLCL = form.transport_mode === 'ocean_lcl';
@@ -939,14 +939,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     if (isLCL) {
       const coLoader = (quotePartners as any[]).find((qp) => qp.clients?.partner_category === 'co_loader');
       if (!coLoader) {
-        toast.warning('Armazenagem lanÃ§ada, mas nenhum Co-loader cadastrado neste processo â€” a conta a receber nÃ£o foi gerada. Cadastre o Co-loader na aba Empresas.');
+        toast.warning('Armazenagem lançada, mas nenhum Co-loader cadastrado neste processo — a conta a receber não foi gerada. Cadastre o Co-loader na aba Empresas.');
         return;
       }
-      // A conta a receber nÃ£o Ã© o valor cheio da armazenagem: Ã© o rebate negociado
+      // A conta a receber não é o valor cheio da armazenagem: é o rebate negociado
       // com esse Co-loader, um percentual cadastrado no fornecedor (aba Cadastros).
       const rebatePercent = coLoader.clients?.storage_rebate_percent;
       if (rebatePercent == null) {
-        toast.warning(`Armazenagem lanÃ§ada, mas o Co-loader "${coLoader.clients?.name}" nÃ£o tem o percentual de rebate cadastrado â€” a conta a receber nÃ£o foi gerada. Cadastre o rebate na aba Cadastros.`);
+        toast.warning(`Armazenagem lançada, mas o Co-loader "${coLoader.clients?.name}" não tem o percentual de rebate cadastrado — a conta a receber não foi gerada. Cadastre o rebate na aba Cadastros.`);
         return;
       }
       payerId = coLoader.clients.id;
@@ -956,14 +956,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     } else {
       const terminal = (quotePartners as any[]).find((qp) => qp.clients?.partner_category === 'terminal');
       if (!terminal) {
-        toast.warning('Armazenagem lanÃ§ada, mas nenhum Terminal cadastrado neste processo â€” a conta a receber nÃ£o foi gerada. Cadastre o Terminal na aba Empresas.');
+        toast.warning('Armazenagem lançada, mas nenhum Terminal cadastrado neste processo — a conta a receber não foi gerada. Cadastre o Terminal na aba Empresas.');
         return;
       }
-      // FCL nÃ£o calcula em cima do valor lanÃ§ado â€” Ã© um valor fixo cadastrado
+      // FCL não calcula em cima do valor lançado — é um valor fixo cadastrado
       // direto no Terminal (aba Cadastros).
       const fixedValue = terminal.clients?.storage_fixed_value;
       if (fixedValue == null) {
-        toast.warning(`Armazenagem lanÃ§ada, mas o Terminal "${terminal.clients?.name}" nÃ£o tem o valor fixo de rebate cadastrado â€” a conta a receber nÃ£o foi gerada. Cadastre o valor fixo na aba Cadastros.`);
+        toast.warning(`Armazenagem lançada, mas o Terminal "${terminal.clients?.name}" não tem o valor fixo de rebate cadastrado — a conta a receber não foi gerada. Cadastre o valor fixo na aba Cadastros.`);
         return;
       }
       payerId = terminal.clients.id;
@@ -981,7 +981,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       description,
       currency: form.storage_fee_currency || 'BRL',
       amount: rebateAmount,
-      // Armazenagem nÃ£o tem data de vencimento fixa (Ã© cobrada quando o Co-loader/Terminal repassa o rebate).
+      // Armazenagem não tem data de vencimento fixa (é cobrada quando o Co-loader/Terminal repassa o rebate).
       due_date: null,
       created_by: profile.user_id,
     };
@@ -1000,7 +1000,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     try {
       setSaveState('saving');
 
-      // Monta o diff dos campos gerais contra os dados originais (antes de sobrescrever) para o histÃ³rico.
+      // Monta o diff dos campos gerais contra os dados originais (antes de sobrescrever) para o histórico.
       const generalFieldChecks: { field: string; old: any; next: any }[] = [
         { field: 'client_id', old: (quote as any)?.client_id, next: form.client_id || null },
         { field: 'origin', old: (quote as any)?.origin, next: form.origin || null },
@@ -1047,8 +1047,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       } as any).eq('id', quoteId);
       if (error) throw error;
 
-      // Modal e Incoterm sÃ£o espelhados com a aba LogÃ­stica (tabela shipments) â€”
-      // editar aqui tambÃ©m atualiza o embarque vinculado, pra nunca ficarem divergentes.
+      // Modal e Incoterm são espelhados com a aba Logística (tabela shipments) —
+      // editar aqui também atualiza o embarque vinculado, pra nunca ficarem divergentes.
       if (isShipmentMode && shipmentId) {
         await (supabase.from('shipments') as any).update({
           transport_mode: form.transport_mode,
@@ -1107,7 +1107,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         await supabase.from('quote_items').delete().eq('quote_id', quoteId);
       }
 
-      // Resumo da Carga: compara ids originais vs. atuais para o histÃ³rico (nÃ­vel de evento, nÃ£o campo a campo).
+      // Resumo da Carga: compara ids originais vs. atuais para o histórico (nível de evento, não campo a campo).
       const originalItemIds = new Set((items as any[]).map((i: any) => i.id));
       const added = cargoItems.filter((i) => !i.id).length;
       const removed = Array.from(originalItemIds).filter((id) => !seenItemIds.has(id as string)).length;
@@ -1136,10 +1136,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       queryClient.invalidateQueries({ queryKey: ['quote-items', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
       queryClient.invalidateQueries({ queryKey: ['cost-estimate', quoteId] });
-      // Aba LogÃ­stica usa sua prÃ³pria query (cache separado) pra saber a
-      // quantidade de containers â€” sem invalidar aqui tambÃ©m, adicionar ou
-      // remover item na Resumo da Carga sÃ³ refletia lÃ¡ depois de recarregar
-      // a pÃ¡gina inteira (F5), em vez de sÃ³ trocar de aba.
+      // Aba Logística usa sua própria query (cache separado) pra saber a
+      // quantidade de containers — sem invalidar aqui também, adicionar ou
+      // remover item na Resumo da Carga só refletia lá depois de recarregar
+      // a página inteira (F5), em vez de só trocar de aba.
       queryClient.invalidateQueries({ queryKey: ['logistics-quote-items'] });
       toast.success(t('quotes.changes_saved'));
       setSaveState('saved');
@@ -1152,11 +1152,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
-  // CotaÃ§Ãµes jÃ¡ convertidas em embarque ficam travadas para ediÃ§Ã£o geral
-  // (botÃ£o "Editar CotaÃ§Ã£o" sÃ³ existe fora do modo embarque). Isso cria um
-  // beco sem saÃ­da quando o cliente do embarque precisa ser corrigido: esse
+  // Cotações já convertidas em embarque ficam travadas para edição geral
+  // (botão "Editar Cotação" só existe fora do modo embarque). Isso cria um
+  // beco sem saída quando o cliente do embarque precisa ser corrigido: esse
   // atalho libera o campo cliente seguindo a mesma regra de acesso da aba
-  // Carga (canEditCargo), em vez de depender do modo de ediÃ§Ã£o completo.
+  // Carga (canEditCargo), em vez de depender do modo de edição completo.
   async function handleChangeClient(newClientId: string) {
     if (!profile) return;
     const oldClientId = form.client_id || null;
@@ -1188,10 +1188,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
-  // Antes de trocar o cliente de um embarque que JÃ tinha um cliente definido,
-  // verifica se existem lanÃ§amentos financeiros (taxas, DN, contas a receber,
-  // parceiros da cotaÃ§Ã£o) feitos no nome do cliente atual. Trocar o cliente nÃ£o
-  // atualiza esses lanÃ§amentos em cascata, entÃ£o avisamos o usuÃ¡rio antes.
+  // Antes de trocar o cliente de um embarque que JÁ tinha um cliente definido,
+  // verifica se existem lançamentos financeiros (taxas, DN, contas a receber,
+  // parceiros da cotação) feitos no nome do cliente atual. Trocar o cliente não
+  // atualiza esses lançamentos em cascata, então avisamos o usuário antes.
   async function requestClientChange(newClientId: string) {
     const oldClientId = form.client_id;
     if (!oldClientId || oldClientId === newClientId) {
@@ -1206,10 +1206,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         supabase.from('quote_partners' as any).select('id', { count: 'exact', head: true }).eq('quote_id', quoteId).eq('client_id', oldClientId),
       ]);
       const warnings: string[] = [];
-      if ((chargesRes.count || 0) > 0) warnings.push(`${chargesRes.count} taxa(s) lanÃ§ada(s)`);
-      if ((dnRes.count || 0) > 0) warnings.push(`${dnRes.count} nota(s) de dÃ©bito`);
+      if ((chargesRes.count || 0) > 0) warnings.push(`${chargesRes.count} taxa(s) lançada(s)`);
+      if ((dnRes.count || 0) > 0) warnings.push(`${dnRes.count} nota(s) de débito`);
       if ((arRes.count || 0) > 0) warnings.push(`${arRes.count} conta(s) a receber`);
-      if ((qpRes.count || 0) > 0) warnings.push(`${qpRes.count} vÃ­nculo(s) de parceiro`);
+      if ((qpRes.count || 0) > 0) warnings.push(`${qpRes.count} vínculo(s) de parceiro`);
 
       if (warnings.length > 0) {
         setClientChangeWarnings(warnings);
@@ -1218,7 +1218,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         handleChangeClient(newClientId);
       }
     } catch (err: any) {
-      // Se a verificaÃ§Ã£o falhar por algum motivo, nÃ£o bloqueia a troca â€”
+      // Se a verificação falhar por algum motivo, não bloqueia a troca —
       // apenas segue sem o aviso extra.
       handleChangeClient(newClientId);
     }
@@ -1228,17 +1228,17 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     if (!profile) return;
     // Guard: prevent double-conversion
     if (form.status === 'converted' || form.status === 'approved' || quote?.shipment_id) {
-      toast.info(t('quotes.already_converted') || 'Esta cotaÃ§Ã£o jÃ¡ foi convertida em embarque.');
+      toast.info(t('quotes.already_converted') || 'Esta cotação já foi convertida em embarque.');
       return;
     }
 
-    // Salva a cotaÃ§Ã£o ANTES de checar o limite do plano â€” se a conversÃ£o for
-    // bloqueada logo abaixo, o que foi digitado nÃ£o se perde (fica salvo como
-    // cotaÃ§Ã£o normal, sÃ³ a conversÃ£o em embarque que fica pendente).
+    // Salva a cotação ANTES de checar o limite do plano — se a conversão for
+    // bloqueada logo abaixo, o que foi digitado não se perde (fica salvo como
+    // cotação normal, só a conversão em embarque que fica pendente).
     await handleSave();
 
-    // Bloqueio real de limite de embarques/mÃªs do plano. O superadmin pode
-    // conceder embarques bÃ´nus de cortesia (bonus_shipments), somados ao
+    // Bloqueio real de limite de embarques/mês do plano. O superadmin pode
+    // conceder embarques bônus de cortesia (bonus_shipments), somados ao
     // limite do plano.
     if (profile.company_id) {
       const { data: companySub } = await supabase
@@ -1257,7 +1257,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           .eq('company_id', profile.company_id)
           .gte('created_at', monthStart.toISOString());
         if ((count ?? 0) >= effectiveLimit) {
-          toast.error(`Limite de ${effectiveLimit} embarques/mÃªs do plano atingido. Sua cotaÃ§Ã£o foi salva normalmente â€” faÃ§a upgrade (ou peÃ§a um embarque bÃ´nus ao suporte) para converter em embarque.`);
+          toast.error(`Limite de ${effectiveLimit} embarques/mês do plano atingido. Sua cotação foi salva normalmente — faça upgrade (ou peça um embarque bônus ao suporte) para converter em embarque.`);
           return;
         }
       }
@@ -1284,7 +1284,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           .maybeSingle();
         if (originPort) {
           originCity = originPort.city || '';
-          // Store the 2-letter code (not the name) â€” that's what the flags
+          // Store the 2-letter code (not the name) — that's what the flags
           // shown in the shipments list expect.
           originCountry = originPort.country_code || '';
         }
@@ -1315,10 +1315,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         destination_country: destCountry || null,
         status: 'approved' as any,
         created_by: profile.user_id,
-        // Espelhados da cotaÃ§Ã£o de origem â€” sem isso o embarque nascia sem
-        // Incoterm (e sem Ref. Cliente/FreeTime), sÃ³ pegando esses valores
-        // depois que alguÃ©m abrisse a aba LogÃ­stica e o auto-preenchimento
-        // rodasse. Agora jÃ¡ nasce certo.
+        // Espelhados da cotação de origem — sem isso o embarque nascia sem
+        // Incoterm (e sem Ref. Cliente/FreeTime), só pegando esses valores
+        // depois que alguém abrisse a aba Logística e o auto-preenchimento
+        // rodasse. Agora já nasce certo.
         incoterm: (form.incoterm && (form.incoterm as any) !== 'NONE') ? form.incoterm : null,
         client_reference: form.client_reference || null,
         free_time: parseInt(form.free_time) || null,
@@ -1388,7 +1388,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         companyId: profile.company_id,
         userId: profile.user_id,
         field_name: 'conversion',
-        old_value: `CotaÃ§Ã£o (${quote?.status || form.status})`,
+        old_value: `Cotação (${quote?.status || form.status})`,
         new_value: `Embarque criado (${refNumber})`,
       });
 
@@ -1417,7 +1417,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   }
 
   // Compra e venda com empresa, unidade, moeda e valor totalmente independentes.
-  // Basta deixar um dos lados sem valor para criar sÃ³ a compra ou sÃ³ a venda.
+  // Basta deixar um dos lados sem valor para criar só a compra ou só a venda.
   async function handleAddCharge(opts?: { keepOpen?: boolean }) {
     if (!profile || !chargeForm.description.trim()) return;
 
@@ -1440,7 +1440,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   }
 
   // Grava compra e venda como duas linhas independentes (cada uma com sua empresa, unidade
-  // de cobranÃ§a, moeda e valor), pulando o lado cujo valor ficou zerado.
+  // de cobrança, moeda e valor), pulando o lado cujo valor ficou zerado.
   async function executeAddCharge(buyAmt: number, sellAmt: number, opts?: { keepOpen?: boolean }) {
     if (!profile || !chargeForm.description.trim()) return;
     setIsAddingCharge(true);
@@ -1526,7 +1526,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     try {
       const charge = (charges as any[]).find((c: any) => c.id === chargeId);
       if (charge?.sent_in_debit_note_id) {
-        toast.error('Esta taxa jÃ¡ foi enviada em uma DN e nÃ£o pode ser excluÃ­da.');
+        toast.error('Esta taxa já foi enviada em uma DN e não pode ser excluída.');
         return;
       }
       const { error } = await supabase.from('quote_charges').delete().eq('id', chargeId);
@@ -1584,13 +1584,13 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     }
   }
 
-  // Reabrir uma taxa jÃ¡ enviada numa DN (ainda nÃ£o paga): exclui a DN inteira
-  // (some do Financeiro) e libera de volta pra ediÃ§Ã£o todas as taxas que
-  // estavam presas nela, com aviso no histÃ³rico da referÃªncia.
+  // Reabrir uma taxa já enviada numa DN (ainda não paga): exclui a DN inteira
+  // (some do Financeiro) e libera de volta pra edição todas as taxas que
+  // estavam presas nela, com aviso no histórico da referência.
   async function handleReopenChargeWithDn(charge: any, partnerName: string) {
-    if (!profile) return { ok: false as const, error: 'NÃ£o autenticado' };
+    if (!profile) return { ok: false as const, error: 'Não autenticado' };
     const dnId = charge.sent_in_debit_note_id;
-    if (!dnId) return { ok: false as const, error: 'Taxa nÃ£o estÃ¡ vinculada a uma DN' };
+    if (!dnId) return { ok: false as const, error: 'Taxa não está vinculada a uma DN' };
     const result = await deleteSupplierDn({
       dnId,
       companyId: profile.company_id,
@@ -1604,21 +1604,21 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       queryClient.invalidateQueries({ queryKey: ['debit_notes_ap', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['quote_charges_for_dn', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['accounts_payable'] });
-      toast.success('DN excluÃ­da â€” taxas liberadas para ediÃ§Ã£o');
+      toast.success('DN excluída — taxas liberadas para edição');
     } else {
       toast.error(result.error);
     }
     return result;
   }
 
-  // Reabrir uma taxa de venda jÃ¡ enviada numa ND ao cliente (ainda nÃ£o paga):
-  // exclui a ND inteira (some do Financeiro) e libera a taxa pra ediÃ§Ã£o de
-  // novo, com aviso no histÃ³rico. NÃ£o existe "conferÃªncia" separada do lado
-  // venda â€” gerar a ND jÃ¡ Ã© o que trava o valor cobrado do cliente.
+  // Reabrir uma taxa de venda já enviada numa ND ao cliente (ainda não paga):
+  // exclui a ND inteira (some do Financeiro) e libera a taxa pra edição de
+  // novo, com aviso no histórico. Não existe "conferência" separada do lado
+  // venda — gerar a ND já é o que trava o valor cobrado do cliente.
   async function handleReopenSellChargeWithNd(charge: any, partnerName: string) {
-    if (!profile) return { ok: false as const, error: 'NÃ£o autenticado' };
+    if (!profile) return { ok: false as const, error: 'Não autenticado' };
     const dnId = charge.sent_in_debit_note_id;
-    if (!dnId) return { ok: false as const, error: 'Taxa nÃ£o estÃ¡ vinculada a uma ND' };
+    if (!dnId) return { ok: false as const, error: 'Taxa não está vinculada a uma ND' };
     const result = await deleteClientDn({
       dnId,
       companyId: profile.company_id,
@@ -1631,7 +1631,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       queryClient.invalidateQueries({ queryKey: ['client_debit_notes', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['quote_sell_charges', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['accounts_receivable'] });
-      toast.success('ND excluÃ­da â€” taxa liberada para ediÃ§Ã£o');
+      toast.success('ND excluída — taxa liberada para edição');
     } else {
       toast.error(result.error);
     }
@@ -1675,12 +1675,12 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const isProcessOwner = profile?.user_id === quote.created_by;
   const canSeeFinancials = isFullAccess || isProcessOwner;
   const canEditCharges = !isShipmentMode || isFullAccess || isProcessOwner;
-  // Mesma regra da Taxas, mas preservando o trava adicional de "cotaÃ§Ã£o jÃ¡ convertida"
-  // (fora do modo embarque) que existia antes sÃ³ para usuÃ¡rios sem acesso total.
+  // Mesma regra da Taxas, mas preservando o trava adicional de "cotação já convertida"
+  // (fora do modo embarque) que existia antes só para usuários sem acesso total.
   const canEditCargo = (!isShipmentMode && form.status !== 'converted') || isFullAccess || isProcessOwner;
-  // A aba Geral nÃ£o tem mais botÃ£o "Editar"/"Salvar" (fora o campo Cliente, que
-  // tem sua prÃ³pria trava dedicada) â€” ela sempre segue a mesma regra da aba
-  // Carga e salva sozinha (auto-save), tanto em cotaÃ§Ã£o quanto em embarque.
+  // A aba Geral não tem mais botão "Editar"/"Salvar" (fora o campo Cliente, que
+  // tem sua própria trava dedicada) — ela sempre segue a mesma regra da aba
+  // Carga e salva sozinha (auto-save), tanto em cotação quanto em embarque.
   const canEditGeneral = canEditCargo;
 
   const showPort = form.transport_mode !== 'road';
@@ -1689,22 +1689,22 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     {
       icon: Plus,
       title: 'Adicionar uma taxa',
-      desc: 'Clique em "Adicionar Taxa" para lanÃ§ar uma nova cobranÃ§a. Escolha o trecho (frete, origem, destino...) e descreva a taxa â€” o sistema sugere nomes jÃ¡ usados antes e aprende novos conforme vocÃª digita.',
+      desc: 'Clique em "Adicionar Taxa" para lançar uma nova cobrança. Escolha o trecho (frete, origem, destino...) e descreva a taxa — o sistema sugere nomes já usados antes e aprende novos conforme você digita.',
     },
     {
       icon: Wallet,
       title: 'Compra e venda independentes',
-      desc: 'Cada taxa tem um lado de Compra e um de Venda, cada um com sua prÃ³pria empresa, unidade de cobranÃ§a, moeda e valor. Preencha sÃ³ o lado que fizer sentido â€” nÃ£o precisa dos dois.',
+      desc: 'Cada taxa tem um lado de Compra e um de Venda, cada um com sua própria empresa, unidade de cobrança, moeda e valor. Preencha só o lado que fizer sentido — não precisa dos dois.',
     },
     {
       icon: Building,
       title: 'Escolha as empresas certas',
-      desc: 'Defina para quem vocÃª paga (Compra) e quem paga vocÃª (Venda). O cliente da cotaÃ§Ã£o jÃ¡ vem prÃ©-selecionado; troque quando o parceiro for outro, como um armador, CIA aÃ©rea ou agente.',
+      desc: 'Defina para quem você paga (Compra) e quem paga você (Venda). O cliente da cotação já vem pré-selecionado; troque quando o parceiro for outro, como um armador, CIA aérea ou agente.',
     },
     {
       icon: ListChecks,
       title: 'Acompanhe tudo organizado',
-      desc: 'As taxas aparecem em duas colunas â€” Compra e Venda â€”, com totais e margem calculados automaticamente. VocÃª pode editar, clonar ou excluir qualquer taxa quando quiser.',
+      desc: 'As taxas aparecem em duas colunas — Compra e Venda —, com totais e margem calculados automaticamente. Você pode editar, clonar ou excluir qualquer taxa quando quiser.',
     },
   ];
 
@@ -1727,10 +1727,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 <span className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary">
                   <Sparkles className="w-4 h-4" />
                 </span>
-                ConheÃ§a a aba Taxas
+                Conheça a aba Taxas
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Um guia rÃ¡pido de como lanÃ§ar e organizar as cobranÃ§as da cotaÃ§Ã£o.
+                Um guia rápido de como lançar e organizar as cobranças da cotação.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -1780,7 +1780,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               )}
               {chargesOnboardingStep < chargesOnboardingSteps.length - 1 ? (
                 <Button size="sm" onClick={() => setChargesOnboardingStep((s) => s + 1)}>
-                  PrÃ³ximo <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  Próximo <ChevronRight className="w-3.5 h-3.5 ml-1" />
                 </Button>
               ) : (
                 <Button
@@ -1826,10 +1826,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         <div className="flex items-center gap-2.5 flex-wrap min-w-0 flex-1">
           <h1
             className="text-lg sm:text-xl font-bold tracking-tight font-mono shrink-0 cursor-pointer hover:underline"
-            title="Clique para copiar a referÃªncia"
+            title="Clique para copiar a referência"
             onClick={() => {
               navigator.clipboard.writeText(quote.quote_number || '');
-              toast.success('ReferÃªncia copiada');
+              toast.success('Referência copiada');
             }}
           >
             {quote.quote_number}
@@ -1844,8 +1844,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               const modeShortLabels: Record<string, string> = {
                 ocean_fcl: 'FCL',
                 ocean_lcl: 'LCL',
-                air: 'AÃ‰REO',
-                road: 'RODOVIÃRIO',
+                air: 'AÉREO',
+                road: 'RODOVIÁRIO',
                 multimodal: 'MULTIMODAL',
               };
               const modeLabel = modeShortLabels[form.transport_mode] || form.transport_mode;
@@ -1875,10 +1875,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             value={form.client_reference}
             onChange={(e) => setForm({ ...form, client_reference: e.target.value })}
             onClick={(e) => e.stopPropagation()}
-            // Este campo fica no cabeÃ§alho da pÃ¡gina, fora do CardContent da
-            // aba Geral â€” o auto-save por onBlur de lÃ¡ (handleAutoSaveBlur)
-            // sÃ³ dispara quando activeTab === 'general', entÃ£o editar aqui
-            // estando em qualquer outra aba (Taxas, LogÃ­stica etc.) nunca
+            // Este campo fica no cabeçalho da página, fora do CardContent da
+            // aba Geral — o auto-save por onBlur de lá (handleAutoSaveBlur)
+            // só dispara quando activeTab === 'general', então editar aqui
+            // estando em qualquer outra aba (Taxas, Logística etc.) nunca
             // salvava. Salva direto aqui, sem depender da aba ativa.
             onBlur={() => {
               if (!quote || saving) return;
@@ -1886,7 +1886,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               handleSave();
             }}
             placeholder="Ref. do Cliente"
-            title="ReferÃªncia do cliente (opcional) â€” entra na cÃ³pia do texto"
+            title="Referência do cliente (opcional) — entra na cópia do texto"
             className="h-6 w-32 shrink-0 text-xs px-2 text-center"
           />
         </div>
@@ -1901,7 +1901,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           variant="ghost"
           size="icon"
           className="shrink-0"
-          title="HistÃ³rico de alteraÃ§Ãµes"
+          title="Histórico de alterações"
           onClick={() => setHistoryOpen(true)}
         >
           <History className="w-4 h-4" />
@@ -1917,17 +1917,17 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             const iconCls = "w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0";
             return (
               <>
-                {/* Aba Geral sÃ³ existe separada em cotaÃ§Ã£o â€” depois de virar
-                    embarque, os campos dela sÃ£o mesclados dentro da aba
-                    LogÃ­stica (Card 1 e Card 6), pra nÃ£o duplicar tela. */}
+                {/* Aba Geral só existe separada em cotação — depois de virar
+                    embarque, os campos dela são mesclados dentro da aba
+                    Logística (Card 1 e Card 6), pra não duplicar tela. */}
                 {!isShipmentMode && (
                   <TabsTrigger value="general" className={triggerCls}>
                     <Info className={iconCls} /> {t('quotes.general')}
                   </TabsTrigger>
                 )}
-                {/* Em modo embarque, LogÃ­stica vira a primeira aba â€” Ã© a
+                {/* Em modo embarque, Logística vira a primeira aba — é a
                     tela principal de acompanhamento do processo depois que
-                    ele jÃ¡ virou embarque. */}
+                    ele já virou embarque. */}
                 {isShipmentMode && (
                   <TabsTrigger value="logistics" className={triggerCls}>
                     <MapPin className={iconCls} /> {t('shipments.logistics')}
@@ -1949,7 +1949,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 )}
                 {estimateEnabled && accountability && (
                   <TabsTrigger value="accountability" className={triggerCls}>
-                    <Receipt className={iconCls} /> PrestaÃ§Ã£o de Contas
+                    <Receipt className={iconCls} /> Prestação de Contas
                   </TabsTrigger>
                 )}
                 {/* Documents tab available in both modes */}
@@ -1958,7 +1958,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 </TabsTrigger>
                 {isShipmentMode && (
                   <TabsTrigger value="events" className={triggerCls}>
-                    <NotebookPen className={iconCls} /> DiÃ¡rio
+                    <NotebookPen className={iconCls} /> Diário
                   </TabsTrigger>
                 )}
                 {isShipmentMode && (
@@ -1971,18 +1971,18 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           })()}
         </TabsList>
 
-        {/* Resumo financeiro do processo â€” abaixo do menu de abas (que assim nunca
-            muda de altura/posiÃ§Ã£o), sÃ³ faz sentido na aba Taxas. */}
+        {/* Resumo financeiro do processo — abaixo do menu de abas (que assim nunca
+            muda de altura/posição), só faz sentido na aba Taxas. */}
         {canSeeFinancials && activeTab === 'charges' && (
         <div className="space-y-2">
           {(!ratesLoading && !ratesAvailable) || (unsupportedCurrencies.length > 0 && ratesAvailable) ? (
             <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
               {!ratesLoading && !ratesAvailable && (
-                <span className="text-amber-500">CÃ¢mbio indisponÃ­vel â€” exibindo por moeda (atualize no menu lateral)</span>
+                <span className="text-amber-500">Câmbio indisponível — exibindo por moeda (atualize no menu lateral)</span>
               )}
               {unsupportedCurrencies.length > 0 && ratesAvailable && (
                 <span className="text-amber-500">
-                  {unsupportedCurrencies.length} moeda(s) nÃ£o convertida(s): {unsupportedCurrencies.join(', ')}
+                  {unsupportedCurrencies.length} moeda(s) não convertida(s): {unsupportedCurrencies.join(', ')}
                 </span>
               )}
             </div>
@@ -2023,7 +2023,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 {ratesAvailable ? (
                   <p
                     className="flex items-baseline justify-center gap-1 flex-wrap"
-                    title={Object.keys(profitByCurrency).length === 0 ? 'â€”' : Object.entries(profitByCurrency).map(([cur, v]) => fmtMoney(cur, v)).join(' + ')}
+                    title={Object.keys(profitByCurrency).length === 0 ? '—' : Object.entries(profitByCurrency).map(([cur, v]) => fmtMoney(cur, v)).join(' + ')}
                   >
                     <span className="text-[10px] text-muted-foreground shrink-0">Lucro -</span>
                     <span className={`text-sm font-bold font-mono truncate ${profitBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
@@ -2049,7 +2049,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   <p className="flex items-baseline justify-center gap-1 flex-wrap" title="sobre venda em BRL">
                     <span className="text-[10px] text-muted-foreground shrink-0">Margem -</span>
                     <span className={`text-sm font-bold font-mono truncate ${marginBRLValue >= 0 ? 'text-status-completed' : 'text-status-urgent'}`}>
-                      {sellBRL.total > 0 ? `${marginBRLValue.toFixed(1)}%` : 'â€”'}
+                      {sellBRL.total > 0 ? `${marginBRLValue.toFixed(1)}%` : '—'}
                     </span>
                   </p>
                 ) : (
@@ -2067,8 +2067,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         </div>
         )}
 
-        {/* General Tab â€” sÃ³ em cotaÃ§Ã£o; depois de virar embarque esses campos
-            ficam mesclados na aba LogÃ­stica (Card 1 e Card 6). */}
+        {/* General Tab — só em cotação; depois de virar embarque esses campos
+            ficam mesclados na aba Logística (Card 1 e Card 6). */}
         {!isShipmentMode && (
         <TabsContent value="general">
           <Card className="glass">
@@ -2079,7 +2079,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               </Button>
             </CardHeader>
             <CardContent className="pt-6 space-y-4" onBlur={() => handleAutoSaveBlur('general')}>
-              {/* Linha 1: Status - Ref. Cliente - Cliente - Modal - Incoterm - Validade (Status/Ref. Cliente/Validade sÃ³ em cotaÃ§Ãµes) */}
+              {/* Linha 1: Status - Ref. Cliente - Cliente - Modal - Incoterm - Validade (Status/Ref. Cliente/Validade só em cotações) */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 {!isShipmentMode && (
                   <div className="space-y-1.5">
@@ -2094,13 +2094,13 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                         value={form.status}
                         onValueChange={(v) => {
                           if (v === 'approved') {
-                            // NÃ£o marca localmente como "approved" antes da hora: esse status sÃ³
-                            // deve existir de fato se a conversÃ£o em embarque realmente for
-                            // concluÃ­da (handleApprove jÃ¡ ajusta form.status pra 'converted' no
-                            // sucesso). Se ficasse marcado aqui e a conversÃ£o fosse bloqueada
+                            // Não marca localmente como "approved" antes da hora: esse status só
+                            // deve existir de fato se a conversão em embarque realmente for
+                            // concluída (handleApprove já ajusta form.status pra 'converted' no
+                            // sucesso). Se ficasse marcado aqui e a conversão fosse bloqueada
                             // (ex: limite do plano) ou falhasse, um save qualquer depois deixaria
-                            // a cotaÃ§Ã£o travada em "approved" sem embarque nenhum â€” sumindo tanto
-                            // da lista de CotaÃ§Ãµes quanto da de Embarques.
+                            // a cotação travada em "approved" sem embarque nenhum — sumindo tanto
+                            // da lista de Cotações quanto da de Embarques.
                             handleApprove();
                           } else {
                             setForm({ ...form, status: v });
@@ -2124,7 +2124,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     <Input
                       value={form.client_reference || ''}
                       onChange={(e) => setForm({ ...form, client_reference: e.target.value })}
-                      placeholder="ReferÃªncia do cliente (opcional)"
+                      placeholder="Referência do cliente (opcional)"
                       disabled={!canEditGeneral}
                     />
                   </div>
@@ -2132,9 +2132,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('shipments.client')}</Label>
                   {(() => {
-                    // No modo embarque nÃ£o existe botÃ£o "Editar CotaÃ§Ã£o" â€” o campo Cliente
+                    // No modo embarque não existe botão "Editar Cotação" — o campo Cliente
                     // segue a mesma regra de acesso da aba Carga (canEditCargo). Se o
-                    // cliente jÃ¡ estiver definido e houver taxas/DN/AR/parceiros lanÃ§ados
+                    // cliente já estiver definido e houver taxas/DN/AR/parceiros lançados
                     // no nome dele, avisamos antes de trocar (requestClientChange).
                     const canChangeClientInShipment = isShipmentMode && canEditCargo;
                     return (
@@ -2183,7 +2183,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   >
                     <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
                     <SelectContent>
-                      {form.transport_mode === 'road' && <SelectItem value="NONE">â€” Sem incoterm â€”</SelectItem>}
+                      {form.transport_mode === 'road' && <SelectItem value="NONE">— Sem incoterm —</SelectItem>}
                       {incoterms.map((ic) => (
                         <SelectItem key={ic} value={ic}>{ic}</SelectItem>
                       ))}
@@ -2203,16 +2203,16 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 )}
               </div>
 
-              {/* Linha 1.5: Coleta - Entrega â€” endereÃ§os usados pra cotar com fornecedores,
-                  nÃ£o fazem parte da rota (Origem/Destino) nem viram carga tributÃ¡ria/logÃ­stica;
-                  sÃ³ aparecem no resumo copiado se estiverem preenchidos. */}
+              {/* Linha 1.5: Coleta - Entrega — endereços usados pra cotar com fornecedores,
+                  não fazem parte da rota (Origem/Destino) nem viram carga tributária/logística;
+                  só aparecem no resumo copiado se estiverem preenchidos. */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Coleta</Label>
                   <Input
                     value={form.pickup_address}
                     onChange={(e) => setForm({ ...form, pickup_address: e.target.value })}
-                    placeholder="EndereÃ§o de coleta (opcional)"
+                    placeholder="Endereço de coleta (opcional)"
                     disabled={!canEditGeneral}
                   />
                 </div>
@@ -2221,7 +2221,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   <Input
                     value={form.delivery_address}
                     onChange={(e) => setForm({ ...form, delivery_address: e.target.value })}
-                    placeholder="EndereÃ§o de entrega (opcional)"
+                    placeholder="Endereço de entrega (opcional)"
                     disabled={!canEditGeneral}
                   />
                 </div>
@@ -2242,7 +2242,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     <Input
                       value={form.origin}
                       onChange={(e) => setForm({ ...form, origin: e.target.value })}
-                      placeholder="SÃ£o Paulo, BR"
+                      placeholder="São Paulo, BR"
                       disabled={!canEditGeneral}
                     />
                   )}
@@ -2280,7 +2280,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 </div>
               </div>
 
-              {/* Linha 3: Transit Time - Free Time - Armazenagem (LCL e FCL â€” regra do FCL a definir) */}
+              {/* Linha 3: Transit Time - Free Time - Armazenagem (LCL e FCL — regra do FCL a definir) */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-start">
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('quotes.transit_time')}</Label>
@@ -2308,7 +2308,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 )}
               </div>
 
-              {/* Linha 4: ObservaÃ§Ãµes - CondiÃ§Ãµes de pagamento */}
+              {/* Linha 4: Observações - Condições de pagamento */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs">{t('quotes.notes')}</Label>
@@ -2321,7 +2321,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">CondiÃ§Ãµes de pagamento</Label>
+                  <Label className="text-xs">Condições de pagamento</Label>
                   <Textarea
                     value={form.payment_terms}
                     onChange={(e) => setForm({ ...form, payment_terms: e.target.value })}
@@ -2344,7 +2344,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 <div className="rounded-md border border-primary/30 bg-primary/5 text-xs px-3 py-2 flex items-center gap-2">
                   <Info className="w-4 h-4 shrink-0 text-primary" />
                   <span>
-                    Esta cotaÃ§Ã£o tem uma Estimativa de custo preenchida: o <strong>peso total</strong> usado para calcular as taxas por kg vem da aba Estimativa, nÃ£o daqui. Volume (mÂ³) e containers continuam vindo desta aba.
+                    Esta cotação tem uma Estimativa de custo preenchida: o <strong>peso total</strong> usado para calcular as taxas por kg vem da aba Estimativa, não daqui. Volume (m³) e containers continuam vindo desta aba.
                   </span>
                 </div>
               )}
@@ -2370,19 +2370,19 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 quotePartners={quotePartners}
                 onChanged={() => {
                   queryClient.invalidateQueries({ queryKey: ['quote-partners', quoteId] });
-                  // A aba LogÃ­stica usa sua prÃ³pria query (cache separado) pra
-                  // montar as opÃ§Ãµes de Shipper/Armador/Notify/Consignee â€” sem
-                  // invalidar aqui tambÃ©m, uma empresa recÃ©m-adicionada em
-                  // Empresas nÃ£o aparecia lÃ¡ (nem disparava o auto-preenchimento
-                  // do Armador) atÃ© a pÃ¡gina ser recarregada.
+                  // A aba Logística usa sua própria query (cache separado) pra
+                  // montar as opções de Shipper/Armador/Notify/Consignee — sem
+                  // invalidar aqui também, uma empresa recém-adicionada em
+                  // Empresas não aparecia lá (nem disparava o auto-preenchimento
+                  // do Armador) até a página ser recarregada.
                   queryClient.invalidateQueries({ queryKey: ['quote-partners-logistics', quoteId] });
                 }}
               />
             </CardContent>
           </Card>
 
-          {/* Shipper/Armador/Notify/Consignee do embarque â€” mudaram da aba
-              LogÃ­stica pra cÃ¡, jÃ¡ que as opÃ§Ãµes vÃªm das empresas cadastradas
+          {/* Shipper/Armador/Notify/Consignee do embarque — mudaram da aba
+              Logística pra cá, já que as opções vêm das empresas cadastradas
               logo acima. */}
           {isShipmentMode && shipment && (
             <ShipmentPartnersCard
@@ -2396,8 +2396,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         {/* Charges Tab */}
         <TabsContent value="charges">
           <div className="space-y-4">
-            {/* Armazenagem no destino, Seguro Internacional e os botÃµes de
-                aÃ§Ã£o da aba â€” tudo na mesma linha (quebra em telas menores). */}
+            {/* Armazenagem no destino, Seguro Internacional e os botões de
+                ação da aba — tudo na mesma linha (quebra em telas menores). */}
             {(() => {
               const showStorageFee = form.transport_mode === 'ocean_lcl' || form.transport_mode === 'ocean_fcl';
               return (
@@ -2413,7 +2413,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                               <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
                             </TooltipTrigger>
                             <TooltipContent className="max-w-64 text-xs">
-                              NÃ£o compÃµe o total da cotaÃ§Ã£o. Gera automaticamente uma conta a receber com o rebate: em LCL, um percentual cadastrado no Co-loader do processo; em FCL, um valor fixo cadastrado no Terminal do processo.
+                              Não compõe o total da cotação. Gera automaticamente uma conta a receber com o rebate: em LCL, um percentual cadastrado no Co-loader do processo; em FCL, um valor fixo cadastrado no Terminal do processo.
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -2448,7 +2448,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                         type="button"
                         size="sm"
                         onClick={() => {
-                          // Sugere o cliente da cotaÃ§Ã£o/embarque como parceiro padrÃ£o apenas na Venda
+                          // Sugere o cliente da cotação/embarque como parceiro padrão apenas na Venda
                           const def = form.client_id || '';
                           setSellPartnerId((sp) => sp || def);
                           setAddChargeOpen(true);
@@ -2477,7 +2477,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                       className="gap-2"
                     >
                       <FileText className="w-4 h-4" />
-                      PrÃ©-visualizar Proposta (PDF)
+                      Pré-visualizar Proposta (PDF)
                     </Button>
                     {isShipmentMode && isFullAccess && (
                       <Button
@@ -2512,7 +2512,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               <Dialog open={addChargeOpen} onOpenChange={(o) => {
                 setAddChargeOpen(o);
                 if (o) {
-                  // Ao abrir: prÃ©-preenche apenas a Venda com o cliente da cotaÃ§Ã£o
+                  // Ao abrir: pré-preenche apenas a Venda com o cliente da cotação
                   const def = form.client_id || '';
                   setSellPartnerId((sp) => sp || def);
                 } else {
@@ -2534,13 +2534,13 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                         {t('quotes.add_charge')}
                       </DialogTitle>
                       <DialogDescription className="text-xs">
-                        Escolha o trecho, descreva a taxa e preencha compra e/ou venda â€” cada lado com sua empresa, unidade, moeda e valor.
+                        Escolha o trecho, descreva a taxa e preencha compra e/ou venda — cada lado com sua empresa, unidade, moeda e valor.
                       </DialogDescription>
                     </DialogHeader>
                   </div>
 
                   <div className="px-6 py-4 space-y-3.5 max-h-[85vh] overflow-y-auto">
-                  {/* Trecho + DescriÃ§Ã£o na mesma linha */}
+                  {/* Trecho + Descrição na mesma linha */}
                   <div className="flex gap-3 items-end flex-wrap">
                     <div className="space-y-1.5 shrink-0">
                       <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Trecho</Label>
@@ -2586,9 +2586,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                           style={{ textTransform: 'uppercase' }}
                         />
                          {showChargeSuggestions && chargeDescOptionCount > 0 && (
-                           // Renderizado como filho direto do wrapper relativo (nÃ£o em portal para o body),
+                           // Renderizado como filho direto do wrapper relativo (não em portal para o body),
                            // pois o DismissableLayer do Radix Dialog fecha/perde o clique em elementos
-                           // portalizados fora da Ã¡rvore do DialogContent, impedindo a seleÃ§Ã£o do item.
+                           // portalizados fora da árvore do DialogContent, impedindo a seleção do item.
                            <div
                              style={{
                                position: 'absolute',
@@ -2643,8 +2643,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   </div>
                   </div>
 
-                  {/* Empresa(s), unidade de cobranÃ§a e valor â€” campos de Compra e Venda ficam
-                      totalmente independentes quando bidirecional estÃ¡ ligado. */}
+                  {/* Empresa(s), unidade de cobrança e valor — campos de Compra e Venda ficam
+                      totalmente independentes quando bidirecional está ligado. */}
                   {(() => {
                     const partnerOptions = (
                       <>
@@ -2672,9 +2672,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                       <>
                         {BILLING_UNITS.map((u) => {
                           const mixed = cargoMetrics.totalContainers20 > 0 && cargoMetrics.totalContainers40 > 0;
-                          // ForÃ§a escolher 20' ou 40' quando a carga Ã© mista
+                          // Força escolher 20' ou 40' quando a carga é mista
                           if (u === 'per_container' && mixed) {
-                            return <SelectItem key={u} value={u} disabled>{t(`quotes.billing_${u}`)} (carga mista â€” escolha 20' ou 40')</SelectItem>;
+                            return <SelectItem key={u} value={u} disabled>{t(`quotes.billing_${u}`)} (carga mista — escolha 20' ou 40')</SelectItem>;
                           }
                           if (u === 'per_container_20' && cargoMetrics.totalContainers20 === 0) return null;
                           if (u === 'per_container_40' && cargoMetrics.totalContainers40 === 0) return null;
@@ -2684,21 +2684,21 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                     );
 
                     const billingHint = (unit: string): string | null => {
-                      if (unit === 'percent') return '% das taxas base (defina apÃ³s criar)';
+                      if (unit === 'percent') return '% das taxas base (defina após criar)';
                       switch (unit) {
-                        case 'per_cw': return `Ã— ${cargoMetrics.totalChargeable.toFixed(2)} kg`;
-                        case 'per_ton': return `Ã— ${(cargoMetrics.totalWeight / 1000).toFixed(3)} ton`;
-                        case 'per_cbm': return `Ã— ${cargoMetrics.totalCbm.toFixed(4)} mÂ³`;
+                        case 'per_cw': return `× ${cargoMetrics.totalChargeable.toFixed(2)} kg`;
+                        case 'per_ton': return `× ${(cargoMetrics.totalWeight / 1000).toFixed(3)} ton`;
+                        case 'per_cbm': return `× ${cargoMetrics.totalCbm.toFixed(4)} m³`;
                         case 'per_wm': {
                           const tons = cargoMetrics.totalWeight / 1000;
                           const cbm = cargoMetrics.totalCbm;
-                          const winner = tons >= cbm ? `${tons.toFixed(3)} ton` : `${cbm.toFixed(4)} mÂ³`;
-                          return `Ã— ${winner} (W/M)`;
+                          const winner = tons >= cbm ? `${tons.toFixed(3)} ton` : `${cbm.toFixed(4)} m³`;
+                          return `× ${winner} (W/M)`;
                         }
-                        case 'per_container': return `Ã— ${cargoMetrics.totalContainers} cntr`;
-                        case 'per_container_20': return `Ã— ${cargoMetrics.totalContainers20} cntr 20'`;
-                        case 'per_container_40': return `Ã— ${cargoMetrics.totalContainers40} cntr 40'`;
-                        case 'per_bl': return `Ã— 1 BL`;
+                        case 'per_container': return `× ${cargoMetrics.totalContainers} cntr`;
+                        case 'per_container_20': return `× ${cargoMetrics.totalContainers20} cntr 20'`;
+                        case 'per_container_40': return `× ${cargoMetrics.totalContainers40} cntr 40'`;
+                        case 'per_bl': return `× 1 BL`;
                         default: return null;
                       }
                     };
@@ -2716,7 +2716,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                               </Select>
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-[11px] text-muted-foreground">Unidade de cobranÃ§a</Label>
+                              <Label className="text-[11px] text-muted-foreground">Unidade de cobrança</Label>
                               <Select value={chargeForm.billing_unit} onValueChange={(v) => setChargeForm({ ...chargeForm, billing_unit: v })}>
                                 <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                                 <SelectContent>{billingUnitOptions}</SelectContent>
@@ -2756,7 +2756,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                               </Select>
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-[11px] text-muted-foreground">Unidade de cobranÃ§a</Label>
+                              <Label className="text-[11px] text-muted-foreground">Unidade de cobrança</Label>
                               <Select value={sellBillingUnit} onValueChange={setSellBillingUnit}>
                                 <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                                 <SelectContent>{billingUnitOptions}</SelectContent>
@@ -2814,7 +2814,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             {!canSeeFinancials && isShipmentMode && (
               <Card className="glass">
                 <CardContent className="py-12 text-center text-muted-foreground">
-                  <p className="text-sm">InformaÃ§Ãµes financeiras restritas ao vendedor do processo.</p>
+                  <p className="text-sm">Informações financeiras restritas ao vendedor do processo.</p>
                 </CardContent>
               </Card>
             )}
@@ -2886,7 +2886,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               );
             })()}
 
-            {/* Profit summary removido â€” informaÃ§Ã£o jÃ¡ exibida no card de Lucro acima */}
+            {/* Profit summary removido — informação já exibida no card de Lucro acima */}
           </div>
         </TabsContent>
 
@@ -2907,7 +2907,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           </TabsContent>
         )}
 
-        {/* PrestaÃ§Ã£o de Contas: sÃ³ existe depois que o NumerÃ¡rio Ã© aprovado. */}
+        {/* Prestação de Contas: só existe depois que o Numerário é aprovado. */}
         {estimateEnabled && accountability && (
           <TabsContent value="accountability">
             <AccountabilityTab
@@ -2918,9 +2918,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           </TabsContent>
         )}
 
-        {/* Documents tab - available in both modes. A DN de Fornecedor Ã© criada
+        {/* Documents tab - available in both modes. A DN de Fornecedor é criada
             anexando um arquivo com a categoria "DN Fornecedor" aqui mesmo (sem
-            aba separada); a DN de Cliente Ã© emitida por um botÃ£o nesta aba. */}
+            aba separada); a DN de Cliente é emitida por um botão nesta aba. */}
         <TabsContent value="documents">
           {isShipmentMode && shipment ? (
             <DocumentsTab
@@ -2955,9 +2955,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               clientIdOverride={form.client_id}
             />
 
-            {/* CARD 6 â€” ObservaÃ§Ãµes / CondiÃ§Ãµes de pagamento (aba Geral
-                mesclada aqui apÃ³s virar embarque) */}
-            <CollapsibleCard title="6. ObservaÃ§Ãµes & CondiÃ§Ãµes de Pagamento">
+            {/* CARD 6 — Observações / Condições de pagamento (aba Geral
+                mesclada aqui após virar embarque) */}
+            <CollapsibleCard title="6. Observações & Condições de Pagamento">
               <div
                 className="grid grid-cols-1 md:grid-cols-2 gap-4"
                 onBlur={() => handleAutoSaveBlur('logistics')}
@@ -2973,7 +2973,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">CondiÃ§Ãµes de pagamento</Label>
+                  <Label className="text-xs">Condições de pagamento</Label>
                   <Textarea
                     value={form.payment_terms}
                     onChange={(e) => setForm({ ...form, payment_terms: e.target.value })}
@@ -3009,9 +3009,9 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         )}
       </Tabs>
 
-      {/* Geral e Resumo da Carga nÃ£o usam mais esse botÃ£o â€” salvam sozinhas
-          (auto-save) a cada alteraÃ§Ã£o. Fica sÃ³ como fallback pras demais abas
-          de cotaÃ§Ã£o (Taxas, Empresas etc.) que ainda dependem de salvar aqui. */}
+      {/* Geral e Resumo da Carga não usam mais esse botão — salvam sozinhas
+          (auto-save) a cada alteração. Fica só como fallback pras demais abas
+          de cotação (Taxas, Empresas etc.) que ainda dependem de salvar aqui. */}
       {!isShipmentMode && activeTab !== 'estimate' && activeTab !== 'documents' && activeTab !== 'cargo' && activeTab !== 'general' && (
         <FloatingSaveButton
           visible={hasChanges && form.status !== 'converted'}
@@ -3021,7 +3021,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         />
       )}
 
-      {/* Respiro no fim da pÃ¡gina, pra nÃ£o ficar por baixo do botÃ£o flutuante de Salvar */}
+      {/* Respiro no fim da página, pra não ficar por baixo do botão flutuante de Salvar */}
       <div className="h-20" />
 
       <QuotePdfPreviewDialog
@@ -3070,8 +3070,8 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
             <AlertDialogTitle>Trocar o cliente deste processo?</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
-                <p>Este processo jÃ¡ tem lanÃ§amentos no nome do cliente atual: {clientChangeWarnings.join(', ')}.</p>
-                <p>Trocar o cliente <strong>nÃ£o atualiza</strong> esses lanÃ§amentos automaticamente â€” eles continuarÃ£o vinculados ao cliente antigo. Deseja continuar mesmo assim?</p>
+                <p>Este processo já tem lançamentos no nome do cliente atual: {clientChangeWarnings.join(', ')}.</p>
+                <p>Trocar o cliente <strong>não atualiza</strong> esses lançamentos automaticamente — eles continuarão vinculados ao cliente antigo. Deseja continuar mesmo assim?</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -3091,7 +3091,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           <AlertDialogHeader>
             <AlertDialogTitle>Sair sem salvar?</AlertDialogTitle>
             <AlertDialogDescription>
-              VocÃª tem alteraÃ§Ãµes nÃ£o salvas nesta cotaÃ§Ã£o (incluindo containers/carga). Se sair agora, elas serÃ£o perdidas.
+              Você tem alterações não salvas nesta cotação (incluindo containers/carga). Se sair agora, elas serão perdidas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -3130,7 +3130,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   );
 }
 
-/* â”€â”€ Charge Column Sub-component â”€â”€ */
+/* ── Charge Column Sub-component ── */
 interface ChargeColumnProps {
   title: string;
   charges: any[];
@@ -3145,7 +3145,7 @@ interface ChargeColumnProps {
   colorClass: string;
   borderClass: string;
   /** Fundo levemente colorido do card inteiro (ex.: vermelho p/ Compra,
-   *  verde p/ Venda) â€” substitui o tÃ­tulo "Total Compra"/"Total Venda". */
+   *  verde p/ Venda) — substitui o título "Total Compra"/"Total Venda". */
   bgClass?: string;
   cloneLabel: string;
   partners: any[];
@@ -3155,19 +3155,19 @@ interface ChargeColumnProps {
   showReconciliation?: boolean;
   currentUserId?: string;
   onPercentClick?: (chargeId: string) => void;
-  /** BotÃ£o "Enviar DN" no cabeÃ§alho de cada fornecedor (sÃ³ faz sentido do
-   *  lado Compra) â€” habilitado sÃ³ quando todas as taxas do grupo jÃ¡ foram
+  /** Botão "Enviar DN" no cabeçalho de cada fornecedor (só faz sentido do
+   *  lado Compra) — habilitado só quando todas as taxas do grupo já foram
    *  conferidas (buy_actual_confirmed_at preenchido). */
   onSendDn?: (partnerId: string, partnerName: string, suggestedAmount: number, suggestedCurrency: string, chargeIds: string[]) => void;
-  /** BotÃ£o "Gerar ND" no cabeÃ§alho de cada empresa (sÃ³ faz sentido do lado
-   *  Venda) â€” abre o mesmo formulÃ¡rio de emissÃ£o de DN ao Cliente, jÃ¡
-   *  escopado Ã s taxas daquele grupo. */
+  /** Botão "Gerar ND" no cabeçalho de cada empresa (só faz sentido do lado
+   *  Venda) — abre o mesmo formulário de emissão de DN ao Cliente, já
+   *  escopado às taxas daquele grupo. */
   onGenerateNd?: (partnerId: string, partnerName: string, groupCharges: any[]) => void;
-  /** "Reabrir" uma taxa jÃ¡ enviada numa DN (ainda nÃ£o paga) â€” exclui a DN
-   *  inteira e libera as taxas presas nela pra ediÃ§Ã£o de novo. */
+  /** "Reabrir" uma taxa já enviada numa DN (ainda não paga) — exclui a DN
+   *  inteira e libera as taxas presas nela pra edição de novo. */
   onReopenCharge?: (charge: any, partnerName: string) => Promise<{ ok: boolean; error?: string }>;
-  /** Equivalente do lado venda: "Reabrir" uma taxa jÃ¡ enviada numa ND ao
-   *  cliente â€” exclui a ND e libera a taxa pra ediÃ§Ã£o de novo. */
+  /** Equivalente do lado venda: "Reabrir" uma taxa já enviada numa ND ao
+   *  cliente — exclui a ND e libera a taxa pra edição de novo. */
   onReopenSellCharge?: (charge: any, partnerName: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -3186,11 +3186,11 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
     switch (unit) {
       case 'per_cw': return `${cargoMetrics.totalChargeable.toFixed(2)} kg`;
       case 'per_ton': return `${(cargoMetrics.totalWeight / 1000).toFixed(3)} ton`;
-      case 'per_cbm': return `${cargoMetrics.totalCbm.toFixed(4)} mÂ³`;
+      case 'per_cbm': return `${cargoMetrics.totalCbm.toFixed(4)} m³`;
       case 'per_wm': {
         const tons = cargoMetrics.totalWeight / 1000;
         const cbm = cargoMetrics.totalCbm;
-        return tons >= cbm ? `${tons.toFixed(3)} ton (W/M)` : `${cbm.toFixed(4)} mÂ³ (W/M)`;
+        return tons >= cbm ? `${tons.toFixed(3)} ton (W/M)` : `${cbm.toFixed(4)} m³ (W/M)`;
       }
       case 'per_container': return `${cargoMetrics.totalContainers} cntr`;
       case 'per_container_20': return `${cargoMetrics.totalContainers20} cntr 20'`;
@@ -3226,11 +3226,11 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
     setClonePartnerId('');
   }
 
-  // Uma empresa pode ter taxas em mais de um trecho (origem/frete/destino) â€”
-  // antes cada trecho virava um grupo/cabeÃ§alho separado, repetindo a mesma
-  // empresa vÃ¡rias vezes. Agora agrupa sÃ³ por empresa (uma linha de cabeÃ§alho
-  // cada), e cada taxa continua mostrando seu prÃ³prio trecho na coluna
-  // "Trecho" â€” entÃ£o "Enviar DN"/"Gerar ND" jÃ¡ juntam todos os trechos da
+  // Uma empresa pode ter taxas em mais de um trecho (origem/frete/destino) —
+  // antes cada trecho virava um grupo/cabeçalho separado, repetindo a mesma
+  // empresa várias vezes. Agora agrupa só por empresa (uma linha de cabeçalho
+  // cada), e cada taxa continua mostrando seu próprio trecho na coluna
+  // "Trecho" — então "Enviar DN"/"Gerar ND" já juntam todos os trechos da
   // empresa de uma vez, sem precisar aparecer mais de uma vez.
   const groupedByPartner = useMemo(() => {
     const partnerMap = new Map<string, { partnerId: string; partnerName: string; partnerCategory: string; charges: any[] }>();
@@ -3289,7 +3289,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
               groupedByPartner.map((group) => {
                 return (
                   <React.Fragment key={group.partnerId}>
-                        {/* Partner sub-header â€” uma linha sÃ³ por empresa, mesmo que tenha
+                        {/* Partner sub-header — uma linha só por empresa, mesmo que tenha
                             taxas em mais de um trecho (cada taxa mostra seu trecho embaixo). */}
                         <TableRow className="bg-muted/30 border-t border-l-4 border-l-muted-foreground/20">
                           <TableCell colSpan={4} className="py-1.5 px-4">
@@ -3310,9 +3310,9 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                 </div>
                               </div>
                               {onSendDn && amountKey === 'buy_amount' && group.partnerId && (() => {
-                                // Taxas jÃ¡ enviadas numa DN anterior (paga ou nÃ£o) nÃ£o entram de
-                                // novo â€” se o fornecedor mandar uma cobranÃ§a nova, ela chega como
-                                // taxa nova (sem sent_in_debit_note_id) e Ã© essa que conta aqui.
+                                // Taxas já enviadas numa DN anterior (paga ou não) não entram de
+                                // novo — se o fornecedor mandar uma cobrança nova, ela chega como
+                                // taxa nova (sem sent_in_debit_note_id) e é essa que conta aqui.
                                 const pendingCharges = group.charges.filter((c: any) => !c.sent_in_debit_note_id);
                                 const hasPending = pendingCharges.length > 0;
                                 const allConfirmed = pendingCharges.every((c: any) => !!c.buy_actual_confirmed_at);
@@ -3326,15 +3326,15 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                     disabled={!enabled}
                                     title={
                                       !hasPending
-                                        ? 'Todas as taxas deste fornecedor jÃ¡ foram enviadas em uma DN'
+                                        ? 'Todas as taxas deste fornecedor já foram enviadas em uma DN'
                                         : allConfirmed
                                           ? 'Enviar Debit Note deste fornecedor'
                                           : 'Confira todas as taxas deste fornecedor antes de enviar a DN'
                                     }
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      // Soma o valor jÃ¡ conferido (buy_amount_actual) das taxas
-                                      // ainda nÃ£o enviadas, na moeda predominante entre elas.
+                                      // Soma o valor já conferido (buy_amount_actual) das taxas
+                                      // ainda não enviadas, na moeda predominante entre elas.
                                       const currency = pendingCharges[0]?.currency || 'USD';
                                       const amount = pendingCharges.reduce((s: number, c: any) => {
                                         if ((c.currency || 'USD') !== currency) return s;
@@ -3352,8 +3352,8 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                 );
                               })()}
                               {onGenerateNd && amountKey === 'sell_amount' && group.partnerId && (() => {
-                                // Taxas jÃ¡ enviadas numa ND anterior ficam de fora â€” reentram sÃ³
-                                // se a ND antiga for reaberta/excluÃ­da primeiro.
+                                // Taxas já enviadas numa ND anterior ficam de fora — reentram só
+                                // se a ND antiga for reaberta/excluída primeiro.
                                 const pending = group.charges.filter((c: any) => !c.sent_in_debit_note_id);
                                 return (
                                   <Button
@@ -3362,7 +3362,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                     variant="outline"
                                     className="h-7 gap-1.5 text-xs"
                                     disabled={pending.length === 0}
-                                    title={pending.length === 0 ? 'Todas as taxas desta empresa jÃ¡ foram enviadas em uma ND' : 'Gerar Nota de DÃ©bito para esta empresa (todas as taxas, todos os trechos)'}
+                                    title={pending.length === 0 ? 'Todas as taxas desta empresa já foram enviadas em uma ND' : 'Gerar Nota de Débito para esta empresa (todas as taxas, todos os trechos)'}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       onGenerateNd(group.partnerId, group.partnerName, pending);
@@ -3376,8 +3376,8 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                           </TableCell>
                         </TableRow>
                         {group.charges.map((c: any) => {
-                          // Do lado venda, gerar a ND jÃ¡ trava o valor cobrado do cliente â€” nÃ£o
-                          // tem uma etapa de "conferÃªncia" separada como o lado compra. SÃ³ dÃ¡ pra
+                          // Do lado venda, gerar a ND já trava o valor cobrado do cliente — não
+                          // tem uma etapa de "conferência" separada como o lado compra. Só dá pra
                           // editar de novo reabrindo (o que exclui a ND vinculada).
                           const lockedForEdit = amountKey === 'sell_amount' && !!c.sent_in_debit_note_id;
                           return (
@@ -3407,10 +3407,10 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                       Selecionar taxas base
                                     </span>
                                   )}
-                                  {/* SÃ³ importa pro trecho "destino" â€” Ã© o que compÃµe a base do
+                                  {/* Só importa pro trecho "destino" — é o que compõe a base do
                                       ICMS na Estimativa (junto com Siscomex/AFRMM). Clique
-                                      alterna: AutomÃ¡tico (decide pela palavra-chave da descriÃ§Ã£o)
-                                      â†’ Sim â†’ NÃ£o â†’ AutomÃ¡tico de novo. */}
+                                      alterna: Automático (decide pela palavra-chave da descrição)
+                                      → Sim → Não → Automático de novo. */}
                                   {c.leg === 'destination' && !readOnly && (
                                     <button
                                       type="button"
@@ -3419,7 +3419,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                         const next = c.aduaneira === true ? false : c.aduaneira === false ? null : true;
                                         onUpdate(c.id, { aduaneira: next });
                                       }}
-                                      title="Define se esta taxa entra na base de cÃ¡lculo do ICMS (Estimativa de Custo). Clique para alternar: AutomÃ¡tico â†’ Sim â†’ NÃ£o."
+                                      title="Define se esta taxa entra na base de cálculo do ICMS (Estimativa de Custo). Clique para alternar: Automático → Sim → Não."
                                       className={`ml-1.5 text-[10px] border rounded px-1 py-0.5 ${
                                         c.aduaneira === true
                                           ? 'text-blue-600 border-blue-400/50 bg-blue-500/10'
@@ -3428,13 +3428,13 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                             : 'text-muted-foreground border-dashed border-border'
                                       }`}
                                     >
-                                      Aduaneira: {c.aduaneira === true ? 'Sim' : c.aduaneira === false ? 'NÃ£o' : 'Auto'}
+                                      Aduaneira: {c.aduaneira === true ? 'Sim' : c.aduaneira === false ? 'Não' : 'Auto'}
                                     </button>
                                   )}
-                                  {/* Prepaid = jÃ¡ pago na origem, nÃ£o entra no total que o cliente
-                                      precisa depositar via NumerÃ¡rio (mas continua aparecendo na
-                                      Estimativa e no NumerÃ¡rio, sÃ³ de fora do total a cobrar).
-                                      Collect (padrÃ£o) = cobrado do cliente no destino. */}
+                                  {/* Prepaid = já pago na origem, não entra no total que o cliente
+                                      precisa depositar via Numerário (mas continua aparecendo na
+                                      Estimativa e no Numerário, só de fora do total a cobrar).
+                                      Collect (padrão) = cobrado do cliente no destino. */}
                                   {!readOnly && (
                                     <button
                                       type="button"
@@ -3443,7 +3443,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                         const next = c.payment_term === 'prepaid' ? 'collect' : 'prepaid';
                                         onUpdate(c.id, { payment_term: next });
                                       }}
-                                      title="Prepaid = jÃ¡ pago na origem, nÃ£o entra no total do NumerÃ¡rio (mas continua aparecendo na Estimativa/NumerÃ¡rio). Collect = cobrado do cliente no destino. Clique para alternar."
+                                      title="Prepaid = já pago na origem, não entra no total do Numerário (mas continua aparecendo na Estimativa/Numerário). Collect = cobrado do cliente no destino. Clique para alternar."
                                       className={`ml-1.5 text-[10px] border rounded px-1 py-0.5 ${
                                         c.payment_term === 'prepaid'
                                           ? 'text-amber-600 border-amber-400/50 bg-amber-500/10'
@@ -3456,7 +3456,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                 </div>
                                 {c.billing_unit === 'percent' ? (
                                   <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
-                                    {(Number(c[amountKey]) || 0).toFixed(2)}% Ã— base = USD {(Number(amountKey === 'buy_amount' ? c.computed_buy_amount : c.computed_sell_amount) || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {(Number(c[amountKey]) || 0).toFixed(2)}% × base = USD {(Number(amountKey === 'buy_amount' ? c.computed_buy_amount : c.computed_sell_amount) || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </p>
                                 ) : c.billing_unit && c.billing_unit !== 'fixed' && getBillingRef(c.billing_unit) && (() => {
                                   const unitPrice = editingId === c.id ? (parseFloat(editAmount) || 0) : (c[amountKey] || 0);
@@ -3464,7 +3464,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   const total = unitPrice * mult;
                                   return (
                                     <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
-                                      {getBillingRef(c.billing_unit)} Ã— {c.currency || 'USD'} {unitPrice.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = {c.currency || 'USD'} {total.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {getBillingRef(c.billing_unit)} × {c.currency || 'USD'} {unitPrice.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = {c.currency || 'USD'} {total.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
                                   );
                                 })()}
@@ -3565,7 +3565,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                       size="icon"
                                       className="h-7 w-7"
                                       disabled={!!c.sent_in_debit_note_id}
-                                      title={c.sent_in_debit_note_id ? 'Taxa jÃ¡ enviada em uma DN â€” nÃ£o pode ser excluÃ­da' : undefined}
+                                      title={c.sent_in_debit_note_id ? 'Taxa já enviada em uma DN — não pode ser excluída' : undefined}
                                       onClick={() => onDelete(c.id)}
                                     >
                                       <Trash2 className={`w-3.5 h-3.5 ${c.sent_in_debit_note_id ? 'text-muted-foreground' : 'text-destructive'}`} />
@@ -3620,7 +3620,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                       const total = unitPrice * mult;
                                       return (
                                         <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">
-                                          {getBillingRef(c.billing_unit)} Ã— {c.currency || 'USD'} {unitPrice.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = <strong>{c.currency || 'USD'} {total.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                                          {getBillingRef(c.billing_unit)} × {c.currency || 'USD'} {unitPrice.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = <strong>{c.currency || 'USD'} {total.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                                         </span>
                                       );
                                     })()}
@@ -3681,7 +3681,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
   );
 }
 
-/* â”€â”€ Quote Partners List â”€â”€ */
+/* ── Quote Partners List ── */
 interface QuotePartnersListProps {
   quoteId: string;
   companyId: string;
@@ -3700,8 +3700,8 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
   const addedClientIds = new Set(quotePartners.map((qp: any) => qp.clients?.id || qp.client_id));
   const availablePartners = partners.filter((p: any) => !addedClientIds.has(p.id));
 
-  // SÃ³ busca depois que o usuÃ¡rio digitar pelo menos 3 letras, ou pelo menos
-  // 3 dÃ­gitos (caso esteja digitando um CNPJ) â€” nÃ£o abre lista ao simplesmente
+  // Só busca depois que o usuário digitar pelo menos 3 letras, ou pelo menos
+  // 3 dígitos (caso esteja digitando um CNPJ) — não abre lista ao simplesmente
   // clicar no campo.
   const query = searchText.trim();
   const queryDigits = query.replace(/\D/g, '');
@@ -3875,7 +3875,7 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
   );
 }
 
-/* â”€â”€ BotÃ£o "Reabrir" de uma taxa de venda jÃ¡ enviada numa ND ao cliente â”€â”€ */
+/* ── Botão "Reabrir" de uma taxa de venda já enviada numa ND ao cliente ── */
 function ReopenNdButton({ charge, partnerName, onReopenSellCharge }: {
   charge: any;
   partnerName: string;
@@ -3906,16 +3906,16 @@ function ReopenNdButton({ charge, partnerName, onReopenSellCharge }: {
       <AlertDialog open={open} onOpenChange={(o) => !loading && setOpen(o)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Essa taxa jÃ¡ estÃ¡ numa ND emitida</AlertDialogTitle>
+            <AlertDialogTitle>Essa taxa já está numa ND emitida</AlertDialogTitle>
             <AlertDialogDescription>
-              Reabrir vai excluir a Nota de DÃ©bito jÃ¡ emitida ao cliente e removÃª-la de Contas a
-              Receber. A taxa volta a ficar editÃ¡vel. Deseja continuar?
+              Reabrir vai excluir a Nota de Débito já emitida ao cliente e removê-la de Contas a
+              Receber. A taxa volta a ficar editável. Deseja continuar?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirm} disabled={loading}>
-              {loading ? 'Excluindoâ€¦' : 'Sim, excluir ND'}
+              {loading ? 'Excluindo…' : 'Sim, excluir ND'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -3924,10 +3924,10 @@ function ReopenNdButton({ charge, partnerName, onReopenSellCharge }: {
   );
 }
 
-/* â”€â”€ Reconciliation Row (Cotado vs Cobrado do fornecedor) â”€â”€ */
+/* ── Reconciliation Row (Cotado vs Cobrado do fornecedor) ── */
 const VARIANCE_REASONS = ['peso', 'cubagem', 'cambio', 'sobrestadia', 'reajuste', 'outros'] as const;
 const VARIANCE_LABELS: Record<string, string> = {
-  peso: 'Peso', cubagem: 'Cubagem', cambio: 'CÃ¢mbio',
+  peso: 'Peso', cubagem: 'Cubagem', cambio: 'Câmbio',
   sobrestadia: 'Sobrestadia', reajuste: 'Reajuste', outros: 'Outros',
 };
 
@@ -3960,8 +3960,8 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId, part
   const delta = actualTotal != null ? actualTotal - quotedTotal : 0;
   const deltaPct = quotedTotal > 0 && actualTotal != null ? (delta / quotedTotal) * 100 : 0;
   const cur = charge.currency || 'USD';
-  // JÃ¡ vem preenchido com o valor cotado sugerido â€” se nÃ£o houver divergÃªncia,
-  // o usuÃ¡rio sÃ³ confirma direto, sem precisar digitar de novo.
+  // Já vem preenchido com o valor cotado sugerido — se não houver divergência,
+  // o usuário só confirma direto, sem precisar digitar de novo.
   const suggestedVal = String(charge.buy_amount ?? '');
   const [inputVal, setInputVal] = useState(actualUnit != null ? String(actualUnit) : suggestedVal);
   const [reason, setReason] = useState<string>(charge.buy_variance_reason || '');
@@ -3981,10 +3981,10 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId, part
   const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
   const [reopening, setReopening] = useState(false);
 
-  // Enviada numa DN Ã© o travamento de verdade â€” a partir daÃ­ ninguÃ©m edita
-  // mais o valor direto aqui. SÃ³ "Conferir" (checklist, prÃ©-requisito pra
-  // habilitar o botÃ£o "Enviar DN") nÃ£o trava nada; dÃ¡ pra editar Ã  vontade
-  // atÃ© a DN ser realmente enviada.
+  // Enviada numa DN é o travamento de verdade — a partir daí ninguém edita
+  // mais o valor direto aqui. Só "Conferir" (checklist, pré-requisito pra
+  // habilitar o botão "Enviar DN") não trava nada; dá pra editar à vontade
+  // até a DN ser realmente enviada.
   const sentInDn = !!charge.sent_in_debit_note_id;
 
   const saveActual = () => {
@@ -3992,8 +3992,8 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId, part
     if (val !== null && isNaN(val)) return;
     if (val === (actualUnit ?? null)) return;
     const updates: Record<string, any> = { buy_amount_actual: val };
-    // Mudou o valor depois de jÃ¡ ter conferido (mas ainda nÃ£o enviado)? A
-    // confirmaÃ§Ã£o anterior fica desatualizada â€” precisa conferir de novo.
+    // Mudou o valor depois de já ter conferido (mas ainda não enviado)? A
+    // confirmação anterior fica desatualizada — precisa conferir de novo.
     if (confirmed && !sentInDn) {
       updates.buy_actual_confirmed_at = null;
       updates.buy_actual_confirmed_by = null;
@@ -4024,8 +4024,8 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId, part
     if (result.ok) setReopenConfirmOpen(false);
   };
 
-  // Mesmo depois de paga, ainda dÃ¡ pra reabrir se for realmente necessÃ¡rio
-  // (ex.: DN errada, arquivo trocado) â€” "Reabrir" exclui a DN e a conta a
+  // Mesmo depois de paga, ainda dá pra reabrir se for realmente necessário
+  // (ex.: DN errada, arquivo trocado) — "Reabrir" exclui a DN e a conta a
   // pagar vinculada (perde o registro do pagamento) e libera a taxa de
   // novo. O aviso deixa isso claro antes de confirmar.
   const paid = !!charge.buy_paid_at;
@@ -4069,17 +4069,17 @@ function ReconciliationRow({ charge, cargoMetrics, onUpdate, currentUserId, part
                 <AlertDialog open={reopenConfirmOpen} onOpenChange={(o) => !reopening && setReopenConfirmOpen(o)}>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>{paid ? 'Essa taxa jÃ¡ foi paga' : 'Essa taxa jÃ¡ estÃ¡ numa DN enviada'}</AlertDialogTitle>
+                      <AlertDialogTitle>{paid ? 'Essa taxa já foi paga' : 'Essa taxa já está numa DN enviada'}</AlertDialogTitle>
                       <AlertDialogDescription>
                         {paid
-                          ? 'Reabrir vai excluir a Debit Note jÃ¡ enviada ao fornecedor e o registro do pagamento em Contas a Pagar (data, comprovante, etc. sÃ£o perdidos). As taxas incluÃ­das nela voltam a ficar editÃ¡veis e precisam ser conferidas e reenviadas numa nova DN. Deseja continuar?'
-                          : 'Reabrir vai excluir a Debit Note jÃ¡ enviada ao fornecedor e removÃª-la de Contas a Pagar. As taxas incluÃ­das nela voltam a ficar editÃ¡veis e precisam ser conferidas de novo antes de gerar uma nova DN. Deseja continuar?'}
+                          ? 'Reabrir vai excluir a Debit Note já enviada ao fornecedor e o registro do pagamento em Contas a Pagar (data, comprovante, etc. são perdidos). As taxas incluídas nela voltam a ficar editáveis e precisam ser conferidas e reenviadas numa nova DN. Deseja continuar?'
+                          : 'Reabrir vai excluir a Debit Note já enviada ao fornecedor e removê-la de Contas a Pagar. As taxas incluídas nela voltam a ficar editáveis e precisam ser conferidas de novo antes de gerar uma nova DN. Deseja continuar?'}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel disabled={reopening}>Cancelar</AlertDialogCancel>
                       <AlertDialogAction onClick={handleReopenConfirm} disabled={reopening}>
-                        {reopening ? 'Excluindoâ€¦' : 'Sim, excluir DN'}
+                        {reopening ? 'Excluindo…' : 'Sim, excluir DN'}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
