@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTableSort } from '@/hooks/useTableSort';
 import { SortableHeader } from '@/components/shared/SortableHeader';
 import { ColumnSearch } from '@/components/shared/ColumnSearch';
@@ -12,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ModeIcon } from '@/components/shared/ModeIcon';
-import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown, NotebookPen, RefreshCw, LogOut, GripVertical, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Ship, MapPin, ArrowRight, Package, FileText, Download, Eye, Calendar, Clock, Lock, AlertTriangle, BellRing, ExternalLink, ChevronDown, NotebookPen, RefreshCw, LogOut, GripVertical, ArrowUpDown, ArrowUp, ArrowDown, Info } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import { buildTimeline } from '@/lib/shipmentTimeline';
 import { FlagIcon } from '@/components/shared/FlagIcon';
@@ -1057,6 +1058,7 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimme
   // "Dados do Embarque" (as planilhas) fica fechado por padrão — só o
   // Diário abre sozinho quando o processo é expandido.
   const [dadosOpen, setDadosOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   // Colapsada e Expandida são independentes: hoje QUALQUER campo pode virar
   // coluna da tabela (orderedCollapsedKeys) e também aparecer no card de
   // detalhe — cada checkbox controla só a sua própria exibição.
@@ -1179,6 +1181,52 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimme
           <span className="inline-flex items-center gap-1.5">
             <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform', expanded && 'rotate-180')} />
             {s.reference_number}
+            <Popover open={infoOpen} onOpenChange={setInfoOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
+                  onClick={(e) => { e.stopPropagation(); setInfoOpen((o) => !o); }}
+                  onMouseEnter={() => setInfoOpen(true)}
+                  onMouseLeave={() => setInfoOpen(false)}
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-auto max-w-sm font-normal normal-case"
+                onClick={(e) => e.stopPropagation()}
+                onMouseEnter={() => setInfoOpen(true)}
+                onMouseLeave={() => setInfoOpen(false)}
+              >
+                <div className="flex items-center gap-2 text-sm flex-wrap">
+                  <ModeIcon mode={s.transport_mode} showLabel />
+                  {isExpandedVisible('route') && (
+                    <>
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <FlagIcon country={s.origin_country} />
+                        {s.origin_city || countryFallback(s.origin_country) || '—'}
+                      </span>
+                      {s.transshipment_info && (
+                        <>
+                          <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            Transbordo: {s.transshipment_info.name || s.transshipment_info.code}
+                          </span>
+                        </>
+                      )}
+                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <FlagIcon country={s.destination_country} />
+                        {s.destination_city || countryFallback(s.destination_country) || '—'}
+                      </span>
+                    </>
+                  )}
+                  {isExpandedVisible('incoterm') && s.incoterm && <Badge variant="outline">{s.incoterm}</Badge>}
+                  {channelMeta && <Badge className={channelMeta.badgeClass}>{channelMeta.label}</Badge>}
+                </div>
+              </PopoverContent>
+            </Popover>
           </span>
         </TableCell>
         <TableCell className="py-1 px-2"><Badge className={cn(statusBadgeClass, 'text-[10px] px-1.5 py-0 whitespace-nowrap')}>{statusLabel}</Badge></TableCell>
@@ -1197,35 +1245,9 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimme
           <TableCell colSpan={colSpan} className="p-0">
             <div className="space-y-4 p-5 bg-muted/20 border-t border-border">
 
-            {/* Modal - Origem - Transbordo(se houver) - Destino - Incoterm.
-                Sem badge de Status aqui — já aparece na linha resumo (colapsada)
-                logo acima, exibi-lo de novo seria repetir a mesma informação. */}
-            <div className="flex items-center gap-2 text-sm flex-wrap">
-              <ModeIcon mode={s.transport_mode} showLabel />
-              {isExpandedVisible('route') && (
-                <>
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <FlagIcon country={s.origin_country} />
-                    {s.origin_city || countryFallback(s.origin_country) || '—'}
-                  </span>
-                  {s.transshipment_info && (
-                    <>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        Transbordo: {s.transshipment_info.name || s.transshipment_info.code}
-                      </span>
-                    </>
-                  )}
-                  <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <FlagIcon country={s.destination_country} />
-                    {s.destination_city || countryFallback(s.destination_country) || '—'}
-                  </span>
-                </>
-              )}
-              {isExpandedVisible('incoterm') && s.incoterm && <Badge variant="outline">{s.incoterm}</Badge>}
-              {channelMeta && <Badge className={channelMeta.badgeClass}>{channelMeta.label}</Badge>}
-            </div>
+            {/* Modal - Origem - Transbordo - Destino - Incoterm - Canal: agora
+                exibidos num popover (i) ao lado da Referência, na linha resumo
+                colapsada, em vez de ocupar uma linha fixa aqui no card. */}
 
             {/* Diário do Processo — em destaque, logo no topo do card expandido
                 (v3): é a informação que o cliente mais quer ver rápido. */}
@@ -1396,12 +1418,6 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimme
                 <span>Chegada prevista em {kpis.daysRemaining} dia(s).</span>
               </div>
             )}
-            {isExpandedVisible('next_update') && s.next_update && (
-              <div className="text-xs text-muted-foreground">
-                Próxima atualização: {format(new Date(s.next_update), 'dd/MM/yyyy')}
-              </div>
-            )}
-
             {isExpandedVisible('demurrage_deadline_calc') && demurrageDays !== null && (
               <div className={cn(
                 'flex items-center gap-2 text-xs rounded-md px-3 py-2',
