@@ -27,6 +27,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const QuotePrintView = lazy(() => import("./components/quotes/QuotePrintView"));
 const Tracking = lazy(() => import("./pages/Tracking"));
 const TrackingV2 = lazy(() => import("./pages/TrackingV2"));
+const TrackingV3 = lazy(() => import("./pages/TrackingV3"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Landing = lazy(() => import("./pages/Landing"));
 const Pricing = lazy(() => import("./pages/Pricing"));
@@ -109,6 +110,7 @@ function AppRoutes() {
         <Route path="/quotes/:quoteId/print" element={<QuotePrintView />} />
         <Route path="/tracking/:clientCnpj" element={<Tracking />} />
         <Route path="/tracking-v2/:clientCnpj" element={<TrackingV2 />} />
+        <Route path="/tracking-v3/:clientCnpj" element={<TrackingV3 />} />
         <Route path="/landing" element={<Landing />} />
         <Route path="/precos" element={<Pricing />} />
         <Route path="/signup" element={<Signup />} />
