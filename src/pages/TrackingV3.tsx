@@ -1504,12 +1504,16 @@ function DocsSection({ docs }: { docs: any[] }) {
   const [open, setOpen] = useState(false);
   if (docs.length === 0) return null;
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="mt-3 pt-3 border-t border-border">
-      <CollapsibleTrigger className="flex items-center justify-between w-full text-xs font-medium text-muted-foreground hover:text-foreground">
+    // Mesma aparência (caixa arredondada com borda) da seção "Dados do
+    // Embarque" — antes tinha só uma borda superior e ficava sem destaque
+    // visual, confundindo com o resto da tabela (linhas escurecidas de
+    // outros processos) logo abaixo.
+    <Collapsible open={open} onOpenChange={setOpen} className="rounded-lg border border-border bg-background">
+      <CollapsibleTrigger className="flex items-center justify-between w-full px-3.5 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
         <span>Documentos ({docs.length})</span>
         <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
       </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-1 pt-2">
+      <CollapsibleContent className="px-3.5 pb-3.5 space-y-1">
         {docs.map((doc: any) => (
           <div key={doc.id} className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-2 min-w-0">
