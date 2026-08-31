@@ -1054,6 +1054,9 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimme
   shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; expanded: boolean; dimmed: boolean; onToggleExpand: () => void;
   fieldVisibility: TrackingFieldVisibility; colSpan: number; orderedCollapsedKeys: string[];
 }) {
+  // "Dados do Embarque" (as planilhas) fica fechado por padrão — só o
+  // Diário abre sozinho quando o processo é expandido.
+  const [dadosOpen, setDadosOpen] = useState(false);
   // Colapsada e Expandida são independentes: hoje QUALQUER campo pode virar
   // coluna da tabela (orderedCollapsedKeys) e também aparecer no card de
   // detalhe — cada checkbox controla só a sua própria exibição.
@@ -1194,9 +1197,10 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimme
           <TableCell colSpan={colSpan} className="p-0">
             <div className="space-y-4 p-5 bg-muted/20 border-t border-border">
 
-            {/* Status - Modal - Origem - Transbordo(se houver) - Destino - Incoterm */}
+            {/* Modal - Origem - Transbordo(se houver) - Destino - Incoterm.
+                Sem badge de Status aqui — já aparece na linha resumo (colapsada)
+                logo acima, exibi-lo de novo seria repetir a mesma informação. */}
             <div className="flex items-center gap-2 text-sm flex-wrap">
-              <Badge className={statusBadgeClass}>{statusLabel}</Badge>
               <ModeIcon mode={s.transport_mode} showLabel />
               {isExpandedVisible('route') && (
                 <>
@@ -1226,103 +1230,115 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimme
             {/* Diário do Processo — em destaque, logo no topo do card expandido
                 (v3): é a informação que o cliente mais quer ver rápido. */}
             {events.length > 0 && (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3.5 space-y-2">
-                <p className="text-sm font-semibold flex items-center gap-1.5 text-primary">
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3 text-center">
+                <p className="text-sm font-semibold flex items-center justify-center gap-1.5 text-primary">
                   <NotebookPen className="w-4 h-4" /> Diário do Processo
                 </p>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {events.map((ev: any) => (
-                    <div key={ev.id} className="flex items-start gap-3 text-sm">
-                      <span className="text-xs text-muted-foreground shrink-0 w-20 pt-0.5">
-                        {format(new Date(ev.event_date), 'dd/MM/yyyy')}
-                      </span>
-                      <div className="min-w-0">
-                        <Badge variant="outline" className="mb-1 font-normal">
+                    <div key={ev.id} className="flex flex-col items-center gap-1 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(ev.event_date), 'dd/MM/yyyy')}
+                        </span>
+                        <Badge variant="outline" className="font-normal">
                           {EVENT_CATEGORY_LABELS[ev.category] || ev.category}
                         </Badge>
-                        <p className="whitespace-pre-wrap">{ev.note}</p>
                       </div>
+                      <p className="whitespace-pre-wrap max-w-lg">{ev.note}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Shipper / Armador / Navio / Origem e Destino / Transit Time / Free Time — em planilha */}
-            <SpreadsheetTable
-              columns={[
-                isExpandedVisible('shipper_name') && { key: 'shipper_name', label: 'Shipper' },
-                isExpandedVisible('carrier') && { key: 'carrier', label: 'Armador' },
-                isExpandedVisible('vessel_flight') && { key: 'vessel_flight', label: 'Navio' },
-                isExpandedVisible('route') && { key: 'route', label: 'Origem e Destino' },
-                isExpandedVisible('transit_time_calc') && { key: 'transit_time_calc', label: 'Transit Time' },
-                isExpandedVisible('free_time') && { key: 'free_time', label: 'Free Time' },
-              ].filter(Boolean) as { key: string; label: string }[]}
-              rows={[{
-                shipper_name: s.shipper_name || '—',
-                carrier: s.carrier || '—',
-                vessel_flight: s.vessel_flight || '—',
-                route: `${s.origin_city || countryFallback(s.origin_country) || '—'} → ${s.destination_city || countryFallback(s.destination_country) || '—'}`,
-                transit_time_calc: kpis.transitTime !== null ? `${kpis.transitTime} dias` : '—',
-                free_time: s.free_time != null ? `${s.free_time} dias` : '—',
-              }]}
-            />
-
-            {/* Invoice / BL / Containers (dinâmico) — em planilha */}
-            <SpreadsheetTable
-              columns={[
-                isExpandedVisible('invoice_number') && { key: 'invoice_number', label: 'Invoice' },
-                isExpandedVisible('bl') && { key: 'bl', label: 'BL' },
-                ...(isExpandedVisible('container_numbers')
-                  ? (containers.length > 0 ? containers : ['—']).map((_, i) => ({
-                      key: `container_${i}`,
-                      label: `Container #${i + 1}${isExpandedVisible('container_return') && containerReturnDates[i] ? ` — Devolvido em ${shortDate(containerReturnDates[i])}` : ''}`,
-                    }))
-                  : []),
-              ].filter(Boolean) as { key: string; label: string }[]}
-              rows={[{
-                invoice_number: s.invoice_number || '—',
-                bl: s.master_bl || s.house_bl || '—',
-                ...Object.fromEntries((containers.length > 0 ? containers : ['—']).map((c, i) => [`container_${i}`, c])),
-              }]}
-            />
-
-            {/* Resumo da Carga — uma linha por item (containers de tipos
-                diferentes, por exemplo), em vez de um card por item. */}
-            {CARGO_KEYS.some(isExpandedVisible) && Array.isArray(s.cargo_items) && s.cargo_items.length > 0 && (
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Resumo da Carga</span>
+            {/* Dados do Embarque — as 3 planilhas (Shipper/Armador/..., Invoice/
+                BL/Containers, Resumo da Carga), agrupadas numa seção colapsável
+                e fechada por padrão: o Diário é o único conteúdo que abre
+                sozinho, o resto fica a um clique. */}
+            <Collapsible open={dadosOpen} onOpenChange={setDadosOpen} className="rounded-lg border border-border bg-background">
+              <CollapsibleTrigger className="flex items-center justify-between w-full px-3.5 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+                <span>Dados do Embarque</span>
+                <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform', dadosOpen && 'rotate-180')} />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="px-3.5 pb-3.5 space-y-3">
+                {/* Shipper / Armador / Navio / Origem e Destino / Transit Time / Free Time */}
                 <SpreadsheetTable
                   columns={[
-                    isExpandedVisible('cargo_container_type') && { key: 'cargo_container_type', label: 'Tipo de Container' },
-                    isExpandedVisible('cargo_weight') && { key: 'cargo_weight', label: 'Peso (kg)' },
-                    isExpandedVisible('cargo_volume') && { key: 'cargo_volume', label: 'Cubagem (m³)' },
-                    isExpandedVisible('cargo_chargeable_weight') && { key: 'cargo_chargeable_weight', label: 'Peso Taxável' },
-                    isExpandedVisible('cargo_dimensions') && { key: 'cargo_dimensions', label: 'Dimensões (C x L x A)' },
-                    isExpandedVisible('cargo_packages') && { key: 'cargo_packages', label: 'Volumes' },
-                    isExpandedVisible('cargo_commodity') && { key: 'cargo_commodity', label: 'Mercadoria' },
-                    isExpandedVisible('cargo_dangerous_goods') && { key: 'cargo_dangerous_goods', label: 'IMO' },
-                    isExpandedVisible('cargo_vehicle_type') && { key: 'cargo_vehicle_type', label: 'Tipo de Veículo' },
-                    isExpandedVisible('cargo_ncm') && { key: 'cargo_ncm', label: 'NCM' },
-                    isExpandedVisible('cargo_value') && { key: 'cargo_value', label: 'Valor da Carga' },
+                    isExpandedVisible('shipper_name') && { key: 'shipper_name', label: 'Shipper' },
+                    isExpandedVisible('carrier') && { key: 'carrier', label: 'Armador' },
+                    isExpandedVisible('vessel_flight') && { key: 'vessel_flight', label: 'Navio' },
+                    isExpandedVisible('route') && { key: 'route', label: 'Origem e Destino' },
+                    isExpandedVisible('transit_time_calc') && { key: 'transit_time_calc', label: 'Transit Time' },
+                    isExpandedVisible('free_time') && { key: 'free_time', label: 'Free Time' },
                   ].filter(Boolean) as { key: string; label: string }[]}
-                  rows={s.cargo_items.map((item: any) => ({
-                    cargo_container_type: item.container_type ? `${item.container_type}${item.container_qty ? ` × ${item.container_qty}` : ''}` : '—',
-                    cargo_weight: item.weight_kg != null ? `${item.weight_kg} kg` : '—',
-                    cargo_volume: item.volume_cbm != null ? `${item.volume_cbm} m³` : '—',
-                    cargo_chargeable_weight: item.chargeable_weight != null ? `${item.chargeable_weight} kg` : '—',
-                    cargo_dimensions: (item.length_cm != null || item.width_cm != null || item.height_cm != null)
-                      ? `${item.length_cm ?? '—'} x ${item.width_cm ?? '—'} x ${item.height_cm ?? '—'} cm` : '—',
-                    cargo_packages: item.packages != null ? String(item.packages) : '—',
-                    cargo_commodity: item.commodity || '—',
-                    cargo_dangerous_goods: item.dangerous_goods != null ? (item.dangerous_goods ? 'Sim' : 'Não') : '—',
-                    cargo_vehicle_type: item.vehicle_type || '—',
-                    cargo_ncm: item.ncm_code || '—',
-                    cargo_value: item.cargo_value != null ? `${item.cargo_value_currency || 'USD'} ${item.cargo_value}` : '—',
-                  }))}
+                  rows={[{
+                    shipper_name: s.shipper_name || '—',
+                    carrier: s.carrier || '—',
+                    vessel_flight: s.vessel_flight || '—',
+                    route: `${s.origin_city || countryFallback(s.origin_country) || '—'} → ${s.destination_city || countryFallback(s.destination_country) || '—'}`,
+                    transit_time_calc: kpis.transitTime !== null ? `${kpis.transitTime} dias` : '—',
+                    free_time: s.free_time != null ? `${s.free_time} dias` : '—',
+                  }]}
                 />
-              </div>
-            )}
+
+                {/* Invoice / BL / Containers (dinâmico) */}
+                <SpreadsheetTable
+                  columns={[
+                    isExpandedVisible('invoice_number') && { key: 'invoice_number', label: 'Invoice' },
+                    isExpandedVisible('bl') && { key: 'bl', label: 'BL' },
+                    ...(isExpandedVisible('container_numbers')
+                      ? (containers.length > 0 ? containers : ['—']).map((_, i) => ({
+                          key: `container_${i}`,
+                          label: `Container #${i + 1}${isExpandedVisible('container_return') && containerReturnDates[i] ? ` — Devolvido em ${shortDate(containerReturnDates[i])}` : ''}`,
+                        }))
+                      : []),
+                  ].filter(Boolean) as { key: string; label: string }[]}
+                  rows={[{
+                    invoice_number: s.invoice_number || '—',
+                    bl: s.master_bl || s.house_bl || '—',
+                    ...Object.fromEntries((containers.length > 0 ? containers : ['—']).map((c, i) => [`container_${i}`, c])),
+                  }]}
+                />
+
+                {/* Resumo da Carga — uma linha por item (containers de tipos
+                    diferentes, por exemplo), em vez de um card por item. */}
+                {CARGO_KEYS.some(isExpandedVisible) && Array.isArray(s.cargo_items) && s.cargo_items.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Resumo da Carga</span>
+                    <SpreadsheetTable
+                      columns={[
+                        isExpandedVisible('cargo_container_type') && { key: 'cargo_container_type', label: 'Tipo de Container' },
+                        isExpandedVisible('cargo_weight') && { key: 'cargo_weight', label: 'Peso (kg)' },
+                        isExpandedVisible('cargo_volume') && { key: 'cargo_volume', label: 'Cubagem (m³)' },
+                        isExpandedVisible('cargo_chargeable_weight') && { key: 'cargo_chargeable_weight', label: 'Peso Taxável' },
+                        isExpandedVisible('cargo_dimensions') && { key: 'cargo_dimensions', label: 'Dimensões (C x L x A)' },
+                        isExpandedVisible('cargo_packages') && { key: 'cargo_packages', label: 'Volumes' },
+                        isExpandedVisible('cargo_commodity') && { key: 'cargo_commodity', label: 'Mercadoria' },
+                        isExpandedVisible('cargo_dangerous_goods') && { key: 'cargo_dangerous_goods', label: 'IMO' },
+                        isExpandedVisible('cargo_vehicle_type') && { key: 'cargo_vehicle_type', label: 'Tipo de Veículo' },
+                        isExpandedVisible('cargo_ncm') && { key: 'cargo_ncm', label: 'NCM' },
+                        isExpandedVisible('cargo_value') && { key: 'cargo_value', label: 'Valor da Carga' },
+                      ].filter(Boolean) as { key: string; label: string }[]}
+                      rows={s.cargo_items.map((item: any) => ({
+                        cargo_container_type: item.container_type ? `${item.container_type}${item.container_qty ? ` × ${item.container_qty}` : ''}` : '—',
+                        cargo_weight: item.weight_kg != null ? `${item.weight_kg} kg` : '—',
+                        cargo_volume: item.volume_cbm != null ? `${item.volume_cbm} m³` : '—',
+                        cargo_chargeable_weight: item.chargeable_weight != null ? `${item.chargeable_weight} kg` : '—',
+                        cargo_dimensions: (item.length_cm != null || item.width_cm != null || item.height_cm != null)
+                          ? `${item.length_cm ?? '—'} x ${item.width_cm ?? '—'} x ${item.height_cm ?? '—'} cm` : '—',
+                        cargo_packages: item.packages != null ? String(item.packages) : '—',
+                        cargo_commodity: item.commodity || '—',
+                        cargo_dangerous_goods: item.dangerous_goods != null ? (item.dangerous_goods ? 'Sim' : 'Não') : '—',
+                        cargo_vehicle_type: item.vehicle_type || '—',
+                        cargo_ncm: item.ncm_code || '—',
+                        cargo_value: item.cargo_value != null ? `${item.cargo_value_currency || 'USD'} ${item.cargo_value}` : '—',
+                      }))}
+                    />
+                  </div>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
 
             {/* Numerário estimado (fase 3) — impostos + AFRMM + desembaraço/
                 armazenagem destino + frete/seguro não-prepaid; sem o valor
