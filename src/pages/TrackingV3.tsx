@@ -1059,6 +1059,7 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimme
   // Diário abre sozinho quando o processo é expandido.
   const [dadosOpen, setDadosOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [diarioHistoricoOpen, setDiarioHistoricoOpen] = useState(false);
   // Colapsada e Expandida são independentes: hoje QUALQUER campo pode virar
   // coluna da tabela (orderedCollapsedKeys) e também aparecer no card de
   // detalhe — cada checkbox controla só a sua própria exibição.
@@ -1250,26 +1251,65 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimme
                 colapsada, em vez de ocupar uma linha fixa aqui no card. */}
 
             {/* Diário do Processo — em destaque, logo no topo do card expandido
-                (v3): é a informação que o cliente mais quer ver rápido. */}
+                (v3): é a informação que o cliente mais quer ver rápido. Mostra
+                só a mensagem mais recente (events já vem ordenado desc por
+                event_date, ver tracking/index.ts); as anteriores só aparecem
+                se o cliente clicar em "Histórico". */}
             {events.length > 0 && (
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3 text-center">
                 <p className="text-sm font-semibold flex items-center justify-center gap-1.5 text-primary">
                   <NotebookPen className="w-4 h-4" /> Diário do Processo
                 </p>
                 <div className="space-y-3">
-                  {events.map((ev: any) => (
-                    <div key={ev.id} className="flex flex-col items-center gap-1 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {format(new Date(ev.event_date), 'dd/MM/yyyy')}
-                        </span>
-                        <Badge variant="outline" className="font-normal">
-                          {EVENT_CATEGORY_LABELS[ev.category] || ev.category}
-                        </Badge>
-                      </div>
-                      <p className="whitespace-pre-wrap max-w-lg">{ev.note}</p>
-                    </div>
-                  ))}
+                  {(() => {
+                    const [latest, ...older] = events;
+                    return (
+                      <>
+                        <div key={latest.id} className="flex flex-col items-center gap-1 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(latest.event_date), 'dd/MM/yyyy')}
+                            </span>
+                            <Badge variant="outline" className="font-normal">
+                              {EVENT_CATEGORY_LABELS[latest.category] || latest.category}
+                            </Badge>
+                          </div>
+                          <p className="whitespace-pre-wrap max-w-lg">{latest.note}</p>
+                        </div>
+
+                        {older.length > 0 && (
+                          <Collapsible open={diarioHistoricoOpen} onOpenChange={setDiarioHistoricoOpen}>
+                            <CollapsibleTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Histórico ({older.length})
+                                <ChevronDown className={cn('w-3.5 h-3.5 ml-1 transition-transform', diarioHistoricoOpen && 'rotate-180')} />
+                              </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="space-y-3 pt-3 mt-1 border-t border-primary/20">
+                              {older.map((ev: any) => (
+                                <div key={ev.id} className="flex flex-col items-center gap-1 text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground">
+                                      {format(new Date(ev.event_date), 'dd/MM/yyyy')}
+                                    </span>
+                                    <Badge variant="outline" className="font-normal">
+                                      {EVENT_CATEGORY_LABELS[ev.category] || ev.category}
+                                    </Badge>
+                                  </div>
+                                  <p className="whitespace-pre-wrap max-w-lg">{ev.note}</p>
+                                </div>
+                              ))}
+                            </CollapsibleContent>
+                          </Collapsible>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
