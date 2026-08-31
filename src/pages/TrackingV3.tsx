@@ -347,6 +347,10 @@ export default function TrackingV3() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [resizingColumn, setResizingColumn] = useState<string | null>(null);
+  // Qual processo está expandido — só um por vez (accordion). Enquanto algum
+  // estiver expandido, as demais linhas da lista escurecem (opacity), pra
+  // deixar óbvio que os dados abaixo são só daquele processo.
+  const [expandedShipmentId, setExpandedShipmentId] = useState<string | null>(null);
   const resizeStartRef = useRef({ x: 0, width: 0 });
   const { data: platformSettings } = usePlatformSettings();
 
@@ -833,7 +837,9 @@ export default function TrackingV3() {
                             docs={trackingDocs.filter((d: any) => d.shipment_id === s.id)}
                             events={trackingEvents.filter((e: any) => e.shipment_id === s.id)}
                             statusOptions={statusOptions}
-                            defaultExpanded={false}
+                            expanded={expandedShipmentId === s.id}
+                            dimmed={expandedShipmentId !== null && expandedShipmentId !== s.id}
+                            onToggleExpand={() => setExpandedShipmentId((cur) => (cur === s.id ? null : s.id))}
                             fieldVisibility={fieldVisibility}
                             colSpan={visibleCollapsedColumnCount}
                             orderedCollapsedKeys={orderedVisibleKeys}
@@ -1044,11 +1050,10 @@ function SpreadsheetTable({ columns, rows }: { columns: { key: string; label: st
   );
 }
 
-function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded, fieldVisibility, colSpan, orderedCollapsedKeys }: {
-  shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; defaultExpanded: boolean;
+function ShipmentRow({ shipment: s, docs, events, statusOptions, expanded, dimmed, onToggleExpand, fieldVisibility, colSpan, orderedCollapsedKeys }: {
+  shipment: any; docs: any[]; events: any[]; statusOptions: StatusOption[]; expanded: boolean; dimmed: boolean; onToggleExpand: () => void;
   fieldVisibility: TrackingFieldVisibility; colSpan: number; orderedCollapsedKeys: string[];
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
   // Colapsada e Expandida são independentes: hoje QUALQUER campo pode virar
   // coluna da tabela (orderedCollapsedKeys) e também aparecer no card de
   // detalhe — cada checkbox controla só a sua própria exibição.
@@ -1160,8 +1165,12 @@ function ShipmentRow({ shipment: s, docs, events, statusOptions, defaultExpanded
       {/* Linha resumo — Ref / Ref.Cliente / Status / ETA / ETD / Limite
           Devolução / DUIMP (cor pelo canal) / Físico. Clicável pra expandir. */}
       <TableRow
-        className="cursor-pointer whitespace-nowrap hover:bg-muted/40"
-        onClick={() => setExpanded((e) => !e)}
+        className={cn(
+          'cursor-pointer whitespace-nowrap hover:bg-muted/40 transition-opacity',
+          dimmed && 'opacity-35 hover:opacity-70 saturate-50',
+          expanded && 'bg-primary/5 hover:bg-primary/5'
+        )}
+        onClick={onToggleExpand}
       >
         <TableCell className="py-1 px-2 font-mono font-semibold truncate">
           <span className="inline-flex items-center gap-1.5">
