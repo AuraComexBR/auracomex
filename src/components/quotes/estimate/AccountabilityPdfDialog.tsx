@@ -5,6 +5,7 @@ import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { AccountabilityRow, AccountabilityItemRow, AccountabilityCategoria } from '@/hooks/useAccountability';
+import { PDFDocument, rgb } from 'pdf-lib';
 
 interface Props {
   open: boolean;
@@ -62,13 +63,70 @@ export function AccountabilityPdfDialog({ open, onClose, quote, accountability, 
   const totalPago = Number(accountability.total_pago_brl || 0);
   const diferenca = Number(accountability.diferenca_brl ?? (totalPago - totalOrcado));
 
+  /** Baixa um comprovante do Storage e devolve os bytes + content-type. */
+  async function fetchComprovante(path: string): Promise<{ bytes: Uint8Array; type: string } | null> {
+    const { data, error } = await supabase.storage.from('shipment-documents').download(path);
+    if (error || !data) return null;
+    return { bytes: new Uint8Array(await data.arrayBuffer()), type: data.type || '' };
+  }
+
+  /** Rasteriza qualquer imagem (jpg/png/webp/etc.) pra PNG, pra poder embutir no PDF final. */
+  async function imageToPng(bytes: Uint8Array, type: string): Promise<Uint8Array> {
+    const blob = new Blob([bytes], { type: type || 'image/jpeg' });
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(bitmap, 0, 0);
+    const pngBlob: Blob = await new Promise((resolve, reject) =>
+      canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Falha ao converter imagem'))), 'image/png')
+    );
+    return new Uint8Array(await pngBlob.arrayBuffer());
+  }
+
+  /** Anexa ao PDF final: os comprovantes dos itens (PDF -> páginas copiadas; imagem -> página nova), cada um com uma folha de rosto identificando o item. */
+  async function appendComprovantes(merged: PDFDocument) {
+    const withComprovante = items.filter(i => !!i.comprovante_url);
+    for (const item of withComprovante) {
+      try {
+        const fetched = await fetchComprovante(item.comprovante_url!);
+        if (!fetched) continue;
+
+        const cover = merged.addPage([595.28, 841.89]); // A4 em pt
+        cover.drawText('COMPROVANTE', { x: 40, y: 780, size: 16, color: rgb(0.1, 0.1, 0.15) });
+        cover.drawText(`${categoriaLabels[item.categoria] || item.categoria} — ${item.descricao}`, { x: 40, y: 750, size: 11, color: rgb(0.2, 0.2, 0.2) });
+        cover.drawText(`Valor pago: R$ ${fmtBRL(item.valor_pago_brl ?? item.valor_orcado_brl)}`, { x: 40, y: 730, size: 11, color: rgb(0.2, 0.2, 0.2) });
+        if (item.comprovante_name) {
+          cover.drawText(`Arquivo: ${item.comprovante_name}`, { x: 40, y: 710, size: 9, color: rgb(0.4, 0.4, 0.4) });
+        }
+
+        const isPdf = fetched.type === 'application/pdf' || item.comprovante_name?.toLowerCase().endsWith('.pdf');
+        if (isPdf) {
+          const srcDoc = await PDFDocument.load(fetched.bytes, { ignoreEncryption: true });
+          const copied = await merged.copyPages(srcDoc, srcDoc.getPageIndices());
+          copied.forEach(p => merged.addPage(p));
+        } else {
+          const pngBytes = await imageToPng(fetched.bytes, fetched.type);
+          const img = await merged.embedPng(pngBytes);
+          const scale = Math.min(1, 555 / img.width, 800 / img.height);
+          const page = merged.addPage([img.width * scale, img.height * scale]);
+          page.drawImage(img, { x: 0, y: 0, width: img.width * scale, height: img.height * scale });
+        }
+      } catch (e) {
+        console.error(`Falha ao anexar comprovante de "${item.descricao}"`, e);
+        toast.error(`Não foi possível anexar o comprovante de "${item.descricao}" ao PDF.`);
+      }
+    }
+  }
+
   async function handleDownload() {
     if (!ref.current) return;
     setDownloading(true);
     try {
       const html2pdf = (await import('html2pdf.js')).default;
       const filename = `prestacao_contas_${quote?.quote_number || accountability.id.slice(0, 8)}.pdf`;
-      const blob: Blob = await html2pdf().set({
+      const mainBlob: Blob = await html2pdf().set({
         margin: 0,
         filename,
         image: { type: 'jpeg', quality: 0.98 },
@@ -76,6 +134,11 @@ export function AccountabilityPdfDialog({ open, onClose, quote, accountability, 
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'] },
       } as any).from(ref.current).outputPdf('blob');
+
+      const merged = await PDFDocument.load(await mainBlob.arrayBuffer());
+      await appendComprovantes(merged);
+      const finalBytes = await merged.save();
+      const blob = new Blob([finalBytes], { type: 'application/pdf' });
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
