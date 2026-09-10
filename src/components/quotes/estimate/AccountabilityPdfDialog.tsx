@@ -46,6 +46,7 @@ export function AccountabilityPdfDialog({ open, onClose, quote, accountability, 
   const [downloading, setDownloading] = useState(false);
   const [company, setCompany] = useState<any>(null);
   const [client, setClient] = useState<any>(null);
+  const [bank, setBank] = useState<any>(null);
 
   useEffect(() => {
     if (!open || !quote?.company_id) return;
@@ -56,6 +57,23 @@ export function AccountabilityPdfDialog({ open, onClose, quote, accountability, 
       setClient(null);
     }
   }, [open, quote?.company_id, quote?.client_id]);
+
+  // Dados bancários só fazem sentido quando sobra valor a cobrar do cliente
+  // (mesmo critério/conta do Numerário em EstimatePdfDialog.tsx): conta padrão
+  // em BRL; sem uma marcada como padrão, cai na primeira conta BRL ativa.
+  const precisaCobrarCliente = Number(accountability?.diferenca_brl || 0) > 0;
+  useEffect(() => {
+    if (!open || !quote?.company_id || !precisaCobrarCliente) { setBank(null); return; }
+    supabase
+      .from('company_bank_accounts' as any)
+      .select('*')
+      .eq('company_id', quote.company_id)
+      .eq('currency', 'BRL')
+      .eq('active', true)
+      .order('is_default', { ascending: false })
+      .limit(1)
+      .then((r: any) => setBank(r.data?.[0] || null));
+  }, [open, quote?.company_id, precisaCobrarCliente]);
 
   if (!open) return null;
 
@@ -253,6 +271,29 @@ export function AccountabilityPdfDialog({ open, onClose, quote, accountability, 
                 <div style={{ fontSize: 16, fontWeight: 700, color: BRAND }}>R$ {fmtBRL(Math.abs(diferenca))}</div>
               </div>
             </div>
+
+            {/* Só quando sobra valor a cobrar do cliente — mesmo box do Numerário,
+                pra ele já ter como pagar sem precisar pedir os dados de novo. */}
+            {precisaCobrarCliente && bank && (
+              <div style={{ border: `2px solid ${BRAND}`, padding: '8px 12px', marginBottom: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: BRAND, marginBottom: 6 }}>DADOS BANCÁRIOS PARA PAGAMENTO</div>
+                <table style={{ width: '100%', fontSize: 10 }}>
+                  <tbody>
+                    <tr><td style={{ width: 130, padding: '2px 0' }}><strong>Banco</strong></td><td>{bank.bank_name}</td></tr>
+                    {bank.branch && <tr><td style={{ padding: '2px 0' }}><strong>Agência</strong></td><td>{bank.branch}</td></tr>}
+                    {bank.account_number && <tr><td style={{ padding: '2px 0' }}><strong>Conta</strong></td><td>{bank.account_number}</td></tr>}
+                    <tr><td style={{ padding: '2px 0' }}><strong>Titular</strong></td><td>{bank.account_holder}</td></tr>
+                    {bank.tax_id && <tr><td style={{ padding: '2px 0' }}><strong>CNPJ/CPF</strong></td><td>{bank.tax_id}</td></tr>}
+                    {bank.pix_key && <tr><td style={{ padding: '2px 0' }}><strong>PIX</strong></td><td>{bank.pix_key}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {precisaCobrarCliente && !bank && (
+              <div style={{ fontSize: 9, color: '#888', fontStyle: 'italic', marginBottom: 10 }}>
+                Nenhuma conta bancária em BRL cadastrada em Configurações &gt; Dados Bancários.
+              </div>
+            )}
 
             <div style={{ fontSize: 8, color: '#888', fontStyle: 'italic' }}>
               Valores orçados conforme Numerário aprovado em {new Date(accountability.created_at).toLocaleDateString('pt-BR')}. Câmbio de referência: R$ {(accountability.usd_brl || 0).toLocaleString('pt-BR', { minimumFractionDigits: 4 })}.
