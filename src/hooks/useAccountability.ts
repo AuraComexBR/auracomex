@@ -90,10 +90,13 @@ export function useAccountability(quoteId: string, companyId: string | undefined
     type Line = { categoria: AccountabilityCategoria; descricao: string; valor_orcado_brl: number; source_expense_id?: string | null };
     const lines: Line[] = [];
 
-    expenses.filter(e => e.category === 'origin').forEach(e => {
+    // Despesas Prepaid (já pagas na origem, fora do Numerário depositado pelo
+    // cliente — mesmo critério usado em CostEstimateTab.tsx/EstimatePdfDialog.tsx
+    // pro total do Numerário) não entram na Prestação de Contas.
+    expenses.filter(e => e.category === 'origin' && !(e as any).is_prepaid).forEach(e => {
       lines.push({ categoria: 'origin', descricao: e.descricao, valor_orcado_brl: Number(e.valor_brl || 0), source_expense_id: e.id });
     });
-    expenses.filter(e => e.category === 'freight').forEach(e => {
+    expenses.filter(e => e.category === 'freight' && !(e as any).is_prepaid).forEach(e => {
       lines.push({ categoria: 'freight', descricao: e.descricao, valor_orcado_brl: Number(e.valor_brl || 0), source_expense_id: e.id });
     });
 
@@ -106,7 +109,7 @@ export function useAccountability(quoteId: string, companyId: string | undefined
     if (afrmmBrl > 0) lines.push({ categoria: 'afrmm', descricao: 'AFRMM', valor_orcado_brl: afrmmBrl });
     if (armazenagemBrl > 0) lines.push({ categoria: 'destination', descricao: 'Armazenagem no destino', valor_orcado_brl: armazenagemBrl });
 
-    expenses.filter(e => e.category === 'destination' || e.category === 'local' || !e.category).forEach(e => {
+    expenses.filter(e => (e.category === 'destination' || e.category === 'local' || !e.category) && !(e as any).is_prepaid).forEach(e => {
       lines.push({ categoria: (e.category as AccountabilityCategoria) || 'other', descricao: e.descricao, valor_orcado_brl: Number(e.valor_brl || 0), source_expense_id: e.id });
     });
 
