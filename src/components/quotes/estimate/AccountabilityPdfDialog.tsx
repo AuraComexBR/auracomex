@@ -5,7 +5,7 @@ import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { AccountabilityRow, AccountabilityItemRow, AccountabilityCategoria } from '@/hooks/useAccountability';
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 
 interface Props {
   open: boolean;
@@ -85,21 +85,13 @@ export function AccountabilityPdfDialog({ open, onClose, quote, accountability, 
     return new Uint8Array(await pngBlob.arrayBuffer());
   }
 
-  /** Anexa ao PDF final: os comprovantes dos itens (PDF -> páginas copiadas; imagem -> página nova), cada um com uma folha de rosto identificando o item. */
+  /** Anexa ao PDF final os comprovantes dos itens, na sequência: PDF -> páginas copiadas direto; imagem -> convertida numa página. Sem folha de rosto — o comprovante entra puro. */
   async function appendComprovantes(merged: PDFDocument) {
     const withComprovante = items.filter(i => !!i.comprovante_url);
     for (const item of withComprovante) {
       try {
         const fetched = await fetchComprovante(item.comprovante_url!);
         if (!fetched) continue;
-
-        const cover = merged.addPage([595.28, 841.89]); // A4 em pt
-        cover.drawText('COMPROVANTE', { x: 40, y: 780, size: 16, color: rgb(0.1, 0.1, 0.15) });
-        cover.drawText(`${categoriaLabels[item.categoria] || item.categoria} — ${item.descricao}`, { x: 40, y: 750, size: 11, color: rgb(0.2, 0.2, 0.2) });
-        cover.drawText(`Valor pago: R$ ${fmtBRL(item.valor_pago_brl ?? item.valor_orcado_brl)}`, { x: 40, y: 730, size: 11, color: rgb(0.2, 0.2, 0.2) });
-        if (item.comprovante_name) {
-          cover.drawText(`Arquivo: ${item.comprovante_name}`, { x: 40, y: 710, size: 9, color: rgb(0.4, 0.4, 0.4) });
-        }
 
         const isPdf = fetched.type === 'application/pdf' || item.comprovante_name?.toLowerCase().endsWith('.pdf');
         if (isPdf) {
