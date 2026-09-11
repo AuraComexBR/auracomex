@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { openSignedDoc } from '@/lib/storage';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Upload, FileText, Download, Eye, Trash2, Radio } from 'lucide-react';
+import { Upload, FileText, Download, Eye, Trash2, Radio, CalendarIcon, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -10,9 +10,13 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { useCallback, useState } from 'react';
+import { format, differenceInCalendarDays } from 'date-fns';
+import { cn } from '@/lib/utils';
 import { DOC_TYPE_LABELS } from '@/lib/documentCategory';
 import { sanitizeStorageFileName } from '@/lib/sanitizeFileName';
 
@@ -44,6 +48,8 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
   const [uploadCategory, setUploadCategory] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [saveNewCategory, setSaveNewCategory] = useState(true);
+  const [expiresAt, setExpiresAt] = useState<Date | undefined>(undefined);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   // Categorias personalizadas já cadastradas pela empresa (opção "Outro" com
@@ -97,6 +103,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
     setUploadCategory('');
     setNewCategoryName('');
     setSaveNewCategory(true);
+    setExpiresAt(undefined);
     setPendingUploadFiles(files);
   }, []);
 
@@ -110,6 +117,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
     setUploadCategory('');
     setNewCategoryName('');
     setSaveNewCategory(true);
+    setExpiresAt(undefined);
     setPendingUploadFiles(files);
   };
 
@@ -169,6 +177,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
           uploaded_by: profile?.user_id,
           document_type: documentType as any,
           custom_category: customCategory,
+          expires_at: expiresAt ? format(expiresAt, 'yyyy-MM-dd') : null,
         } as any);
       }
       refetch();
@@ -177,6 +186,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
       setUploadCategory('');
       setNewCategoryName('');
       setSaveNewCategory(true);
+      setExpiresAt(undefined);
     } finally {
       setUploading(false);
     }
@@ -224,6 +234,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
                   <div>
                     <p className="text-sm font-medium">{doc.name}</p>
                     <p className="text-xs text-muted-foreground capitalize">{doc.custom_category || DOC_TYPE_LABELS[doc.document_type] || doc.document_type} • {doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : ''}</p>
+                    {doc.expires_at && <ExpiryBadge expiresAt={doc.expires_at} />}
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -274,6 +285,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
           setUploadCategory('');
           setNewCategoryName('');
           setSaveNewCategory(true);
+          setExpiresAt(undefined);
         }
       }}>
         <DialogContent>
@@ -330,6 +342,36 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
                 </div>
               </div>
             )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Data de validade (opcional)</Label>
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" type="button" className={cn('w-full justify-start text-left font-normal', !expiresAt && 'text-muted-foreground')}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {expiresAt ? format(expiresAt, 'dd/MM/yyyy') : 'Sem validade...'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={expiresAt}
+                    onSelect={(d) => { setExpiresAt(d); setCalendarOpen(false); }}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+              {expiresAt && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline"
+                  onClick={() => setExpiresAt(undefined)}
+                >
+                  Remover data
+                </button>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -339,6 +381,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
                 setUploadCategory('');
                 setNewCategoryName('');
                 setSaveNewCategory(true);
+                setExpiresAt(undefined);
               }}
               disabled={uploading}
             >
@@ -352,4 +395,25 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
       </Dialog>
     </Card>
   );
+}
+
+// Só indicação visual de validade — este fluxo não dispara alerta/e-mail
+// (isso existe hoje só para documentos de cliente, em ClientDocumentsSection).
+function ExpiryBadge({ expiresAt }: { expiresAt: string }) {
+  const days = differenceInCalendarDays(new Date(expiresAt), new Date());
+  if (days < 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-destructive">
+        <AlertTriangle className="w-3 h-3" /> Vencido em {format(new Date(expiresAt), 'dd/MM/yyyy')}
+      </span>
+    );
+  }
+  if (days <= 7) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-amber-500">
+        <AlertTriangle className="w-3 h-3" /> Vence em {format(new Date(expiresAt), 'dd/MM/yyyy')}
+      </span>
+    );
+  }
+  return <span className="text-xs text-muted-foreground">Válido até {format(new Date(expiresAt), 'dd/MM/yyyy')}</span>;
 }
