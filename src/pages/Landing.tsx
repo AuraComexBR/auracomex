@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -26,7 +26,34 @@ import HeroMockup from "@/components/landing/HeroMockup";
 
 const WHATSAPP_NUMBER = "5511969705295";
 const WHATSAPP_MESSAGE = "Olá! Vi a página do Aura Comex e quero saber mais.";
-const WHATSAPP_LINK = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WHATSAPP_MESSAGE)}`;
+
+/**
+ * Monta o link do wa.me embutindo a origem do clique (utm_source/utm_campaign
+ * da URL, ou "ref" como atalho manual) no fim da mensagem pré-preenchida,
+ * ex: "...quero saber mais.\n\n[origem: meta/lancamento-set]". O
+ * whatsapp-webhook (Supabase Edge Function) lê esse marcador na primeira
+ * mensagem pra gravar a origem do lead em whatsapp_contacts.source e depois
+ * remove o marcador do corpo salvo — sem isso não dá pra saber de qual
+ * anúncio/campanha um lead do WhatsApp veio.
+ */
+function buildWhatsappLink(): string {
+  let origem: string | null = null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const source = params.get("utm_source");
+    const campaign = params.get("utm_campaign");
+    const ref = params.get("ref");
+    if (source && campaign) origem = `${source}/${campaign}`;
+    else if (campaign) origem = campaign;
+    else if (source) origem = source;
+    else if (ref) origem = ref;
+  } catch {
+    // window indisponível (SSR/teste) — segue sem origem
+  }
+
+  const message = origem ? `${WHATSAPP_MESSAGE}\n\n[origem: ${origem}]` : WHATSAPP_MESSAGE;
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+}
 
 const PRICING_SUMMARY = [
   {
@@ -63,6 +90,7 @@ function Landing() {
   const { data: platformSettings } = usePlatformSettings();
   const platformLogo = platformSettings?.logo_url;
   const [mobileOpen, setMobileOpen] = useState(false);
+  const whatsappLink = useMemo(() => buildWhatsappLink(), []);
 
   const goToSignup = () => navigate("/signup");
   const goToPricing = () => navigate("/precos");
@@ -154,7 +182,7 @@ function Landing() {
                     Entrar
                   </Button>
                   <a
-                    href={WHATSAPP_LINK}
+                    href={whatsappLink}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 text-lg px-4 py-2 text-[hsl(240,11%,89%)]"
@@ -202,7 +230,7 @@ function Landing() {
               >
                 Começar grátis <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
-              <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer" className="w-full sm:w-auto">
+              <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="w-full sm:w-auto">
                 <Button
                   size="lg"
                   variant="outline"
@@ -562,7 +590,7 @@ function Landing() {
             >
               Começar grátis <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
-            <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer" className="w-full sm:w-auto">
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="w-full sm:w-auto">
               <Button
                 size="lg"
                 variant="outline"

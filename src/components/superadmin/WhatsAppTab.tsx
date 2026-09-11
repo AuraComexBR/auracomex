@@ -16,6 +16,7 @@ interface WhatsappContact {
   name: string | null;
   status: "lead" | "client" | "descartado";
   last_message_at: string | null;
+  source: string | null;
 }
 
 interface WhatsappMessage {
@@ -56,7 +57,7 @@ export function WhatsAppTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("whatsapp_contacts")
-        .select("id, phone, name, status, last_message_at")
+        .select("id, phone, name, status, last_message_at, source")
         .order("last_message_at", { ascending: false, nullsFirst: false });
       if (error) throw error;
       return data as WhatsappContact[];
@@ -164,7 +165,14 @@ export function WhatsAppTab() {
                   <p className="font-medium truncate">{contact.name ?? formatPhone(contact.phone)}</p>
                   <span className="text-xs text-muted-foreground shrink-0">{timeAgo(contact.last_message_at)}</span>
                 </div>
-                <p className="text-xs text-muted-foreground truncate">{formatPhone(contact.phone)}</p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="text-xs text-muted-foreground truncate">{formatPhone(contact.phone)}</p>
+                  {contact.source && (
+                    <span className="text-[10px] text-muted-foreground/70 truncate border rounded px-1 shrink-0">
+                      {contact.source}
+                    </span>
+                  )}
+                </div>
               </div>
               <Badge variant={contact.status === "client" ? "default" : "secondary"} className="shrink-0">
                 {contact.status === "client" ? "Cliente" : contact.status === "lead" ? "Lead" : "Descartado"}
@@ -192,7 +200,14 @@ export function WhatsAppTab() {
               </Button>
               <div className="min-w-0">
                 <p className="font-medium truncate">{selectedContact.name ?? formatPhone(selectedContact.phone)}</p>
-                <p className="text-sm text-muted-foreground">{formatPhone(selectedContact.phone)}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm text-muted-foreground">{formatPhone(selectedContact.phone)}</p>
+                  {selectedContact.source && (
+                    <span className="text-[10px] text-muted-foreground/70 border rounded px-1">
+                      {selectedContact.source}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <ScrollArea className="flex-1 p-4" ref={scrollRef}>
