@@ -24,7 +24,7 @@ import { useNavigate } from "react-router-dom";
 import { usePlatformSettings } from "@/hooks/usePlatformSettings";
 import HeroMockup from "@/components/landing/HeroMockup";
 
-const WHATSAPP_NUMBER = "5511969705295";
+const WHATSAPP_NUMBER = "5511961573287";
 const WHATSAPP_MESSAGE = "Olá! Vi a página do Aura Comex e quero saber mais.";
 
 /**
