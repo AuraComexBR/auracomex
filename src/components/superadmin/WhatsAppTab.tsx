@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { ArrowLeft } from "lucide-react";
 
 interface WhatsappContact {
   id: string;
@@ -61,12 +62,6 @@ export function WhatsAppTab() {
       return data as WhatsappContact[];
     },
   });
-
-  useEffect(() => {
-    if (!selectedContactId && contacts.length > 0) {
-      setSelectedContactId(contacts[0].id);
-    }
-  }, [contacts, selectedContactId]);
 
   const { data: messages = [] } = useQuery({
     queryKey: ["whatsapp_messages", selectedContactId],
@@ -138,9 +133,14 @@ export function WhatsAppTab() {
   });
 
   return (
-    <div className="flex h-[70vh] min-h-[500px] border rounded-lg overflow-hidden bg-card">
-      {/* Lista de contatos */}
-      <div className="w-80 border-r flex flex-col shrink-0">
+    <div className="flex h-[70vh] min-h-[420px] border rounded-lg overflow-hidden bg-card">
+      {/* Lista de contatos — some no celular quando uma conversa está aberta */}
+      <div
+        className={cn(
+          "w-full md:w-80 border-r flex-col shrink-0",
+          selectedContactId ? "hidden md:flex" : "flex",
+        )}
+      >
         <div className="p-4 border-b">
           <h3 className="font-semibold">Conversas</h3>
           <p className="text-sm text-muted-foreground">Prospecção e atendimento AuraComex</p>
@@ -177,13 +177,23 @@ export function WhatsAppTab() {
         </ScrollArea>
       </div>
 
-      {/* Thread de mensagens */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Thread de mensagens — some no celular quando nenhuma conversa está aberta */}
+      <div className={cn("flex-1 flex-col min-w-0", selectedContactId ? "flex" : "hidden md:flex")}>
         {selectedContact ? (
           <>
-            <div className="p-4 border-b shrink-0">
-              <p className="font-medium">{selectedContact.name ?? formatPhone(selectedContact.phone)}</p>
-              <p className="text-sm text-muted-foreground">{formatPhone(selectedContact.phone)}</p>
+            <div className="p-4 border-b shrink-0 flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden -ml-2 shrink-0"
+                onClick={() => setSelectedContactId(null)}
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <div className="min-w-0">
+                <p className="font-medium truncate">{selectedContact.name ?? formatPhone(selectedContact.phone)}</p>
+                <p className="text-sm text-muted-foreground">{formatPhone(selectedContact.phone)}</p>
+              </div>
             </div>
             <ScrollArea className="flex-1 p-4" ref={scrollRef}>
               <div className="flex flex-col gap-2">
