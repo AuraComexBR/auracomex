@@ -3679,6 +3679,97 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_contacts: {
+        Row: {
+          company_ref_id: string | null
+          created_at: string
+          id: string
+          last_message_at: string | null
+          name: string | null
+          notes: string | null
+          phone: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          company_ref_id?: string | null
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          name?: string | null
+          notes?: string | null
+          phone: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          company_ref_id?: string | null
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          name?: string | null
+          notes?: string | null
+          phone?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_contacts_company_ref_id_fkey"
+            columns: ["company_ref_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          body: string | null
+          contact_id: string
+          created_at: string
+          direction: string
+          id: string
+          message_type: string
+          raw_payload: Json | null
+          status: string
+          template_name: string | null
+          wa_message_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          contact_id: string
+          created_at?: string
+          direction: string
+          id?: string
+          message_type?: string
+          raw_payload?: Json | null
+          status?: string
+          template_name?: string | null
+          wa_message_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          contact_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          message_type?: string
+          raw_payload?: Json | null
+          status?: string
+          template_name?: string | null
+          wa_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
