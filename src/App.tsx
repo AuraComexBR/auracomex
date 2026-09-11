@@ -23,6 +23,7 @@ const FinancialCompany = lazy(() => import("./pages/FinancialCompany"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const MyAccount = lazy(() => import("./pages/MyAccount"));
 const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
+const WhatsAppAdmin = lazy(() => import("./pages/WhatsAppAdmin"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const QuotePrintView = lazy(() => import("./components/quotes/QuotePrintView"));
 const Tracking = lazy(() => import("./pages/Tracking"));
@@ -131,6 +132,7 @@ function AppRoutes() {
         <Route path="/account" element={<ProtectedRoute><MyAccount /></ProtectedRoute>} />
         <Route path="/billing" element={<Navigate to="/settings#assinatura" replace />} />
         <Route path="/admin" element={<SuperAdminRoute><SuperAdmin /></SuperAdminRoute>} />
+        <Route path="/admin/whatsapp" element={<SuperAdminRoute><WhatsAppAdmin /></SuperAdminRoute>} />
         {/* Redirect old routes */}
         <Route path="/clients" element={<Navigate to="/registrations" replace />} />
         <Route path="/documents" element={<Navigate to="/dashboard" replace />} />

@@ -133,7 +133,7 @@ export function WhatsAppTab() {
   });
 
   return (
-    <div className="flex h-[70vh] min-h-[420px] border rounded-lg overflow-hidden bg-card">
+    <div className="flex flex-1 min-h-[420px] border rounded-lg overflow-hidden bg-card">
       {/* Lista de contatos — some no celular quando uma conversa está aberta */}
       <div
         className={cn(

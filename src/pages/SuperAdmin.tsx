@@ -18,9 +18,8 @@ import { SupportTicketsPanel } from '@/components/superadmin/SupportTicketsPanel
 import { PlatformMetrics } from '@/components/superadmin/PlatformMetrics';
 import { CompanyPlansTable } from '@/components/superadmin/CompanyPlansTable';
 import { AuraFinanceTab } from '@/components/superadmin/AuraFinanceTab';
-import { WhatsAppTab } from '@/components/superadmin/WhatsAppTab';
 
-const ADMIN_TABS = ['visao-geral', 'empresas', 'financeiro', 'whatsapp', 'suporte', 'releases', 'marca'] as const;
+const ADMIN_TABS = ['visao-geral', 'empresas', 'financeiro', 'suporte', 'releases', 'marca'] as const;
 type AdminTab = typeof ADMIN_TABS[number];
 
 export default function SuperAdmin() {
@@ -113,9 +112,14 @@ export default function SuperAdmin() {
       <header className="border-b border-border bg-card">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <PlatformLogo size={44} className="rounded-lg" iconClassName="w-5 h-5" />
-          <Button variant="ghost" size="sm" onClick={signOut} className="text-muted-foreground">
-            <LogOut className="w-4 h-4 mr-2" />Sair
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/admin/whatsapp')} className="text-muted-foreground">
+              <MessageCircle className="w-4 h-4 mr-2" />WhatsApp
+            </Button>
+            <Button variant="ghost" size="sm" onClick={signOut} className="text-muted-foreground">
+              <LogOut className="w-4 h-4 mr-2" />Sair
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -126,7 +130,6 @@ export default function SuperAdmin() {
             <TabsTrigger value="visao-geral" className="gap-1.5"><LayoutDashboard className="w-4 h-4" />Visão Geral</TabsTrigger>
             <TabsTrigger value="empresas" className="gap-1.5"><Building2 className="w-4 h-4" />Empresas</TabsTrigger>
             <TabsTrigger value="financeiro" className="gap-1.5"><PiggyBank className="w-4 h-4" />Financeiro</TabsTrigger>
-            <TabsTrigger value="whatsapp" className="gap-1.5"><MessageCircle className="w-4 h-4" />WhatsApp</TabsTrigger>
             <TabsTrigger value="suporte" className="gap-1.5"><LifeBuoy className="w-4 h-4" />Suporte</TabsTrigger>
             <TabsTrigger value="releases" className="gap-1.5"><Megaphone className="w-4 h-4" />Releases</TabsTrigger>
             <TabsTrigger value="marca" className="gap-1.5"><Palette className="w-4 h-4" />Marca</TabsTrigger>
@@ -164,11 +167,6 @@ export default function SuperAdmin() {
           {/* Financeiro do Aura */}
           <TabsContent value="financeiro" className="space-y-6 mt-4">
             <AuraFinanceTab />
-          </TabsContent>
-
-          {/* WhatsApp */}
-          <TabsContent value="whatsapp" className="space-y-6 mt-4">
-            <WhatsAppTab />
           </TabsContent>
 
           {/* Suporte */}
