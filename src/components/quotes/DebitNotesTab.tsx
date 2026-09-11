@@ -163,7 +163,7 @@ export function DebitNotesTab({ quoteId, companyId, partners, pendingFile, onPen
       userId: user?.id,
       partnerName: partner?.name,
     });
-    if (!result.ok) return toast.error('Erro ao excluir', { description: result.error });
+    if (result.ok === false) return toast.error('Erro ao excluir', { description: result.error });
     toast.success('Debit Note excluída — taxas liberadas para edição');
     setConfirmDelete(null);
     refetch();

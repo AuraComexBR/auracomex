@@ -90,7 +90,7 @@ export function AccountabilityPdfDialog({ open, onClose, quote, accountability, 
 
   /** Rasteriza qualquer imagem (jpg/png/webp/etc.) pra PNG, pra poder embutir no PDF final. */
   async function imageToPng(bytes: Uint8Array, type: string): Promise<Uint8Array> {
-    const blob = new Blob([bytes], { type: type || 'image/jpeg' });
+    const blob = new Blob([bytes as BlobPart], { type: type || 'image/jpeg' });
     const bitmap = await createImageBitmap(blob);
     const canvas = document.createElement('canvas');
     canvas.width = bitmap.width;
@@ -148,7 +148,7 @@ export function AccountabilityPdfDialog({ open, onClose, quote, accountability, 
       const merged = await PDFDocument.load(await mainBlob.arrayBuffer());
       await appendComprovantes(merged);
       const finalBytes = await merged.save();
-      const blob = new Blob([finalBytes], { type: 'application/pdf' });
+      const blob = new Blob([finalBytes as BlobPart], { type: 'application/pdf' });
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

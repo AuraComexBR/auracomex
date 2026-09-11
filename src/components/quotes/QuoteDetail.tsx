@@ -1598,7 +1598,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       userId: profile.user_id,
       partnerName,
     });
-    if (result.ok) {
+    if (result.ok === true) {
       queryClient.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['debit_notes', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['debit_notes_ap', quoteId] });
@@ -1626,7 +1626,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
       userId: profile.user_id,
       clientName: partnerName,
     });
-    if (result.ok) {
+    if (result.ok === true) {
       queryClient.invalidateQueries({ queryKey: ['quote-charges', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['client_debit_notes', quoteId] });
       queryClient.invalidateQueries({ queryKey: ['quote_sell_charges', quoteId] });

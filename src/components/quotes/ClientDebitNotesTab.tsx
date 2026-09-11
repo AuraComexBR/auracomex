@@ -109,7 +109,7 @@ export function ClientDebitNotesTab({ quoteId, companyId, clientId, readOnly }: 
     setDeleting(true);
     const result = await deleteClientDn({ dnId: id, companyId, quoteId, userId: user?.id });
     setDeleting(false);
-    if (!result.ok) return toast.error('Erro ao excluir', { description: result.error });
+    if (result.ok === false) return toast.error('Erro ao excluir', { description: result.error });
     toast.success('DN excluída — taxas liberadas para edição');
     setConfirmDeleteId(null);
     qc.invalidateQueries({ queryKey: ['client_debit_notes', quoteId] });
