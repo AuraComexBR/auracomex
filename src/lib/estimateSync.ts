@@ -15,6 +15,12 @@ export interface ChargeLike {
   aduaneira?: boolean | null;
   /** 'prepaid' = já pago na origem (não entra no Numerário). 'collect'/null = cobrado do cliente (entra no Numerário). */
   payment_term?: string | null;
+  /** Câmbio próprio desta taxa (ex: câmbio que o fornecedor/parceiro desta linha realmente cobrou),
+   *  usado SÓ pra converter o valor em BRL exibido na despesa da Estimativa/Numerário. Quando vazio,
+   *  cai pra taxa fiscal (fx.usd_brl / fx.eur_brl) — mesmo padrão de usd_brl_agencia. NÃO afeta a base
+   *  de cálculo em USD dos impostos (frete_intl_usd, seguro_intl_usd, acrescimos_usd, deducoes_usd),
+   *  que precisa ficar sempre na taxa fiscal única, independente de quem cobrou cada taxa. */
+  exchange_rate?: number | null;
 }
 
 export interface FxRates {
@@ -110,8 +116,12 @@ export function mapChargesToEstimate(
     const isAduaneira = hasKeyword(desc, ADUANEIRA_KEYWORDS);
     const isPrepaid = c.payment_term === 'prepaid';
 
-    // Calculamos o valor em BRL para exibição e armazenamento
-    const brl = toBRL(rawAmount, cur, fx);
+    // Calculamos o valor em BRL para exibição e armazenamento. Se esta taxa tem
+    // câmbio próprio informado (o que o fornecedor/parceiro desta linha realmente
+    // cobrou), usamos ele em vez da taxa fiscal única — mesmo padrão já usado pra
+    // usd_brl_agencia. Sem câmbio próprio, cai pra conversão pela taxa fiscal (fx).
+    const ownRate = Number(c.exchange_rate) || 0;
+    const brl = (ownRate > 0 && cur !== 'BRL') ? rawAmount * ownRate : toBRL(rawAmount, cur, fx);
 
     if (isDiscount) {
       const usd = toUSD(Math.abs(rawAmount), cur, fx);

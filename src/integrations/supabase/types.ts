@@ -2598,6 +2598,7 @@ export type Database = {
           created_at: string
           currency: string | null
           description: string
+          exchange_rate: number | null
           id: string
           is_auto_insurance: boolean
           leg: string
@@ -2626,6 +2627,7 @@ export type Database = {
           created_at?: string
           currency?: string | null
           description: string
+          exchange_rate?: number | null
           id?: string
           is_auto_insurance?: boolean
           leg?: string
@@ -2654,6 +2656,7 @@ export type Database = {
           created_at?: string
           currency?: string | null
           description?: string
+          exchange_rate?: number | null
           id?: string
           is_auto_insurance?: boolean
           leg?: string

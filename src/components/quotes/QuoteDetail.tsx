@@ -195,6 +195,10 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   const [sellBillingUnit, setSellBillingUnit] = useState('fixed');
   const [sellCurrency, setSellCurrency] = useState('USD');
   const [sellAmount, setSellAmount] = useState('');
+  // Câmbio próprio desta taxa (Venda) — opcional. Alimenta a conversão pra BRL
+  // na Estimativa/Numerário no lugar da taxa fiscal única, pra refletir o câmbio
+  // real que cada fornecedor/parceiro cobrou nesta linha específica.
+  const [sellExchangeRate, setSellExchangeRate] = useState('');
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [chargeDescSearch, setChargeDescSearch] = useState('');
   const [showChargeSuggestions, setShowChargeSuggestions] = useState(false);
@@ -1413,6 +1417,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
     setSellBillingUnit('fixed');
     setSellCurrency('USD');
     setSellAmount('');
+    setSellExchangeRate('');
     setChargeDescSearch('');
   }
 
@@ -1481,6 +1486,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
           currency: isPercent ? 'USD' : sellCurrency,
           partner_id: sellPartnerId || null,
           billing_unit: sellBillingUnit,
+          exchange_rate: (!isPercent && sellCurrency !== 'BRL' && sellExchangeRate) ? (parseFloat(sellExchangeRate) || null) : null,
         };
         if (isPercent) { row.percent_base_charge_ids = []; row.computed_buy_amount = 0; row.computed_sell_amount = 0; }
         const { data, error } = await supabase.from('quote_charges').insert(row as any).select('id').single();
@@ -2783,6 +2789,29 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                                 <p className="text-[11px] text-muted-foreground">{billingHint(sellBillingUnit)}</p>
                               )}
                             </div>
+                            {sellBillingUnit !== 'percent' && sellCurrency !== 'BRL' && (
+                              <div className="space-y-1.5">
+                                <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                  Câmbio desta taxa (opcional)
+                                  <Tooltip><TooltipTrigger asChild>
+                                    <Info className="w-3 h-3 text-muted-foreground/70" />
+                                  </TooltipTrigger><TooltipContent className="max-w-[240px] text-xs">
+                                    Câmbio que este fornecedor/parceiro realmente cobrou nesta taxa. Se
+                                    informado, a Estimativa/Numerário converte o valor em BRL desta linha
+                                    por ele em vez da taxa fiscal única da estimativa. Deixe em branco pra
+                                    usar a taxa fiscal (comportamento padrão).
+                                  </TooltipContent></Tooltip>
+                                </Label>
+                                <Input
+                                  type="number"
+                                  step="0.0001"
+                                  placeholder={`Taxa fiscal (padrão)`}
+                                  value={sellExchangeRate}
+                                  onChange={(e) => setSellExchangeRate(e.target.value)}
+                                  className="h-9 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+                            )}
                           </div>
                         </div>
                     );
@@ -3180,6 +3209,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editLeg, setEditLeg] = useState('');
+  const [editExchangeRate, setEditExchangeRate] = useState('');
 
   function getBillingRef(unit: string): string {
     if (!cargoMetrics) return '';
@@ -3394,6 +3424,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                 setEditingId(c.id);
                                 setEditAmount(String(c[amountKey] || 0));
                                 setEditLeg(c.leg || 'freight');
+                                setEditExchangeRate(c.exchange_rate ? String(c.exchange_rate) : '');
                               }}
                             >
                               <TableCell className="font-medium text-sm pl-8 py-2">
@@ -3490,30 +3521,48 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm py-2" onClick={(e) => e.stopPropagation()}>
                                 {editingId === c.id ? (
-                                  <div className="flex items-center justify-end gap-1">
-                                    <span className="text-xs text-muted-foreground">{c.currency || 'USD'}</span>
-                                    <Input
-                                      type="number"
-                                      value={editAmount}
-                                      onChange={(e) => setEditAmount(e.target.value)}
-                                      className="h-7 w-28 text-right font-mono text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                      autoFocus
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
+                                  <div className="flex flex-col items-end gap-1">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <span className="text-xs text-muted-foreground">{c.currency || 'USD'}</span>
+                                      <Input
+                                        type="number"
+                                        value={editAmount}
+                                        onChange={(e) => setEditAmount(e.target.value)}
+                                        className="h-7 w-28 text-right font-mono text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        autoFocus
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            const val = parseFloat(editAmount) || 0;
+                                            const rate = amountKey === 'sell_amount' ? (parseFloat(editExchangeRate) || null) : undefined;
+                                            onUpdate(c.id, { [amountKey]: val, leg: editLeg, ...(rate !== undefined ? { exchange_rate: rate } : {}) });
+                                            setEditingId(null);
+                                          }
+                                          if (e.key === 'Escape') setEditingId(null);
+                                        }}
+                                        onBlur={() => {
                                           const val = parseFloat(editAmount) || 0;
-                                          onUpdate(c.id, { [amountKey]: val, leg: editLeg });
+                                          const rate = amountKey === 'sell_amount' ? (parseFloat(editExchangeRate) || null) : undefined;
+                                          if (val !== (c[amountKey] || 0) || editLeg !== c.leg || (rate !== undefined && rate !== (c.exchange_rate || null))) {
+                                            onUpdate(c.id, { [amountKey]: val, leg: editLeg, ...(rate !== undefined ? { exchange_rate: rate } : {}) });
+                                          }
                                           setEditingId(null);
-                                        }
-                                        if (e.key === 'Escape') setEditingId(null);
-                                      }}
-                                      onBlur={() => {
-                                        const val = parseFloat(editAmount) || 0;
-                                        if (val !== (c[amountKey] || 0) || editLeg !== c.leg) {
-                                          onUpdate(c.id, { [amountKey]: val, leg: editLeg });
-                                        }
-                                        setEditingId(null);
-                                      }}
-                                    />
+                                        }}
+                                      />
+                                    </div>
+                                    {amountKey === 'sell_amount' && c.billing_unit !== 'percent' && (c.currency || 'USD') !== 'BRL' && (
+                                      <div className="flex items-center justify-end gap-1">
+                                        <span className="text-[10px] text-muted-foreground">câmbio</span>
+                                        <Input
+                                          type="number"
+                                          step="0.0001"
+                                          placeholder="taxa fiscal"
+                                          value={editExchangeRate}
+                                          onChange={(e) => setEditExchangeRate(e.target.value)}
+                                          onMouseDown={(e) => e.stopPropagation()}
+                                          className="h-6 w-24 text-right font-mono text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        />
+                                      </div>
+                                    )}
                                   </div>
                                 ) : (
                                   <>
@@ -3532,6 +3581,11 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                         <span className="text-xs text-muted-foreground mr-1">{c.currency || 'USD'}</span>
                                         {(c[amountKey] || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                       </>
+                                    )}
+                                    {amountKey === 'sell_amount' && !!c.exchange_rate && (c.currency || 'USD') !== 'BRL' && (
+                                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                                        câmbio próprio: {Number(c.exchange_rate).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                                      </p>
                                     )}
                                   </>
                                 )}
