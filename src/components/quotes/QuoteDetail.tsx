@@ -3209,7 +3209,6 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editLeg, setEditLeg] = useState('');
-  const [editExchangeRate, setEditExchangeRate] = useState('');
 
   function getBillingRef(unit: string): string {
     if (!cargoMetrics) return '';
@@ -3307,13 +3306,16 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
               <TableHead className="h-8 py-1.5 text-xs">{t('financial.description')}</TableHead>
               <TableHead className="h-8 py-1.5 text-xs">{t('quotes.leg')}</TableHead>
               <TableHead className="h-8 py-1.5 text-xs text-right">{t('financial.amount')}</TableHead>
+              {amountKey === 'sell_amount' && (
+                <TableHead className="h-8 py-1.5 text-xs w-24 text-right">Câmbio</TableHead>
+              )}
               <TableHead className="h-8 py-1.5 text-xs w-20"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {charges.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-6 text-muted-foreground text-sm">{t('common.no_data')}</TableCell>
+                <TableCell colSpan={amountKey === 'sell_amount' ? 5 : 4} className="text-center py-6 text-muted-foreground text-sm">{t('common.no_data')}</TableCell>
               </TableRow>
             ) : (
               groupedByPartner.map((group) => {
@@ -3322,7 +3324,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                         {/* Partner sub-header — uma linha só por empresa, mesmo que tenha
                             taxas em mais de um trecho (cada taxa mostra seu trecho embaixo). */}
                         <TableRow className="bg-muted/30 border-t border-l-4 border-l-muted-foreground/20">
-                          <TableCell colSpan={4} className="py-1.5 px-4">
+                          <TableCell colSpan={amountKey === 'sell_amount' ? 5 : 4} className="py-1.5 px-4">
                             <div className="flex items-center justify-between gap-2.5 flex-wrap">
                               <div className="flex items-center gap-2.5">
                                 <div className="flex items-center gap-1.5">
@@ -3424,7 +3426,6 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                 setEditingId(c.id);
                                 setEditAmount(String(c[amountKey] || 0));
                                 setEditLeg(c.leg || 'freight');
-                                setEditExchangeRate(c.exchange_rate ? String(c.exchange_rate) : '');
                               }}
                             >
                               <TableCell className="font-medium text-sm pl-8 py-2">
@@ -3521,48 +3522,30 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                               </TableCell>
                               <TableCell className="text-right font-mono text-sm py-2" onClick={(e) => e.stopPropagation()}>
                                 {editingId === c.id ? (
-                                  <div className="flex flex-col items-end gap-1">
-                                    <div className="flex items-center justify-end gap-1">
-                                      <span className="text-xs text-muted-foreground">{c.currency || 'USD'}</span>
-                                      <Input
-                                        type="number"
-                                        value={editAmount}
-                                        onChange={(e) => setEditAmount(e.target.value)}
-                                        className="h-7 w-28 text-right font-mono text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        autoFocus
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter') {
-                                            const val = parseFloat(editAmount) || 0;
-                                            const rate = amountKey === 'sell_amount' ? (parseFloat(editExchangeRate) || null) : undefined;
-                                            onUpdate(c.id, { [amountKey]: val, leg: editLeg, ...(rate !== undefined ? { exchange_rate: rate } : {}) });
-                                            setEditingId(null);
-                                          }
-                                          if (e.key === 'Escape') setEditingId(null);
-                                        }}
-                                        onBlur={() => {
+                                  <div className="flex items-center justify-end gap-1">
+                                    <span className="text-xs text-muted-foreground">{c.currency || 'USD'}</span>
+                                    <Input
+                                      type="number"
+                                      value={editAmount}
+                                      onChange={(e) => setEditAmount(e.target.value)}
+                                      className="h-7 w-28 text-right font-mono text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      autoFocus
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
                                           const val = parseFloat(editAmount) || 0;
-                                          const rate = amountKey === 'sell_amount' ? (parseFloat(editExchangeRate) || null) : undefined;
-                                          if (val !== (c[amountKey] || 0) || editLeg !== c.leg || (rate !== undefined && rate !== (c.exchange_rate || null))) {
-                                            onUpdate(c.id, { [amountKey]: val, leg: editLeg, ...(rate !== undefined ? { exchange_rate: rate } : {}) });
-                                          }
+                                          onUpdate(c.id, { [amountKey]: val, leg: editLeg });
                                           setEditingId(null);
-                                        }}
-                                      />
-                                    </div>
-                                    {amountKey === 'sell_amount' && c.billing_unit !== 'percent' && (c.currency || 'USD') !== 'BRL' && (
-                                      <div className="flex items-center justify-end gap-1">
-                                        <span className="text-[10px] text-muted-foreground">câmbio</span>
-                                        <Input
-                                          type="number"
-                                          step="0.0001"
-                                          placeholder="taxa fiscal"
-                                          value={editExchangeRate}
-                                          onChange={(e) => setEditExchangeRate(e.target.value)}
-                                          onMouseDown={(e) => e.stopPropagation()}
-                                          className="h-6 w-24 text-right font-mono text-[11px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        />
-                                      </div>
-                                    )}
+                                        }
+                                        if (e.key === 'Escape') setEditingId(null);
+                                      }}
+                                      onBlur={() => {
+                                        const val = parseFloat(editAmount) || 0;
+                                        if (val !== (c[amountKey] || 0) || editLeg !== c.leg) {
+                                          onUpdate(c.id, { [amountKey]: val, leg: editLeg });
+                                        }
+                                        setEditingId(null);
+                                      }}
+                                    />
                                   </div>
                                 ) : (
                                   <>
@@ -3582,11 +3565,6 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                         {(c[amountKey] || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                       </>
                                     )}
-                                    {amountKey === 'sell_amount' && !!c.exchange_rate && (c.currency || 'USD') !== 'BRL' && (
-                                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                                        câmbio próprio: {Number(c.exchange_rate).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
-                                      </p>
-                                    )}
                                   </>
                                 )}
                                 {lockedForEdit && (
@@ -3595,6 +3573,35 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   </Badge>
                                 )}
                               </TableCell>
+                              {amountKey === 'sell_amount' && (
+                                <TableCell className="py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                                  {c.billing_unit !== 'percent' && (c.currency || 'USD') !== 'BRL' ? (
+                                    <Input
+                                      key={`rate-${c.id}-${c.exchange_rate ?? ''}`}
+                                      type="number"
+                                      step="0.0001"
+                                      placeholder="taxa fiscal"
+                                      defaultValue={c.exchange_rate ?? ''}
+                                      disabled={readOnly || lockedForEdit}
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                        if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
+                                      }}
+                                      onBlur={(e) => {
+                                        const raw = e.target.value.trim();
+                                        const val = raw === '' ? null : (parseFloat(raw) || null);
+                                        if (val !== (c.exchange_rate ?? null)) {
+                                          onUpdate(c.id, { exchange_rate: val });
+                                        }
+                                      }}
+                                      className="h-7 w-20 text-right font-mono text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    />
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
+                              )}
                               {!readOnly && (
                               <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
@@ -3641,7 +3648,7 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                             )}
                             {cloningId === c.id && (
                               <TableRow className="bg-muted/20">
-                                <TableCell colSpan={4}>
+                                <TableCell colSpan={amountKey === 'sell_amount' ? 5 : 4}>
                                   <div className="flex items-center gap-2 py-1 flex-wrap">
                                     <span className="text-xs text-muted-foreground whitespace-nowrap">{cloneLabel}:</span>
                                     <Select value={clonePartnerId} onValueChange={setClonePartnerId}>
