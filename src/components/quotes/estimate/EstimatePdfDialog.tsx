@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -62,8 +63,10 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
   const [downloading, setDownloading] = useState(false);
   const [company, setCompany] = useState<any>(null);
   const [client, setClient] = useState<any>(null);
-  const [bank, setBank] = useState<any>(null);
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [selectedBankId, setSelectedBankId] = useState<string>('');
   const isNumerario = mode === 'numerario';
+  const bank = bankAccounts.find(b => b.id === selectedBankId) || null;
 
   useEffect(() => {
     if (!open || !quote?.company_id) return;
@@ -75,11 +78,13 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
     }
   }, [open, quote?.company_id, quote?.client_id]);
 
-  // Dados bancários só fazem sentido no Numerário. Usa a conta padrão em BRL
-  // (moeda em que os custos de nacionalização são pagos); sem uma marcada
-  // como padrão, cai na primeira conta BRL ativa.
+  // Dados bancários só fazem sentido no Numerário. Busca todas as contas
+  // ativas em BRL (moeda em que os custos de nacionalização são pagos) —
+  // se houver mais de uma, o usuário escolhe qual entra no PDF (dropdown no
+  // cabeçalho do modal); com uma só ou nenhuma marcada como padrão, pré-seleciona
+  // a padrão, ou a primeira conta BRL ativa.
   useEffect(() => {
-    if (!open || !isNumerario || !quote?.company_id) { setBank(null); return; }
+    if (!open || !isNumerario || !quote?.company_id) { setBankAccounts([]); setSelectedBankId(''); return; }
     supabase
       .from('company_bank_accounts' as any)
       .select('*')
@@ -87,8 +92,11 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
       .eq('currency', 'BRL')
       .eq('active', true)
       .order('is_default', { ascending: false })
-      .limit(1)
-      .then((r: any) => setBank(r.data?.[0] || null));
+      .then((r: any) => {
+        const list = r.data || [];
+        setBankAccounts(list);
+        setSelectedBankId(list[0]?.id || '');
+      });
   }, [open, isNumerario, quote?.company_id]);
 
   if (!open || !breakdown) return null;
@@ -243,11 +251,27 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="flex flex-row items-center justify-between">
+        <DialogHeader className="flex flex-row items-center justify-between gap-3">
           <DialogTitle>{isNumerario ? 'Numerário' : 'Estimativa de Custo'}</DialogTitle>
-          <Button onClick={handleDownload} disabled={downloading} size="sm">
-            <Download className="w-4 h-4 mr-2" /> {downloading ? 'Gerando…' : (isNumerario && onApproveNumerario ? 'Aprovar e Gerar PDF' : 'Baixar PDF')}
-          </Button>
+          <div className="flex items-center gap-2">
+            {isNumerario && bankAccounts.length > 1 && (
+              <Select value={selectedBankId} onValueChange={setSelectedBankId}>
+                <SelectTrigger className="h-8 w-[220px] text-xs">
+                  <SelectValue placeholder="Conta bancária" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bankAccounts.map(b => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.bank_name}{b.account_number ? ` — ${b.account_number}` : ''}{b.is_default ? ' (padrão)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button onClick={handleDownload} disabled={downloading} size="sm">
+              <Download className="w-4 h-4 mr-2" /> {downloading ? 'Gerando…' : (isNumerario && onApproveNumerario ? 'Aprovar e Gerar PDF' : 'Baixar PDF')}
+            </Button>
+          </div>
         </DialogHeader>
 
         <div ref={ref} style={{ fontFamily: "'Segoe UI', system-ui, sans-serif", color: BRAND, background: '#e5e5e5' }}>
