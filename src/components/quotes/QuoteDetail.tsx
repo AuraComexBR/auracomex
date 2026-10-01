@@ -448,6 +448,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
 
   async function handleRevertToQuote() {
     if (!shipmentId) return;
+    if (isFinalized) { toast.error('Processo finalizado — não é possível reverter para cotação.'); return; }
     setReverting(true);
     try {
       await supabase.from('charge_lines').delete().eq('shipment_id', shipmentId);
@@ -2384,6 +2385,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                 companyId={profile?.company_id || ''}
                 partners={partners}
                 quotePartners={quotePartners}
+                isFinalized={isFinalized}
                 onChanged={() => {
                   queryClient.invalidateQueries({ queryKey: ['quote-partners', quoteId] });
                   // A aba Logística usa sua própria query (cache separado) pra
@@ -2500,7 +2502,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
                       <FileText className="w-4 h-4" />
                       Pré-visualizar Proposta (PDF)
                     </Button>
-                    {isShipmentMode && isFullAccess && (
+                    {isShipmentMode && isFullAccess && !isFinalized && (
                       <Button
                         type="button"
                         variant="outline"
@@ -3766,11 +3768,14 @@ interface QuotePartnersListProps {
   partners: any[];
   quotePartners: any[];
   onChanged: () => void;
+  /** Processo Finalizado — trava adicionar/remover empresas vinculadas. */
+  isFinalized?: boolean;
 }
 
-function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChanged }: QuotePartnersListProps) {
+function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChanged, isFinalized }: QuotePartnersListProps) {
   const { t } = useLanguage();
   const { profile } = useAuth();
+  const locked = !!isFinalized;
   const [searchText, setSearchText] = useState('');
   const [adding, setAdding] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -3797,6 +3802,7 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
 
   async function handleAdd(partnerId: string) {
     if (!partnerId || !companyId) return;
+    if (locked) { toast.error('Processo finalizado — não é possível adicionar empresas.'); return; }
     setAdding(true);
     try {
       const { error } = await supabase.from('quote_partners' as any).insert({
@@ -3836,6 +3842,7 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
   }
 
   async function handleRemove(id: string) {
+    if (locked) { toast.error('Processo finalizado — não é possível remover empresas.'); return; }
     try {
       const removedPartner = quotePartners.find((qp: any) => qp.id === id);
       const { error } = await supabase.from('quote_partners' as any).delete().eq('id', id);
@@ -3856,7 +3863,13 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
   }
 
   return (
+    <fieldset disabled={locked} className="contents">
     <div className="space-y-4">
+      {locked && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          Processo finalizado — somente leitura. Para editar, reabra o processo em Admin &gt; Reabrir Processos.
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 flex-wrap rounded-lg border bg-muted/20 px-3 py-2">
         <div className="relative flex-1 min-w-[180px]">
           <Input
@@ -3950,6 +3963,7 @@ function QuotePartnersList({ quoteId, companyId, partners, quotePartners, onChan
         </Table>
       )}
     </div>
+    </fieldset>
   );
 }
 
