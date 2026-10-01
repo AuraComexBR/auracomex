@@ -16,6 +16,8 @@ interface Props {
   quoteId: string;
   quote: any;
   companyId?: string;
+  /** Processo Finalizado — trava edição, upload de comprovante e exclusão da prestação. */
+  isFinalized?: boolean;
 }
 
 function fmtBRL(n: number) {
@@ -33,8 +35,9 @@ const categoriaLabels: Record<AccountabilityCategoria, string> = {
   other: 'Outro',
 };
 
-export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
+export function AccountabilityTab({ quoteId, quote, companyId, isFinalized }: Props) {
   const { data, isLoading, updateItem, attachComprovante, removeComprovante, recomputeTotals, removeAccountability } = useAccountability(quoteId, companyId);
+  const locked = !!isFinalized;
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
@@ -56,6 +59,7 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
   }
 
   const handleCommitPago = async (item: AccountabilityItemRow, valor: number) => {
+    if (locked) { toast.error('Processo finalizado — não é possível editar a prestação de contas.'); return; }
     try {
       await updateItem(item.id, { valor_pago_brl: valor, confirmado: true });
       await recomputeTotals(accountability.id);
@@ -65,6 +69,7 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
   };
 
   const handleToggleConfirmado = async (item: AccountabilityItemRow, confirmado: boolean) => {
+    if (locked) { toast.error('Processo finalizado — não é possível editar a prestação de contas.'); return; }
     try {
       await updateItem(item.id, {
         confirmado,
@@ -78,6 +83,7 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
 
   const handleSelectFile = async (item: AccountabilityItemRow, file: File | undefined) => {
     if (!file) return;
+    if (locked) { toast.error('Processo finalizado — não é possível anexar comprovantes.'); return; }
     setUploadingId(item.id);
     try {
       await attachComprovante(item, file, quote);
@@ -92,6 +98,7 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
   };
 
   const handleRemoveComprovante = async (item: AccountabilityItemRow) => {
+    if (locked) { toast.error('Processo finalizado — não é possível remover comprovantes.'); return; }
     try {
       await removeComprovante(item.id);
     } catch (e: any) {
@@ -105,7 +112,13 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
   const pendentes = items.filter(i => !i.confirmado).length;
 
   return (
+    <fieldset disabled={locked} className="contents">
     <div className="space-y-4">
+      {locked && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          Processo finalizado — somente leitura. Para editar, reabra o processo em Admin &gt; Reabrir Processos.
+        </div>
+      )}
       {pendentes > 0 && (
         <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
           <Info className="w-4 h-4 shrink-0" />
@@ -124,7 +137,11 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
               size="sm"
               variant="outline"
               className="text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => setDeleteOpen(true)}
+              disabled={locked}
+              onClick={() => {
+                if (locked) { toast.error('Processo finalizado — não é possível excluir a prestação de contas.'); return; }
+                setDeleteOpen(true);
+              }}
             >
               <Trash2 className="w-3.5 h-3.5 mr-1" /> Excluir Prestação (destrava Estimativa)
             </Button>
@@ -245,6 +262,7 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async (e) => {
                 e.preventDefault();
+                if (locked) { toast.error('Processo finalizado — não é possível excluir a prestação de contas.'); return; }
                 setDeleting(true);
                 try {
                   await removeAccountability(accountability.id);
@@ -263,5 +281,6 @@ export function AccountabilityTab({ quoteId, quote, companyId }: Props) {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </fieldset>
   );
 }

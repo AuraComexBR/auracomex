@@ -2958,6 +2958,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               quoteId={quoteId}
               quote={quote}
               companyId={profile?.company_id}
+              isFinalized={isFinalized}
             />
           </TabsContent>
         )}
