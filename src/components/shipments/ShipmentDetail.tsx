@@ -125,6 +125,7 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
   if (!shipment) return <div className="text-center py-12 text-muted-foreground">{t('common.loading')}</div>;
 
   const mode = shipment.transport_mode;
+  const isFinalized = !!(shipment as any).is_finalized;
 
   return (
     <div className="space-y-6 animate-slide-in">
@@ -138,6 +139,11 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
             <h1 className="text-2xl font-bold font-mono">{shipment.reference_number}</h1>
             <StatusBadge status={shipment.status} />
             <ModeIcon mode={shipment.transport_mode} showLabel />
+            {isFinalized && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs px-2 py-0.5 font-medium">
+                Finalizado — somente leitura
+              </span>
+            )}
           </div>
           <p className="text-muted-foreground text-sm mt-1">
             {(shipment as any).clients?.name && <span className="font-medium">{(shipment as any).clients.name} · </span>}
@@ -278,7 +284,7 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
           }} />
         </TabsContent>
         <TabsContent value="events">
-          <ShipmentEventsTab shipmentId={id} companyId={shipment.company_id} />
+          <ShipmentEventsTab shipmentId={id} companyId={shipment.company_id} isFinalized={isFinalized} />
         </TabsContent>
 
         <TabsContent value="financial">
@@ -290,10 +296,11 @@ function StandaloneShipmentDetail({ id, onBack }: Props) {
             originPort={shipment.origin_port}
             destinationPort={shipment.destination_port}
             createdBy={shipment.created_by}
+            isFinalized={isFinalized}
           />
         </TabsContent>
         <TabsContent value="documents">
-          <DocumentsTab shipmentId={id} companyId={shipment.company_id} />
+          <DocumentsTab shipmentId={id} companyId={shipment.company_id} isFinalized={isFinalized} />
         </TabsContent>
         <TabsContent value="coleta">
           <OrdemColetaTab

@@ -1162,6 +1162,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // atalho libera o campo cliente seguindo a mesma regra de acesso da aba
   // Carga (canEditCargo), em vez de depender do modo de edição completo.
   async function handleChangeClient(newClientId: string) {
+    if (isFinalized) { toast.error('Processo finalizado — não é possível editar.'); return; }
     if (!profile) return;
     const oldClientId = form.client_id || null;
     try {
@@ -1197,6 +1198,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // parceiros da cotação) feitos no nome do cliente atual. Trocar o cliente não
   // atualiza esses lançamentos em cascata, então avisamos o usuário antes.
   async function requestClientChange(newClientId: string) {
+    if (isFinalized) { toast.error('Processo finalizado — não é possível editar.'); return; }
     const oldClientId = form.client_id;
     if (!oldClientId || oldClientId === newClientId) {
       handleChangeClient(newClientId);
@@ -1424,6 +1426,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // Compra e venda com empresa, unidade, moeda e valor totalmente independentes.
   // Basta deixar um dos lados sem valor para criar só a compra ou só a venda.
   async function handleAddCharge(opts?: { keepOpen?: boolean }) {
+    if (isFinalized) { toast.error('Processo finalizado — não é possível editar.'); return; }
     if (!profile || !chargeForm.description.trim()) return;
 
     const buyAmt = parseFloat(chargeForm.amount) || 0;
@@ -1529,6 +1532,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   }
 
   async function handleDeleteCharge(chargeId: string) {
+    if (isFinalized) { toast.error('Processo finalizado — não é possível editar.'); return; }
     try {
       const charge = (charges as any[]).find((c: any) => c.id === chargeId);
       if (charge?.sent_in_debit_note_id) {
@@ -1561,6 +1565,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   }
 
   async function handleUpdateCharge(chargeId: string, updates: Record<string, any>) {
+    if (isFinalized) { toast.error('Processo finalizado — não é possível editar.'); return; }
     try {
       const charge = (charges as any[]).find((c: any) => c.id === chargeId);
       const { error } = await supabase.from('quote_charges').update(updates as any).eq('id', chargeId);
@@ -1645,6 +1650,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   }
 
   async function handleCloneCharge(charge: any, newAmount: number, targetSide: 'buy' | 'sell', partnerId?: string) {
+    if (isFinalized) { toast.error('Processo finalizado — não é possível editar.'); return; }
     if (!profile) return;
     try {
       const { error } = await supabase.from('quote_charges').insert({
@@ -1680,10 +1686,14 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
   // Financial visibility: only process owner (created_by) or admin can see/edit financial data
   const isProcessOwner = profile?.user_id === quote.created_by;
   const canSeeFinancials = isFullAccess || isProcessOwner;
-  const canEditCharges = !isShipmentMode || isFullAccess || isProcessOwner;
+  // Processo Finalizado (categoria 'delivered' em Gerenciar Status) não pode
+  // mais ser editado de forma alguma — nem quem tem Full Access. Reabertura
+  // só pela tela de Admin (RPC reopen_shipment).
+  const isFinalized = isShipmentMode && !!(shipment as any)?.is_finalized;
+  const canEditCharges = (!isShipmentMode || isFullAccess || isProcessOwner) && !isFinalized;
   // Mesma regra da Taxas, mas preservando o trava adicional de "cotação já convertida"
   // (fora do modo embarque) que existia antes só para usuários sem acesso total.
-  const canEditCargo = (!isShipmentMode && form.status !== 'converted') || isFullAccess || isProcessOwner;
+  const canEditCargo = ((!isShipmentMode && form.status !== 'converted') || isFullAccess || isProcessOwner) && !isFinalized;
   // A aba Geral não tem mais botão "Editar"/"Salvar" (fora o campo Cliente, que
   // tem sua própria trava dedicada) — ela sempre segue a mesma regra da aba
   // Carga e salva sozinha (auto-save), tanto em cotação quanto em embarque.
@@ -2402,6 +2412,11 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         {/* Charges Tab */}
         <TabsContent value="charges">
           <div className="space-y-4">
+            {isFinalized && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                Processo finalizado — somente leitura. Para editar, reabra o processo em Admin &gt; Reabrir Processos.
+              </div>
+            )}
             {/* Armazenagem no destino, Seguro Internacional e os botões de
                 ação da aba — tudo na mesma linha (quebra em telas menores). */}
             {(() => {
@@ -2959,6 +2974,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               onGeneratePdf={() => setPdfPreviewOpen(true)}
               dnPartners={linkedPartnersForDn}
               dnClientId={(quote as any)?.client_id || null}
+              isFinalized={isFinalized}
             />
           ) : profile ? (
             <DocumentsTab
@@ -3017,7 +3033,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
         )}
         {isShipmentMode && shipment && (
           <TabsContent value="events">
-            <ShipmentEventsTab shipmentId={shipment.id} companyId={shipment.company_id} />
+            <ShipmentEventsTab shipmentId={shipment.id} companyId={shipment.company_id} isFinalized={isFinalized} />
           </TabsContent>
         )}
         {isShipmentMode && shipment && (
@@ -3305,10 +3321,10 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
             <TableRow>
               <TableHead className="h-8 py-1.5 text-xs">{t('financial.description')}</TableHead>
               <TableHead className="h-8 py-1.5 text-xs">{t('quotes.leg')}</TableHead>
-              <TableHead className="h-8 py-1.5 text-xs text-right">{t('financial.amount')}</TableHead>
               {amountKey === 'sell_amount' && (
                 <TableHead className="h-8 py-1.5 text-xs w-24 text-right">Câmbio</TableHead>
               )}
+              <TableHead className="h-8 py-1.5 text-xs text-right">{t('financial.amount')}</TableHead>
               <TableHead className="h-8 py-1.5 text-xs w-20"></TableHead>
             </TableRow>
           </TableHeader>
@@ -3520,6 +3536,35 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   </span>
                                 )}
                               </TableCell>
+                              {amountKey === 'sell_amount' && (
+                                <TableCell className="py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                                  {c.billing_unit !== 'percent' && (c.currency || 'USD') !== 'BRL' ? (
+                                    <Input
+                                      key={`rate-${c.id}-${c.exchange_rate ?? ''}`}
+                                      type="number"
+                                      step="0.0001"
+                                      placeholder="taxa fiscal"
+                                      defaultValue={c.exchange_rate ?? ''}
+                                      disabled={readOnly || lockedForEdit}
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                        if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
+                                      }}
+                                      onBlur={(e) => {
+                                        const raw = e.target.value.trim();
+                                        const val = raw === '' ? null : (parseFloat(raw) || null);
+                                        if (val !== (c.exchange_rate ?? null)) {
+                                          onUpdate(c.id, { exchange_rate: val });
+                                        }
+                                      }}
+                                      className="h-7 w-20 text-right font-mono text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    />
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
+                              )}
                               <TableCell className="text-right font-mono text-sm py-2" onClick={(e) => e.stopPropagation()}>
                                 {editingId === c.id ? (
                                   <div className="flex items-center justify-end gap-1">
@@ -3573,35 +3618,6 @@ function ChargeColumn({ title, charges, amountKey, totalByCurrency, legLabels, l
                                   </Badge>
                                 )}
                               </TableCell>
-                              {amountKey === 'sell_amount' && (
-                                <TableCell className="py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                                  {c.billing_unit !== 'percent' && (c.currency || 'USD') !== 'BRL' ? (
-                                    <Input
-                                      key={`rate-${c.id}-${c.exchange_rate ?? ''}`}
-                                      type="number"
-                                      step="0.0001"
-                                      placeholder="taxa fiscal"
-                                      defaultValue={c.exchange_rate ?? ''}
-                                      disabled={readOnly || lockedForEdit}
-                                      onMouseDown={(e) => e.stopPropagation()}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                        if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
-                                      }}
-                                      onBlur={(e) => {
-                                        const raw = e.target.value.trim();
-                                        const val = raw === '' ? null : (parseFloat(raw) || null);
-                                        if (val !== (c.exchange_rate ?? null)) {
-                                          onUpdate(c.id, { exchange_rate: val });
-                                        }
-                                      }}
-                                      className="h-7 w-20 text-right font-mono text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    />
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">—</span>
-                                  )}
-                                </TableCell>
-                              )}
                               {!readOnly && (
                               <TableCell className="py-2" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">

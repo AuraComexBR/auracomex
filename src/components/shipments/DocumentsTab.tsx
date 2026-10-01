@@ -37,11 +37,14 @@ interface Props {
   dnPartners?: Array<{ id: string; name: string; partner_category?: string | null }>;
   /** Cliente do processo — idem, não é mais usado aqui. */
   dnClientId?: string | null;
+  /** Processo Finalizado — trava upload/exclusão/alterações, somente leitura. */
+  isFinalized?: boolean;
 }
 
-export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGeneratePdf }: Props) {
+export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGeneratePdf, isFinalized }: Props) {
   const { t } = useLanguage();
   const { profile } = useAuth();
+  const locked = !!isFinalized;
   // Arquivo(s) escolhidos (via botão ou arraste) aguardando a categoria
   // obrigatória antes do envio efetivo.
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
@@ -98,6 +101,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
   // o diálogo pedindo a categoria (obrigatória) antes de efetivar o envio.
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    if (locked) { toast.error('Processo finalizado — não é possível anexar documentos.'); return; }
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
     setUploadCategory('');
@@ -105,7 +109,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
     setSaveNewCategory(true);
     setExpiresAt(undefined);
     setPendingUploadFiles(files);
-  }, []);
+  }, [locked]);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Importante: converter para array ANTES de limpar e.target.value — o
@@ -114,6 +118,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
     const files = e.target.files ? Array.from(e.target.files) : [];
     e.target.value = '';
     if (files.length === 0) return;
+    if (locked) { toast.error('Processo finalizado — não é possível anexar documentos.'); return; }
     setUploadCategory('');
     setNewCategoryName('');
     setSaveNewCategory(true);
@@ -128,6 +133,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
   const canConfirmUpload = isNewCategorySelected ? !!trimmedNewCategory : !!uploadCategory;
 
   async function confirmUpload() {
+    if (locked) { toast.error('Processo finalizado — não é possível anexar documentos.'); return; }
     if (!pendingUploadFiles || !canConfirmUpload) return;
     setUploading(true);
     try {
@@ -193,6 +199,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
   }
 
   return (
+    <fieldset disabled={locked} className="contents">
     <Card className="glass">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-sm font-semibold">{t('shipments.documents')}</CardTitle>
@@ -204,7 +211,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
             </Button>
           )}
           <label>
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="outline" size="sm" asChild disabled={locked}>
               <span><Upload className="w-4 h-4 mr-2" /> {t('common.upload')}</span>
             </Button>
             <input type="file" className="hidden" multiple onChange={handleFileInput} />
@@ -212,7 +219,13 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
         </div>
       </CardHeader>
       <CardContent>
+        {locked && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 mb-4">
+            Processo finalizado — somente leitura. Para editar, reabra o processo em Admin &gt; Reabrir Processos.
+          </div>
+        )}
         {/* Drop zone */}
+        {!locked && (
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
@@ -221,6 +234,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
           <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">Arraste os arquivos aqui</p>
         </div>
+        )}
 
         {/* Document list */}
         <div className="space-y-2">
@@ -394,6 +408,7 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
         </DialogContent>
       </Dialog>
     </Card>
+    </fieldset>
   );
 }
 

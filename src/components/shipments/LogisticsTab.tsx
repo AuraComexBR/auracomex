@@ -78,6 +78,15 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   const { isFullAccess } = usePermissions();
   const queryClient = useQueryClient();
 
+  // Processo Finalizado (categoria 'delivered' em Gerenciar Status) não pode
+  // mais ser editado — é a trava de UI que acompanha a trava já aplicada no
+  // banco (trigger shipments_guard_finalized). Reabertura só pela tela de
+  // Admin (full access), via RPC reopen_shipment.
+  const locked = !!(shipment as any).is_finalized;
+  function warnLocked() {
+    toast.error('Processo finalizado — não é possível mais editar.');
+  }
+
   // Fetch custom status options from DB
   const { data: dbStatusOptions = [] } = useQuery({
     queryKey: ['shipment-status-options', profile?.company_id],
@@ -529,11 +538,13 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   // dentro dele, mesmo em cards diferentes). Status continua salvando na
   // hora, como já era, pelo próprio Select de status.
   function handleAutoSaveBlur() {
+    if (locked) return;
     if (!hasChanges || saving) return;
     handleSave();
   }
 
   async function handleSave() {
+    if (locked) { warnLocked(); return; }
     setSaving(true);
     try {
       // Número, lacre, entrada no terminal e devolução são arrays paralelos
@@ -738,6 +749,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   // formulário — um clique em checkbox não "sai do campo" da mesma forma
   // que um input de texto, então o auto-save por blur não é confiável aqui.
   async function handleCheckboxDateSave(fieldKey: string, checked: boolean) {
+    if (locked) { warnLocked(); return; }
     const oldValue = (form as any)[fieldKey] || '';
     const newValue = checked ? new Date().toISOString() : '';
     updateField(fieldKey, newValue);
@@ -791,6 +803,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   // antes de trocar e avisa o usuário. Sem isso (embarque avulso sem
   // cotação), salva direto aqui, sem aviso.
   async function handleClientSaveDirect(newClientId: string) {
+    if (locked) { warnLocked(); return; }
     const oldClientId = (shipment as any).client_id || null;
     try {
       const { error } = await (supabase.from('shipments') as any).update({
@@ -820,7 +833,13 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
   const currentClientName = clientOptions?.find((c) => c.id === currentClientId)?.name || (shipment as any).clients?.name || '';
 
   return (
+    <fieldset disabled={locked} className="contents">
     <div className="space-y-4" onBlur={handleAutoSaveBlur}>
+      {locked && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          Processo finalizado — os campos abaixo estão somente para leitura. Para editar, reabra o processo em Admin &gt; Reabrir Processos.
+        </div>
+      )}
       {/* CARD 1 — Status/Ref.Cliente/Cliente/Modal/Incoterm/Validade,
           Coleta/Entrega, Origem/Transbordo/Destino, Transit Time/Free Time */}
       <CollapsibleCard title="1. Geral">
@@ -835,6 +854,7 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
               )}
             </div>
             <Select value={form.status} onValueChange={async (v) => {
+              if (locked) { warnLocked(); return; }
               const oldStatus = form.status;
               updateField('status', v);
               try {
@@ -1300,5 +1320,6 @@ export function LogisticsTab({ shipment, quoteId, onUpdate, clientOptions, onCli
         </div>
       )}
     </div>
+    </fieldset>
   );
 }

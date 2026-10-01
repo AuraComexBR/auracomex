@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { DataManagementSection } from '@/components/settings/DataManagementSection';
 import { UserRolesSection } from '@/components/settings/UserRolesSection';
 import { InviteUserSection } from '@/components/settings/InviteUserSection';
+import { ReopenShipmentsSection } from '@/components/settings/ReopenShipmentsSection';
 import { SiscomexConfigWizard } from '@/components/settings/SiscomexConfigWizard';
 import { PortalUnicoConfigWizard } from '@/components/settings/PortalUnicoConfigWizard';
 import { BankAccountsSection } from '@/components/settings/BankAccountsSection';
@@ -572,6 +573,7 @@ export default function SettingsPage() {
         <TabsContent value="usuarios" className="space-y-6 mt-4 max-w-2xl">
           <InviteUserSection />
           <UserRolesSection />
+          <ReopenShipmentsSection />
         </TabsContent>
 
         {/* Backup */}

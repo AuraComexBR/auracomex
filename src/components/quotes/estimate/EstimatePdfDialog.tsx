@@ -255,18 +255,21 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
           <DialogTitle>{isNumerario ? 'Numerário' : 'Estimativa de Custo'}</DialogTitle>
           <div className="flex items-center gap-2">
             {isNumerario && bankAccounts.length > 1 && (
-              <Select value={selectedBankId} onValueChange={setSelectedBankId}>
-                <SelectTrigger className="h-8 w-[220px] text-xs">
-                  <SelectValue placeholder="Conta bancária" />
-                </SelectTrigger>
-                <SelectContent>
-                  {bankAccounts.map(b => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.bank_name}{b.account_number ? ` — ${b.account_number}` : ''}{b.is_default ? ' (padrão)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Conta p/ impressão:</span>
+                <Select value={selectedBankId} onValueChange={setSelectedBankId}>
+                  <SelectTrigger className="h-8 w-[220px] text-xs">
+                    <SelectValue placeholder="Conta bancária" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccounts.map(b => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.bank_name}{b.account_number ? ` — ${b.account_number}` : ''}{b.is_default ? ' (padrão)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
             <Button onClick={handleDownload} disabled={downloading} size="sm">
               <Download className="w-4 h-4 mr-2" /> {downloading ? 'Gerando…' : (isNumerario && onApproveNumerario ? 'Aprovar e Gerar PDF' : 'Baixar PDF')}

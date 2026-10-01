@@ -18,6 +18,8 @@ import { toast } from 'sonner';
 interface Props {
   shipmentId: string;
   companyId: string;
+  /** Processo Finalizado — trava novas entradas/edições no diário. */
+  isFinalized?: boolean;
 }
 
 const CATEGORY_OPTIONS: { value: string; label: string; badgeClass: string }[] = [
@@ -41,9 +43,10 @@ function categoryMeta(value: string) {
  * cada uma podendo ser marcada como visível no portal de tracking do
  * cliente (mesmo padrão do toggle de documentos).
  */
-export function ShipmentEventsTab({ shipmentId, companyId }: Props) {
+export function ShipmentEventsTab({ shipmentId, companyId, isFinalized }: Props) {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
+  const locked = !!isFinalized;
   const [note, setNote] = useState('');
   const [category, setCategory] = useState('update');
   const [eventDate, setEventDate] = useState<Date>(new Date());
@@ -68,6 +71,7 @@ export function ShipmentEventsTab({ shipmentId, companyId }: Props) {
   }
 
   async function handleAdd() {
+    if (locked) { toast.error('Processo finalizado — não é possível adicionar atualizações.'); return; }
     if (!note.trim()) return;
     setSaving(true);
     try {
@@ -95,6 +99,7 @@ export function ShipmentEventsTab({ shipmentId, companyId }: Props) {
   }
 
   async function handleToggleVisible(id: string, current: boolean) {
+    if (locked) { toast.error('Processo finalizado — não é possível editar.'); return; }
     const { error } = await (supabase.from('shipment_events') as any).update({ visible_tracking: !current }).eq('id', id);
     if (error) { toast.error(error.message); return; }
     toast.success(current ? 'Removido do tracking' : 'Disponível no tracking');
@@ -102,6 +107,7 @@ export function ShipmentEventsTab({ shipmentId, companyId }: Props) {
   }
 
   async function handleDelete(id: string) {
+    if (locked) { toast.error('Processo finalizado — não é possível excluir.'); return; }
     const { error } = await (supabase.from('shipment_events') as any).delete().eq('id', id);
     if (error) { toast.error(error.message); return; }
     toast.success('Atualização removida');
@@ -109,6 +115,7 @@ export function ShipmentEventsTab({ shipmentId, companyId }: Props) {
   }
 
   return (
+    <fieldset disabled={locked} className="contents">
     <Card className="glass">
       <CardHeader>
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -116,6 +123,11 @@ export function ShipmentEventsTab({ shipmentId, companyId }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        {locked && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            Processo finalizado — somente leitura. Para editar, reabra o processo em Admin &gt; Reabrir Processos.
+          </div>
+        )}
         {/* Nova atualização */}
         <div className="space-y-3 rounded-lg border border-border p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -207,5 +219,6 @@ export function ShipmentEventsTab({ shipmentId, companyId }: Props) {
         </div>
       </CardContent>
     </Card>
+    </fieldset>
   );
 }

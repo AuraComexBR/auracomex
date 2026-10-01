@@ -3276,6 +3276,7 @@ export type Database = {
           incoterm: string | null
           invoice_number: string | null
           invoice_sent_at: string | null
+          is_finalized: boolean
           last_accessed_at: string | null
           master_bl: string | null
           next_update: string | null
@@ -3342,6 +3343,7 @@ export type Database = {
           incoterm?: string | null
           invoice_number?: string | null
           invoice_sent_at?: string | null
+          is_finalized?: boolean
           last_accessed_at?: string | null
           master_bl?: string | null
           next_update?: string | null
@@ -3408,6 +3410,7 @@ export type Database = {
           incoterm?: string | null
           invoice_number?: string | null
           invoice_sent_at?: string | null
+          is_finalized?: boolean
           last_accessed_at?: string | null
           master_bl?: string | null
           next_update?: string | null
@@ -3790,7 +3793,12 @@ export type Database = {
       next_dn_number: { Args: { p_company_id: string }; Returns: string }
       next_oc_number: { Args: { p_company_id: string }; Returns: string }
       next_reference: { Args: { p_company_id: string }; Returns: string }
+      reopen_shipment: { Args: { p_shipment_id: string }; Returns: undefined }
       reset_demo_data: { Args: never; Returns: undefined }
+      shipment_status_is_finalized: {
+        Args: { p_company_id: string; p_status: string }
+        Returns: boolean
+      }
     }
     Enums: {
       accounts_payable_source: "debit_note" | "overhead" | "manual"

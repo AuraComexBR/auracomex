@@ -29,6 +29,9 @@ interface Props {
   originPort?: string | null;
   destinationPort?: string | null;
   createdBy?: string | null;
+  /** Processo Finalizado (categoria 'delivered') — trava toda a aba pra
+   * somente leitura. Espelha o bloqueio já aplicado no banco. */
+  isFinalized?: boolean;
 }
 
 type Direction = 'payable' | 'receivable';
@@ -68,13 +71,14 @@ const CHARGE_TYPE_LABELS: Record<string, string> = {
   other: 'Outros',
 };
 
-export function FinancialTab({ shipmentId, companyId, clientId, transportMode, originPort, destinationPort, createdBy }: Props) {
+export function FinancialTab({ shipmentId, companyId, clientId, transportMode, originPort, destinationPort, createdBy, isFinalized }: Props) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { canVerifyCharges, canProcessPayments, isFullAccess } = usePermissions();
   const isProcessOwner = user?.id === createdBy;
   const canSeeFinancials = isFullAccess || isProcessOwner;
-  const canEditChargesHere = isFullAccess || isProcessOwner;
+  const locked = !!isFinalized;
+  const canEditChargesHere = (isFullAccess || isProcessOwner) && !locked;
   const queryClient = useQueryClient();
   const { usdBrl, eurBrl } = useExchangeRate();
   const [showAdd, setShowAdd] = useState(false);
@@ -483,7 +487,13 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
   };
 
   return (
+    <fieldset disabled={locked} className="contents">
     <div className="space-y-4">
+      {locked && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          Processo finalizado — somente leitura. Para editar, reabra o processo em Admin &gt; Reabrir Processos.
+        </div>
+      )}
       {/* Tabs: Charges | Parceiros */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -955,5 +965,6 @@ export function FinancialTab({ shipmentId, companyId, clientId, transportMode, o
         </DialogContent>
       </Dialog>
     </div>
+    </fieldset>
   );
 }

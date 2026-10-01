@@ -23,6 +23,7 @@ export function ShipmentPartnersCard({ shipment, quoteId, onUpdate }: Props) {
   const { t } = useLanguage();
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
+  const locked = !!(shipment as any).is_finalized;
 
   // Fallback pra embarque avulso sem cotação — o caso normal lê de
   // quote_partners abaixo, refletindo na hora qualquer empresa
@@ -117,6 +118,7 @@ export function ShipmentPartnersCard({ shipment, quoteId, onUpdate }: Props) {
   });
 
   async function saveField(fieldKey: string, value: string) {
+    if (locked) { toast.error('Processo finalizado — não é possível mais editar.'); return; }
     const oldValue = (values as any)[fieldKey] || '';
     setValues((v) => ({ ...v, [fieldKey]: value }));
     try {
@@ -178,6 +180,7 @@ export function ShipmentPartnersCard({ shipment, quoteId, onUpdate }: Props) {
   }
 
   return (
+    <fieldset disabled={locked} className="contents">
     <CollapsibleCard title="Shipper, Armador, Notify & Consignee">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <PartnerSelect label="Shipper" fieldKey="shipper_id" />
@@ -200,5 +203,6 @@ export function ShipmentPartnersCard({ shipment, quoteId, onUpdate }: Props) {
         <PartnerSelect label="Consignee" fieldKey="consignee_id" />
       </div>
     </CollapsibleCard>
+    </fieldset>
   );
 }
