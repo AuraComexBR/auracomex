@@ -40,6 +40,8 @@ interface Props {
    *  pra sugerir o Trânsito automaticamente como ETA - ETD. */
   shipmentEtd?: string | null;
   shipmentEta?: string | null;
+  /** Processo Finalizado — trava edição e exclusão da estimativa. */
+  isFinalized?: boolean;
 }
 
 function fmtUSD(n: number) {
@@ -60,7 +62,7 @@ type DraftExpense = EstimateExpenseRow & { _new?: boolean };
 
 export function CostEstimateTab({
   quoteId, quote, quoteItems, quotePartners = [], companyId, charges, getBillingMultiplier,
-  shipmentEtd, shipmentEta,
+  shipmentEtd, shipmentEta, isFinalized,
 }: Props) {
   const { profile } = useAuth();
   const { data, isLoading, createEstimate, deleteEstimate, invalidate } = useCostEstimate(quoteId, companyId);
@@ -673,6 +675,7 @@ export function CostEstimateTab({
 
   // ===== Ações imediatas (fora do rascunho) =====
   const handleCreate = async () => {
+    if (isFinalized) { toast.error('Processo finalizado — não é possível criar estimativa.'); return; }
     setCreating(true);
     try {
       // Regra de auto-preenchimento do Carrier (Cia / Armador) baseada no modal e categoria
@@ -890,7 +893,7 @@ export function CostEstimateTab({
             <h3 className="text-lg font-semibold">Nenhuma estimativa de custo</h3>
             <p className="text-sm text-muted-foreground mt-1">Crie uma estimativa completa com valor no embarque, valor desembaraçado, II, IPI, PIS, COFINS, ICMS e despesas nacionais.</p>
           </div>
-          <Button onClick={handleCreate} disabled={creating || !companyId}>
+          <Button onClick={handleCreate} disabled={creating || !companyId || !!isFinalized}>
             <Plus className="w-4 h-4 mr-2" /> Criar Estimativa de Custo
           </Button>
         </CardContent>
@@ -905,10 +908,16 @@ export function CostEstimateTab({
   // persistente, sempre que existir uma Prestação de Contas (Numerário já
   // aprovado) pra esta cotação. Nesse caso só destrava excluindo a prestação
   // (aba "Prestação de Contas").
-  const ro = !draftEstimate || !!accountability;
+  const ro = !draftEstimate || !!accountability || !!isFinalized;
 
   return (
+    <fieldset disabled={!!isFinalized} className="contents">
     <div className="space-y-4">
+      {isFinalized && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          Processo finalizado — somente leitura. Para editar, reabra o processo em Admin &gt; Reabrir Processos.
+        </div>
+      )}
       {/* Alertas de Dados Pendentes */}
       {serverEstimate && (
         <div className="space-y-2">
@@ -976,7 +985,7 @@ export function CostEstimateTab({
             <Button size="sm" onClick={() => { setPdfMode('numerario'); setPdfOpen(true); }}>
               <FileDown className="w-3.5 h-3.5 mr-1" /> Numerário
             </Button>
-            {serverEstimate && !accountability && (
+            {serverEstimate && !accountability && !isFinalized && (
               <Button
                 size="sm"
                 variant="outline"
@@ -1689,6 +1698,7 @@ export function CostEstimateTab({
               onClick={async (e) => {
                 e.preventDefault();
                 if (!serverEstimate) return;
+                if (isFinalized) { toast.error('Processo finalizado — não é possível descartar a estimativa.'); return; }
                 setDeleting(true);
                 try {
                   await deleteEstimate(serverEstimate.id);
@@ -1707,5 +1717,6 @@ export function CostEstimateTab({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </fieldset>
   );
 }

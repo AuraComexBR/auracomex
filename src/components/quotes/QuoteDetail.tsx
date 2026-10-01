@@ -2949,6 +2949,7 @@ export function QuoteDetail({ quoteId, onBack, shipmentId }: Props) {
               getBillingMultiplier={getChargeMultiplier}
               shipmentEtd={(shipment as any)?.etd}
               shipmentEta={(shipment as any)?.eta}
+              isFinalized={isFinalized}
             />
           </TabsContent>
         )}
