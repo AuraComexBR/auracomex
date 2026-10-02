@@ -199,7 +199,6 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
   }
 
   return (
-    <fieldset disabled={locked} className="contents">
     <Card className="glass">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-sm font-semibold">{t('shipments.documents')}</CardTitle>
@@ -277,7 +276,8 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
                   >
                     <Radio className={`w-4 h-4 ${doc.visible_tracking ? 'text-emerald-500' : 'text-muted-foreground'}`} />
                   </Button>
-                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Excluir" onClick={async () => {
+                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" disabled={locked} title="Excluir" onClick={async () => {
+                    if (locked) { toast.error('Processo finalizado — não é possível excluir documentos.'); return; }
                     const { error } = await supabase.from('documents').delete().eq('id', doc.id);
                     if (error) { toast.error(error.message); return; }
                     refetch();
@@ -408,7 +408,6 @@ export function DocumentsTab({ shipmentId, companyId, isQuoteMode, quoteId, onGe
         </DialogContent>
       </Dialog>
     </Card>
-    </fieldset>
   );
 }
 

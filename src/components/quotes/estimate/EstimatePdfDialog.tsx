@@ -137,11 +137,11 @@ export function EstimatePdfDialog({ open, onClose, quote, estimate, items, expen
             file_size: blob.size, document_type: 'other' as any,
             // Marca pra o portal de tracking (TrackingV2) poder liberar esse
             // PDF por cliente (ver TRACKING_DOC_CATEGORY_MAP em trackingFieldRegistry.ts).
-            // visible_tracking=true é o requisito de base — quem controla se
-            // aparece de fato pra ESSE cliente é o toggle correspondente em
-            // Cadastros > Tracking.
+            // visible_tracking começa false (como qualquer documento enviado/gerado):
+            // ninguém fica visível pro cliente automaticamente — a equipe decide e
+            // libera manualmente pelo toggle na aba Documentos.
             custom_category: isNumerario ? 'tracking:numerario_pdf' : 'tracking:estimate_pdf',
-            visible_tracking: true,
+            visible_tracking: false,
           } as any);
         }
       } catch (e) { console.error(e); }
